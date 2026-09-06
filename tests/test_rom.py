@@ -374,10 +374,8 @@ class TestEveryPhraseIsReported(RomFixture):
 class TestDuplicatePointerAccounting(RomFixture):
     """Two commands naming one phrase must not be counted as two phrases.
 
-    The bytes are converted once -- a second pass would read the untouched
-    source and produce the same result -- but summing per-phrase totals across
-    the alias double-counts every physical quantity in the manifest, which is
-    the file whose entire purpose is to be countable.
+    The bytes are converted once, but summing per-phrase totals across the alias
+    would double every physical quantity in the manifest.
     """
 
     def _duplicated(self):

@@ -215,6 +215,20 @@ class TestCli(RomFixture):
         table = PhraseTable.from_pointers(self.rom, 0, 2)
         self.assertEqual(rows, diagnose_last_byte(self.rom, table, original()))
 
+    def test_manifest_rows_reconcile_with_the_summary(self):
+        """Per-phrase rows must add up to the summary, aliases excluded."""
+        result = self._convert()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads((self.dir / "out.bin.manifest.json").read_text())
+        rows = manifest["phrases"]
+        self.assertTrue(all("alias_of" in row for row in rows))
+        physical = [row for row in rows if row["alias_of"] is None]
+        self.assertEqual(sum(row["changed_bytes"] for row in physical),
+                         manifest["summary"]["bytes_changed"])
+        self.assertEqual(sum(row["frames"] for row in physical),
+                         manifest["summary"]["frames"])
+        self.assertEqual(len(physical), manifest["summary"]["distinct_phrases"])
+
     def test_identical_tables_are_refused(self):
         """Passing the same file twice is a no-op the user did not intend."""
         result = run("convert", str(self.rom_path), "-o", str(self.dir / "o.bin"),
@@ -242,12 +256,17 @@ class TestCli(RomFixture):
         self.assertIn("the wrong way round", result.stdout)
 
     def test_bad_layout_fails_loudly(self):
+        """Loudly means it says what is wrong, not merely that it exited 2."""
         result = run("convert", str(self.rom_path), "-o", str(self.dir / "x.bin"),
                      "--source-tables", str(self.dir / "src.json"),
                      "--target-tables", str(self.dir / "dst.json"),
                      "--table-offset", "0", "--phrases", "99", cwd=self.dir)
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 2)
         self.assertFalse((self.dir / "x.bin").exists())
+        self.assertTrue(result.stderr.strip(), "failed with no diagnostic")
+        self.assertIn("error:", result.stderr)
+        self.assertIn("pointer table", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 class TestFinalByteConvention(unittest.TestCase):
@@ -289,12 +308,17 @@ class TestFinalByteConvention(unittest.TestCase):
                    cwd=self.dir)
 
     def test_inspect_separates_the_two_verdicts(self):
+        """Parse the rows: the legend prints both words no matter what."""
         result = run("inspect", str(self.rom_path), "--table-offset", "0",
                      "--phrases", "2", "--source-tables",
                      str(self.dir / "src.json"), cwd=self.dir)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("spare", result.stdout)
-        self.assertIn("required", result.stdout)
+        rows = {}
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 5 and parts[0].isdigit() and parts[1].startswith("0x"):
+                rows[int(parts[0])] = parts[4]
+        self.assertEqual(rows, {0: "spare", 1: "required"}, result.stdout)
 
     def test_truncating_a_spare_phrase_works(self):
         result = self._convert("--truncate-last-byte", "0")

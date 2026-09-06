@@ -143,6 +143,52 @@ class TestFrameGrammar(unittest.TestCase):
                             [f.index_of("K1") for f in wrong])
 
 
+class TestPathologicalStreams(unittest.TestCase):
+    """Long and degenerate inputs, where a fixed frame cap used to bite."""
+
+    def setUp(self):
+        self.chip = original()
+
+    def test_a_very_long_silence_run_still_reaches_its_stop_frame(self):
+        """50,001 bytes: two silence frames per byte, then a stop.
+
+        A fixed 100,000-frame cap truncated this and reported `stopped=False`,
+        which is indistinguishable from a genuinely unterminated phrase -- a far
+        more serious condition, and one the converter refuses on. The bound is
+        derived from the input instead: no frame is shorter than four bits.
+        """
+        data = b"\x00" * 50_000 + b"\x0F"
+        frames, stopped = parse(data, self.chip.pitch_bits, self.chip.k_widths)
+        self.assertTrue(stopped)
+        self.assertEqual(frames[-1].kind, "stop")
+        self.assertEqual(len(frames), 100_001)
+
+    def test_an_explicit_cap_that_is_too_small_is_an_error(self):
+        data = b"\x00" * 100 + b"\x0F"
+        with self.assertRaises(ValueError) as caught:
+            parse(data, self.chip.pitch_bits, self.chip.k_widths, max_frames=5)
+        self.assertIn("max_frames", str(caught.exception))
+
+    def test_empty_input(self):
+        frames, stopped = parse(b"", self.chip.pitch_bits, self.chip.k_widths)
+        self.assertEqual(frames, [])
+        self.assertFalse(stopped)
+        self.assertEqual(rebuild(frames, 0), b"")
+
+    def test_a_single_stop_byte(self):
+        frames, stopped = parse(b"\x0F", self.chip.pitch_bits,
+                                self.chip.k_widths)
+        self.assertTrue(stopped)
+        self.assertEqual([f.kind for f in frames], ["stop"])
+
+    def test_all_ones(self):
+        """0xFF is a stop frame in the low nibble; it must not run away."""
+        frames, stopped = parse(b"\xFF" * 64, self.chip.pitch_bits,
+                                self.chip.k_widths)
+        self.assertTrue(stopped)
+        self.assertEqual(frames[0].kind, "stop")
+
+
 class TestKnownVector(unittest.TestCase):
     """One frame written out by hand, bit by bit, from the field spec.
 

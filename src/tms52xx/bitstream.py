@@ -142,20 +142,27 @@ class Frame:
 
 
 def parse(data: bytes, pitch_bits: int, k_widths: List[int],
-          max_frames: int = 100_000) -> Tuple[List[Frame], bool]:
+          max_frames: Optional[int] = None) -> Tuple[List[Frame], bool]:
     """Parse `data` into frames.
 
     `pitch_bits` is 6 for both 52xx parts. It is a parameter rather than a
     constant only so that a mistaken 5-bit assumption -- the TMS5100/5110 width
     -- can be demonstrated to desynchronise rather than merely asserted to.
 
+    `max_frames` defaults to a bound derived from the input: the shortest frame
+    is a 4-bit silence, so `len(data) * 2` frames cannot be exceeded. A fixed
+    cap would be reached by a large enough real stream and silently return a
+    short parse reporting no stop frame -- indistinguishable from a genuinely
+    unterminated phrase, which is a much more serious condition.
+
     Returns (frames, stopped_cleanly).
     """
+    limit = len(data) * 2 if max_frames is None else max_frames
     reader = BitReader(data)
     frames: List[Frame] = []
     stopped = False
 
-    while len(frames) < max_frames and reader.bits_available > 0:
+    while len(frames) < limit and reader.bits_available > 0:
         frame = Frame(len(frames), reader.bit_pos)
 
         at = reader.bit_pos
@@ -200,6 +207,13 @@ def parse(data: bytes, pitch_bits: int, k_widths: List[int],
 
         frame.kind = "voiced"
         frames.append(frame)
+
+    if len(frames) == limit and reader.bits_available > 0:
+        # Only reachable if a caller passed an explicit max_frames. The derived
+        # bound cannot be hit, because every frame consumes at least four bits.
+        raise ValueError(
+            "stopped after %d frames with %d bits left; max_frames was too "
+            "small for this stream" % (limit, reader.bits_available))
 
     total_bits = len(data) * 8
     for frame in frames:

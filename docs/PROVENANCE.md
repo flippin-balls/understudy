@@ -83,10 +83,14 @@ extractor against a synthetic C file with the same awkward shape as the real one
 backslash-continued macro bodies — and asserts both the extracted values and
 that a changed source shape is refused rather than misparsed.
 
-`from_pinmame.py` validates every table against the width its own struct
-declares, so if a later revision changes the file's shape you should get an
-error rather than a quiet misparse. If you do get one, the parser is what needs
-fixing.
+`from_pinmame.py` checks the source file's SHA-256 against the revision above
+and says so if it differs, and it validates every extracted table against the
+width its own struct declares. That catches a changed table *shape*. It does not
+prove semantic correctness: a reordering of the struct's fields, or a
+preprocessor construct the parser does not model — it handles literal `#if 0`
+blocks and nothing more — could produce a table of the right size and the wrong
+contents. If the hash note appears, compare a few values by eye before relying
+on the result.
 
 **From the datasheet.** Texas Instruments' *TMS5220 Voice Synthesis Processor
 Data Manual* documents the frame format and the tables. Transcribing by hand is

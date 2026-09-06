@@ -3644,6 +3644,7 @@
       14835
     ]
   ],
+  "phrase_rows": "one row per pointer in the layout. A row with alias_of set repeats an earlier row's phrase; the bytes were converted once, and summary totals count only rows with alias_of null.",
   "phrases": [
     {
       "index": 0,
@@ -3654,6 +3655,7 @@
       "approximated": 7,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 126,
       "stopped_cleanly": true
     },
@@ -3666,6 +3668,7 @@
       "approximated": 24,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 150,
       "stopped_cleanly": true
     },
@@ -3678,6 +3681,7 @@
       "approximated": 27,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 166,
       "stopped_cleanly": true
     },
@@ -3690,6 +3694,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 119,
       "stopped_cleanly": true
     },
@@ -3702,6 +3707,7 @@
       "approximated": 23,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 167,
       "stopped_cleanly": true
     },
@@ -3714,6 +3720,7 @@
       "approximated": 47,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 383,
       "stopped_cleanly": true
     },
@@ -3726,6 +3733,7 @@
       "approximated": 26,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 247,
       "stopped_cleanly": true
     },
@@ -3738,6 +3746,7 @@
       "approximated": 24,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 159,
       "stopped_cleanly": true
     },
@@ -3750,6 +3759,7 @@
       "approximated": 17,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 137,
       "stopped_cleanly": true
     },
@@ -3762,6 +3772,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 160,
       "stopped_cleanly": true
     },
@@ -3774,6 +3785,7 @@
       "approximated": 39,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 316,
       "stopped_cleanly": true
     },
@@ -3786,6 +3798,7 @@
       "approximated": 18,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 122,
       "stopped_cleanly": true
     },
@@ -3798,6 +3811,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 167,
       "stopped_cleanly": true
     },
@@ -3810,6 +3824,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 147,
       "stopped_cleanly": true
     },
@@ -3822,6 +3837,7 @@
       "approximated": 29,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 226,
       "stopped_cleanly": true
     },
@@ -3834,6 +3850,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 160,
       "stopped_cleanly": true
     },
@@ -3846,6 +3863,7 @@
       "approximated": 16,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 135,
       "stopped_cleanly": true
     },
@@ -3858,6 +3876,7 @@
       "approximated": 20,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 173,
       "stopped_cleanly": true
     },
@@ -3870,6 +3889,7 @@
       "approximated": 19,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 140,
       "stopped_cleanly": true
     },
@@ -3882,6 +3902,7 @@
       "approximated": 15,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 108,
       "stopped_cleanly": true
     },
@@ -3894,9 +3915,10 @@
       "approximated": 3,
       "truncated": 0,
       "last_byte_truncated": false,
+      "alias_of": null,
       "changed_bytes": 12,
       "stopped_cleanly": true
     }
   ],
-  "note": "Produced by this tool from a Squawk & Talk image assembled from an original Bally Embryon ROM set. Paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the sha256 above lets you confirm you have the same image before comparing results."
+  "note": "Produced by this tool from a Squawk & Talk image assembled from an original Bally Embryon ROM set. Paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the sha256 above lets you confirm you have the same image."
 }

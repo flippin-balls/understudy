@@ -135,17 +135,14 @@ def cmd_inspect(args) -> int:
 def _atomic_write(path: Path, data: bytes) -> None:
     """Write via a temporary file in the same directory, then rename.
 
-    A converted ROM is written to be flashed. A half-written one is a file that
-    looks like a ROM, has a plausible size, and is wrong. `os.replace` is atomic
-    within a directory, so the destination holds either the previous content or
-    the complete new content, never anything in between.
+    A half-written ROM is a file that looks like a ROM, has a plausible size,
+    and is wrong. `os.replace` is atomic within a directory, so the destination
+    holds either the old content or the complete new content.
 
-    The temporary name comes from `mkstemp`, which creates it exclusively and
-    unpredictably. A derived name like `<output>.tmp` would be neither: it can
-    collide with a file the user gave us -- converting `out.bin.tmp` into
-    `out.bin` truncated the input ROM before reading finished with it -- and an
-    attacker or a stale symlink sitting at a guessable path could redirect the
-    write somewhere else entirely.
+    The name comes from `mkstemp`, so it is unpredictable and created
+    exclusively. A derived name like `<output>.tmp` is a path the user may
+    already hold -- converting `out.bin.tmp` into `out.bin` would truncate the
+    input -- and a guessable path invites symlink redirection.
     """
     handle, tmp_name = tempfile.mkstemp(dir=str(path.parent),
                                         prefix=path.name + ".", suffix=".tmp")
@@ -318,11 +315,20 @@ def cmd_convert(args) -> int:
                                                 if r.last_byte_truncated)},
         "summary": stats,
         "changed_ranges": _changed_ranges(rom, out),
+        # `alias_of` is not decoration: without it the per-phrase rows cannot be
+        # reconciled with the summary. When two commands name one phrase both
+        # rows carry that phrase's counts, but the physical work happened once,
+        # so the summary totals only the rows where alias_of is null.
+        "phrase_rows": ("one row per pointer in the layout. A row with "
+                        "alias_of set repeats an earlier row's phrase; the "
+                        "bytes were converted once, and summary totals count "
+                        "only rows with alias_of null."),
         "phrases": [{"index": r.phrase.index, "start": r.phrase.start,
                      "end": r.phrase.end, "frames": r.frames,
                      "clamped": r.clamped, "approximated": r.approximated,
                      "truncated": r.truncated,
                      "last_byte_truncated": r.last_byte_truncated,
+                     "alias_of": r.alias_of,
                      "changed_bytes": r.changed_bytes,
                      "stopped_cleanly": r.stopped_cleanly}
                     for r in results],

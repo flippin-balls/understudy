@@ -3,8 +3,8 @@
 Convert TMS5200 LPC speech data so it plays correctly on a TMS5220.
 
 The TMS5200 has been out of production for decades. Machines that shipped with
-one still need to talk, and the TMS5220 is the usual substitute: a later part
-from the same family, and the one most likely to be findable.
+one still need to talk, and the TMS5220 — a later part from the same family — is
+what this project targets as a substitute.
 
 The two are close enough to be tempting and different enough to be wrong. They
 share the frame grammar and every field width, so a TMS5200 stream fed to a
@@ -50,7 +50,7 @@ Pure Python, standard library only, no dependencies. Python 3.9 or newer.
 ```
 git clone https://github.com/flippin-balls/understudy
 cd understudy
-PYTHONPATH=src python -m unittest discover -s tests    # 137 tests, all offline
+PYTHONPATH=src python -m unittest discover -s tests    # all offline, no fixtures
 ```
 
 Either install it, which gives you an `understudy` command:

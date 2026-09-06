@@ -260,6 +260,38 @@ class TestExtractorEndToEnd(unittest.TestCase):
                 self.assertEqual(table.pitch_bits, 6)
                 self.assertEqual(len(table.pitch), 64)
 
+    def test_an_unverified_source_revision_is_flagged(self):
+        """The fixture is not the pinned file, so the note must appear."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "fake-pinmame"
+            (root / "src" / "sound").mkdir(parents=True)
+            (root / "src" / "sound" / "tms5220r.c").write_text(
+                fixture_source().replace("fixture_live_coeff", "tms5220_coeff")
+                                .replace("fixture_dead_coeff", "tms5200_coeff"))
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                from_pinmame.main(["x", str(root), str(Path(tmp) / "out")])
+            self.assertIn("not the revision this extractor was verified",
+                          buffer.getvalue())
+
+    def test_neither_table_is_written_if_the_second_fails(self):
+        """A stale file beside a fresh one is worse than neither."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "fake-pinmame"
+            (root / "src" / "sound").mkdir(parents=True)
+            # tms5200_coeff parses; tms5220_coeff has a short energy table.
+            text = (fixture_source().replace("fixture_dead_coeff",
+                                             "tms5200_coeff")
+                    .replace("fixture_live_coeff", "tms5220_coeff"))
+            broken = text.replace(_list(ENERGY), _list(ENERGY[:-1]), 1)
+            (root / "src" / "sound" / "tms5220r.c").write_text(broken)
+            out = Path(tmp) / "out"
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    from_pinmame.main(["x", str(root), str(out)])
+            written = sorted(p.name for p in out.iterdir()) if out.exists() else []
+            self.assertEqual(written, [], "a partial pair was left behind")
+
     def test_missing_checkout_is_a_clean_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(SystemExit) as caught:

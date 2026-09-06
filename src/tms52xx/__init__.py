@@ -1,7 +1,7 @@
 """understudy -- TMS5220 speech chips standing in for unobtainable TMS5200s.
 
 The TMS5200 is long out of production. Machines that shipped with one still
-need to talk, and the TMS5220 is the part you can actually buy. It runs the same
+need to talk, and the TMS5220 is a later part from the same family. It runs the same
 frame grammar with the same field widths, but different coefficient tables, so
 the index values in existing speech data mean different things to it.
 

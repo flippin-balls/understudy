@@ -18,7 +18,9 @@ misparse fails here rather than producing quiet nonsense downstream.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -172,8 +174,15 @@ def build(text: str, struct_name: str, our_name: str) -> dict:
             "energy": energy, "pitch": pitch, "k": k}
 
 
+#: The revision this parser was written against and verified on. A different
+#: file is not necessarily a problem -- but it has not been checked, and the
+#: shape of the C is what this parser depends on.
+VERIFIED_SHA256 = ("21e3e4c16f044f2a380dbbb630ed375061"
+                   "218936256d413802c3f73883afbdc0")
+
+
 def main(argv) -> int:
-    if len(argv) != 3:
+    if len(argv) < 3:
         print(__doc__)
         return 2
     root, outdir = Path(argv[1]), Path(argv[2])
@@ -182,22 +191,40 @@ def main(argv) -> int:
         raise SystemExit("%s not found -- point this at a PinMAME checkout"
                          % source_file)
 
-    raw = strip_comments(source_file.read_text(errors="replace"))
+    body = source_file.read_bytes()
+    digest = hashlib.sha256(body).hexdigest()
+    if digest != VERIFIED_SHA256:
+        print("note: %s is not the revision this extractor was verified "
+              "against.\n      found    %s\n      verified %s\n"
+              "      The tables below may still be correct -- the validation "
+              "below catches a\n      changed table SHAPE -- but a reordering "
+              "of the struct's fields, or a\n      conditional this parser "
+              "does not model, could produce a wrongly sized-\n      correct "
+              "result. Compare a few values by eye before relying on it.\n"
+              % (source_file, digest, VERIFIED_SHA256))
+
+    raw = strip_comments(body.decode("utf-8", errors="replace"))
     # Drop dead branches BEFORE collecting macros. Collecting from the raw text
     # would pick up definitions inside `#if 0`, and if a name is defined in both
-    # arms the dead one can win by being later in the file -- a misparse that
-    # would look like a plausible table rather than an error.
+    # arms the dead one can win by being later in the file.
     text = drop_dead_blocks(raw)
     text = expand_macros(text, collect_macros(text))
-    outdir.mkdir(parents=True, exist_ok=True)
 
-    for our_name, struct_name in VARIANTS.items():
-        data = build(text, struct_name, our_name)
+    # Build and validate BOTH variants before writing either. Writing as we go
+    # would leave a new tms5200.json beside a stale tms5220.json if the second
+    # extraction failed, and nothing about the pair would show it.
+    extracted = {our_name: build(text, struct_name, our_name)
+                 for our_name, struct_name in VARIANTS.items()}
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    for our_name, data in extracted.items():
         path = outdir / ("%s.json" % our_name)
-        path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+        tmp = path.with_name(path.name + ".partial")
+        tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+        os.replace(tmp, path)
         longest = max(p for p in data["pitch"] if p)
         print("%-16s -> %s   lowest f0 %.1f Hz"
-              % (struct_name, path, 8000 / longest))
+              % (VARIANTS[our_name], path, 8000 / longest))
 
     print("\nCheck the licence header on %s before relying on these." % source_file)
     return 0

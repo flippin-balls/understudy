@@ -89,21 +89,17 @@ class PhraseTable:
                     "check table_offset and base_address"
                     % (i, value, len(rom)))
 
-        # Where the LAST phrase ends when nothing bounds it. "The end of the
-        # image" is the obvious answer and is wrong whenever the pointer table
-        # sits above the speech -- which is normal on a Squawk & Talk, where the
-        # table lives in one socket and the phrases in another at a lower
-        # address. The table's own bytes are not speech, so they bound the last
-        # phrase just as another pointer would.
+        # Where the last phrase ends when nothing bounds it. Not simply the
+        # end of the image: the pointer table often sits above the speech, and
+        # its bytes are not speech, so they bound the phrase too.
         def implicit_end(start: int) -> int:
             if start < table_offset:
                 return table_offset
             return len(rom)
 
-        # Deriving extents needs address order; REPORTING must keep the caller's
-        # order, because in a command-ordered table entry N is the phrase that
-        # command N plays and that identity is the useful part. Sorting the
-        # pointers and renumbering would silently relabel every phrase.
+        # Extents need address order; reporting keeps the caller's order. In a
+        # command-ordered table entry N is what command N plays, and sorting the
+        # pointers would relabel every phrase.
         if address_ordered:
             bounds = list(pointers)
             phrases = [Phrase(i, bounds[i],
@@ -125,11 +121,9 @@ class PhraseTable:
                     "phrase %d has end 0x%X <= start 0x%X; the table is probably "
                     "command-ordered (pass address_ordered=False) or the count "
                     "is wrong" % (phrase.index, phrase.end, phrase.start))
-            # OVERLAP, not "below the table". The pointer table does not have
-            # to precede the speech: on a Squawk & Talk the table commonly sits
-            # in one socket and the phrases it points at in another, at a lower
-            # address. What must not happen is a phrase extent covering the
-            # table's own bytes, because patching it would rewrite the table.
+            # An overlap test, not "below the table": the table need not
+            # precede the speech. What must not happen is a phrase covering the
+            # table's own bytes, which patching would rewrite.
             if phrase.start < end_of_table and table_offset < phrase.end:
                 raise ValueError(
                     "phrase %d (0x%X-0x%X) overlaps the pointer table at "
@@ -141,11 +135,10 @@ class PhraseTable:
             # the byte range must only be converted ONCE.
             seen.setdefault((phrase.start, phrase.end), []).append(phrase.index)
 
-        # No overlap check: two extents here are always identical or disjoint.
-        # Address-ordered extents are consecutive pointer pairs, so any decrease
-        # trips the end <= start refusal above; command-ordered extents run to
-        # the next distinct sorted pointer. The test suite exercises every
-        # layout over a small bounded domain to hold this.
+        # No overlap check: extents here are always identical or disjoint.
+        # Address-ordered ones are consecutive pointer pairs, so any decrease
+        # trips the refusal above; command-ordered ones run to the next distinct
+        # sorted pointer. The suite exercises every layout in a bounded domain.
         return cls(phrases)
 
 
@@ -258,18 +251,28 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     truncated = _truncation_set(truncate_last_byte, table)
     out = bytearray(rom)
     results: List[PhraseResult] = []
-    # Duplicate pointers are legal -- two commands can name one phrase -- so the
-    # same bytes can be declared more than once. Convert them ONCE: repeating
-    # the work would be harmless for the output (each pass reads the untouched
-    # source) but would double every total in the manifest, which is the file
-    # whose whole purpose is to be countable.
+    # Duplicate pointers are legal, so the same bytes can be declared twice.
+    # Convert them once: a second pass would produce the same output but double
+    # every total in the manifest.
     done: Dict[tuple, PhraseResult] = {}
 
+    # Grouped by DECLARED extent, before truncation: keying on the truncated
+    # end would split one phrase into two groups when only one alias was
+    # truncated, and count its bytes twice.
     for phrase in table.phrases:
+        group = (phrase.start, phrase.end)
         end = phrase.end - 1 if phrase.index in truncated else phrase.end
 
-        first = done.get((phrase.start, end))
+        first = done.get(group)
         if first is not None:
+            if first.last_byte_truncated != (phrase.index in truncated):
+                raise ValueError(
+                    "phrases %d and %d name the same bytes (0x%X-0x%X) but only "
+                    "one was given --truncate-last-byte. The final byte is "
+                    "either transmitted or it is not; pass both indexes or "
+                    "neither."
+                    % (first.phrase.index, phrase.index,
+                       phrase.start, phrase.end))
             results.append(replace(first, phrase=phrase,
                                    alias_of=first.phrase.index))
             continue
@@ -293,12 +296,10 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
                 % phrase.index)
         out[phrase.start:end] = converted
 
-        # SELF-CHECK. Re-parse what was actually written, with the TARGET
-        # tables, and compare frame kinds against the source. This is the one
-        # structural property that must hold -- if a frame changed kind, its
-        # length changed, and every frame after it is being read at the wrong
-        # bit offset. Checking the output rather than the report means a bug in
-        # the conversion cannot report its way past this.
+        # Re-parse what was written, with the target tables, and compare frame
+        # kinds. A changed kind means a changed length, so everything after it
+        # is being read at the wrong bit offset. Checking the output rather than
+        # the report means a conversion bug cannot report its way past this.
         source_frames, _ = parse(original, source.pitch_bits,
                                  list(source.k_widths))
         target_frames, _ = parse(converted, target.pitch_bits,
@@ -328,7 +329,7 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
             stopped_cleanly=stopped,
             changed_bytes=sum(1 for a, b in zip(original, converted) if a != b),
         )
-        done[(phrase.start, end)] = result
+        done[group] = result
         results.append(result)
 
     # Every declared phrase produces a result: duplicates that share an extent
