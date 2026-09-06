@@ -11,13 +11,18 @@ and arrangement can matter, and so can the licence of whatever file you extract
 from. The position taken here is to keep that decision with you rather than make
 it for you.
 
-The practical problem is provenance. Every convenient machine-readable copy we
-located traces back to an emulator source tree. The most complete of those,
-PinMAME, is part-way through migrating from the old MAME licence to 3-Clause
-BSD, per file, and files that have not been converted remain under terms that
-restrict commercial use. Vendoring a generated copy would carry that ambiguity
-into every project that depends on this one, permanently, in exchange for saving
-each user a single command.
+The practical problem is provenance. Other projects do carry these tables, and
+every copy we found that holds *these* values traces back to MAME — the projects
+carrying it say so themselves, and one downstream copy is tagged with a
+permissive licence its own upstream does not use. The copies that do not trace
+back to MAME hold **different numbers**. Both cases are set out with the
+evidence in *Other projects carry these tables* below.
+
+PinMAME, the most complete of them, is part-way through migrating from the old
+MAME licence to 3-Clause BSD, per file, and files that have not been converted
+remain under terms that restrict commercial use. Vendoring a generated copy
+would carry that ambiguity into every project that depends on this one,
+permanently, in exchange for saving each user a single command.
 
 So the extraction is a step you run, against a source you have chosen, under a
 licence you have read. To be plain about what that does and does not achieve:
@@ -119,6 +124,51 @@ the wrong chip, which is the entire problem this project exists to solve.
 
 **From your own measurements.** If you have working silicon and the patience,
 this is the only route that owes nothing to anyone else's transcription.
+
+### Other projects carry these tables. Here is what is actually in them.
+
+A reasonable question is whether some other project already publishes the tables
+under a friendlier licence. Several do carry them, so it is worth setting out
+what is in each, because the answer is not the one you would hope for.
+
+| project | licence | has 5200 *and* 5220? | values |
+|---|---|---|---|
+| PinMAME `src/sound/tms5220r.c` | per-file, mid-migration | yes | the reference here |
+| [Talkie](https://github.com/ArminJo/Talkie) `src/TalkieLPC.h` | GPL-3.0 | 5220 only | identical to PinMAME's |
+| [python_wizard](https://github.com/ptwz/python_wizard) `lpcplayer/tables.py` | repo says MIT | yes | identical to PinMAME's |
+| [BlueWizard](https://github.com/patrick99e99/BlueWizard) `CodingTable.m` | MIT | 5220 only | **differs** |
+| [TMS Express](https://github.com/tornupnegatives/TMS-Express) | GPL-3.0 | 5220 only | — |
+
+Two things follow.
+
+**A permissive tag downstream does not launder the ancestry.** python_wizard's
+`lpcplayer/tables.py` is the closest thing to a drop-in: it is Python, it has
+both variants, and every value in it is identical to what `from_pinmame.py`
+extracts — energy, pitch and K1–K10, both parts, checked field by field. Its
+repository declares MIT. But its own README says `lpcplayer` is "based on
+talkie", Talkie is GPL-3.0, and Talkie's `TalkieLPC.h` header says where the
+numbers came from in as many words:
+
+> Values can be found on
+> https://github.com/mamedev/mame/blob/master/src/devices/sound/tms5110r.hxx
+
+So that route is an MIT tag over a file derived from a GPL-3.0 project over data
+from MAME. That is more ambiguity than going to the upstream and reading its
+licence header yourself, not less. Nothing here is an accusation against those
+projects — they are all doing something legitimate and useful, and Talkie in
+particular is scrupulous about saying where its values came from.
+
+**The copies do not all agree, which is the more practical hazard.**
+BlueWizard's tables are genuinely independent rather than a copy, and they are
+not the same numbers: its pitch table differs from PinMAME's TMS5220 in **21 of
+its 64 entries**, and it holds normalised floats rather than integer periods.
+Neither set is self-evidently "the right one", and a conversion done with one is
+not the conversion the other would have produced.
+
+That is why this tool takes tables as *input* rather than baking a set in, and
+why every manifest records the SHA-256 of both table files. A conversion is
+reproducible and attributable to the exact tables that produced it, whichever
+set you decided to trust.
 
 **Sanity-check whatever you get.** A TMS5200 table should report a lowest
 reachable f0 near 37.9 Hz and a TMS5220 near 50.3 Hz — see *Verifying what you

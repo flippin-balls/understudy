@@ -12,9 +12,15 @@ more general problem, and it is **not** what this project does.
   — a commercial Windows LPC analysis tool. Named here because the projects below
   describe themselves as replacements for it.
 - **[BlueWizard](https://github.com/patrick99e99/BlueWizard)** (Patrick Kelly) —
-  macOS, Objective-C. Describes itself as a QBoxPro replacement.
+  macOS, Objective-C. Describes itself as a QBoxPro replacement. Its
+  `CodingTable.m` carries a TMS5220 table that is *not* MAME's — 21 of its 64
+  pitch entries differ — which makes it the one genuinely independent
+  transcription we found.
 - **[python_wizard](https://github.com/ptwz/python_wizard)** (Peter Turczak) — a
-  Python port of BlueWizard. Command-line and scriptable.
+  Python port of BlueWizard. Command-line and scriptable. Its `lpcplayer`
+  package carries coefficient tables for both the TMS5200 and the TMS5220; see
+  [PROVENANCE.md](PROVENANCE.md#other-projects-carry-these-tables-here-is-what-is-actually-in-them)
+  for what is in them and where they came from.
 - **[TMS Express](https://github.com/tornupnegatives/TMS-Express)** — LPC encoder
   targeting both real TMS5220 hardware and Arduino Talkie.
 - **[speakie](https://github.com/raphlinus/speakie)** (Raph Levien) — decoder plus
@@ -24,7 +30,9 @@ more general problem, and it is **not** what this project does.
 
 - **[Talkie](https://github.com/ArminJo/Talkie)** — Arduino playback of LPC
   bitstreams, originally by Peter Knight. The reason a great deal of TMS5220
-  speech data exists in hobbyist projects at all.
+  speech data exists in hobbyist projects at all. Its `src/TalkieLPC.h` carries
+  a TMS5220 table identical to MAME's and cites MAME as its source, which is
+  what makes that lineage traceable at all.
 - **PinMAME / MAME TMS52xx** — an open implementation of the chip's behaviour: `src/sound/tms5220.c` holds the interpolation and excitation
   logic, `src/sound/tms5220r.c` the per-variant coefficient tables. The
   pitch-ceiling result in [PITCH_CEILING.md](PITCH_CEILING.md) was derived

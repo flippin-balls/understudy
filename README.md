@@ -192,12 +192,17 @@ makes the bit map testable rather than merely plausible.
 
 ## Chip tables are not included
 
-You supply them. Every convenient machine-readable copy we located traces back
-to an emulator source tree, and PinMAME is mid-migration from the old MAME
-licence to 3-Clause BSD on a per-file basis; bundling a generated copy would
-push that ambiguity onto everyone downstream to save them one command.
-[docs/PROVENANCE.md](docs/PROVENANCE.md) sets out the position, its limits, and
-an extractor.
+You supply them, and
+[docs/PROVENANCE.md](docs/PROVENANCE.md#other-projects-carry-these-tables-here-is-what-is-actually-in-them)
+sets out where from. Other projects do publish these tables, and that section
+says what is actually in each: every copy holding the same values traces back to
+MAME and says so, one of them under a permissive tag its own upstream does not
+use, while the copies that are genuinely independent hold **different numbers** —
+BlueWizard's pitch table differs from PinMAME's in 21 of its 64 entries.
+
+Since the available sets disagree, the tables are an input rather than something
+baked in, and every manifest records the SHA-256 of both table files so a
+conversion is attributable to the exact set that produced it.
 
 The test suite ships synthetic tables, so it runs with nothing supplied.
 
