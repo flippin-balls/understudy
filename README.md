@@ -197,8 +197,8 @@ You supply them, and
 sets out where from. Other projects do publish these tables, and that section
 says what is actually in each: every copy holding the same values traces back to
 MAME and says so, one of them under a permissive tag its own upstream does not
-use, while the copies that are genuinely independent hold **different numbers** —
-BlueWizard's pitch table differs from PinMAME's in 21 of its 64 entries.
+use, while the one genuinely separate transcription holds **different numbers** —
+BlueWizard's pitch table matches none of MAME's eight variants.
 
 Since the available sets disagree, the tables are an input rather than something
 baked in, and every manifest records the SHA-256 of both table files so a

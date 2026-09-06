@@ -159,11 +159,14 @@ projects — they are all doing something legitimate and useful, and Talkie in
 particular is scrupulous about saying where its values came from.
 
 **The copies do not all agree, which is the more practical hazard.**
-BlueWizard's tables are genuinely independent rather than a copy, and they are
-not the same numbers: its pitch table differs from PinMAME's TMS5220 in **21 of
-its 64 entries**, and it holds normalised floats rather than integer periods.
-Neither set is self-evidently "the right one", and a conversion done with one is
-not the conversion the other would have produced.
+BlueWizard's tables are not a copy of MAME's at all. Its pitch table differs
+from PinMAME's TMS5220 in **21 of its 64 entries**, and it matches **none of the
+eight variants** MAME defines — not the 5200, 5220 or 5220C, and not the
+5100/5110 or patent tables either. It also holds normalised floats rather than
+integer periods, and carries no second variant. So it is a genuinely separate
+transcription, and it disagrees. Neither set is self-evidently "the right one",
+and a conversion done with one is not the conversion the other would have
+produced.
 
 That is why this tool takes tables as *input* rather than baking a set in, and
 why every manifest records the SHA-256 of both table files. A conversion is
