@@ -13,9 +13,9 @@ more general problem, and it is **not** what this project does.
   describe themselves as replacements for it.
 - **[BlueWizard](https://github.com/patrick99e99/BlueWizard)** (Patrick Kelly) —
   macOS, Objective-C. Describes itself as a QBoxPro replacement. Its
-  `CodingTable.m` carries a TMS5220 table that is *not* MAME's — 21 of its 64
-  pitch entries differ — which makes it the one genuinely independent
-  transcription we found.
+  `CodingTable.m` carries a TMS5220 table matching none of MAME's eight
+  variants — 21 of its 64 pitch entries differ from the TMS5220's — which makes
+  it the one genuinely separate transcription we found.
 - **[python_wizard](https://github.com/ptwz/python_wizard)** (Peter Turczak) — a
   Python port of BlueWizard. Command-line and scriptable. Its `lpcplayer`
   package carries coefficient tables for both the TMS5200 and the TMS5220; see
