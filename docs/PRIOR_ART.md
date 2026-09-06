@@ -49,9 +49,11 @@ If you have audio and no LPC, use one of the encoders above.
 
 - Texas Instruments, *TMS5220 Voice Synthesis Processor Data Manual* — the frame
   grammar, field widths and pin-level behaviour.
-- **[Stuart Conner's TI speech pages](http://www.stuartconner.me.uk/)** — the
-  most careful preservation work on TI speech hardware and the surviving
-  development systems around it.
+- **Stuart Conner's TI speech pages** —
+  [stuartconner.me.uk](https://www.stuartconner.me.uk/), preservation work on TI
+  speech hardware and the surviving development systems around it. The site is
+  intermittently unavailable; if it 502s, try the
+  [Wayback Machine copy](https://web.archive.org/web/2024/http://www.stuartconner.me.uk/).
 - Gene Helms and Steve Petersen, "Portable speech development system creates
   linear predictive codes", *Electronics*, 8 September 1982 — contemporary
   description of how this speech data was originally produced.

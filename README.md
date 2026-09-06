@@ -23,25 +23,23 @@ The two chips do not cover the same pitch range. The TMS5220's excitation
 period table stops shorter than the TMS5200's, so the lowest-pitched frames in a
 TMS5200 stream have no destination to map to and must be clamped upward.
 
-Working from the coefficient tables as implemented in PinMAME's
-`src/sound/tms5220r.c`,
-the longest period a TMS5220 can be driven to is 159 samples against the
-TMS5200's 211 — about 50.3 Hz against 37.9 Hz at the 8 kHz sample rate. Nine
-candidate workarounds were each built as a real bitstream and rendered; none
-moved the fundamental below the table's floor, which is the threshold they were
-judged against.
+Reading PinMAME's `src/sound/tms5220r.c`, the longest period a TMS5220 can be
+driven to is 159 samples against the TMS5200's 211 — about 50.3 Hz against
+37.9 Hz at the 8 kHz sample rate. Nine candidate workarounds were built and
+rendered; none moved the fundamental below the table's floor.
 
-**This is an emulator-derived result and has not been confirmed on silicon.**
-It follows from the coefficient table and the counter comparison, both of which
-are documented chip behaviour rather than emulator artefacts, so it should
-transfer — but that is an expectation, not a measurement. Treat it accordingly.
-
-Conversion therefore preserves the frame structure and timing exactly, maps each
+So conversion preserves the frame structure and timing exactly, maps each
 coefficient to the nearest entry in the substitute chip's tables, and raises the
-pitch of frames below that chip's floor. How close the result sounds to the
-original has not been measured on hardware. `FrameConversion` reports
-`pitch_clamped` per frame so you can see exactly where and how often that
-happened rather than discovering it by ear.
+pitch of frames below that chip's floor. `FrameConversion` reports
+`pitch_clamped` per frame, so you can see where and how often rather than
+discovering it by ear.
+
+**Nothing here has been confirmed on silicon.** The ceiling follows from the
+coefficient table and the counter comparison, both documented chip behaviour, so
+it should transfer — but that is an expectation, not a measurement, and it is
+the only caveat of its kind stated in this file.
+[docs/PITCH_CEILING.md](docs/PITCH_CEILING.md) has the detail and
+[docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) the rest.
 
 ## Installing
 
@@ -181,16 +179,14 @@ makes the bit map testable rather than merely plausible.
 
 ## Chip tables are not included
 
-You supply them. See [docs/PROVENANCE.md](docs/PROVENANCE.md), which explains
-why and includes an extractor.
+You supply them. Every convenient machine-readable copy we located traces back
+to an emulator source tree, and PinMAME is mid-migration from the old MAME
+licence to 3-Clause BSD on a per-file basis; bundling a generated copy would
+push that ambiguity onto everyone downstream to save them one command.
+[docs/PROVENANCE.md](docs/PROVENANCE.md) sets out the position, its limits, and
+an extractor.
 
-Briefly: the values are technical facts about the silicon, but every convenient
-machine-readable copy traces back to an emulator source tree, and PinMAME — the
-most complete of those — is mid-migration from the old MAME licence to 3-Clause
-BSD on a per-file basis. Bundling a generated copy would push that ambiguity
-onto everyone downstream to save them one command.
-
-The test suite ships synthetic tables so it runs with nothing supplied.
+The test suite ships synthetic tables, so it runs with nothing supplied.
 
 ## Scope
 
@@ -203,8 +199,7 @@ and start there if you have a recording rather than a ROM.
 It does not handle the TMS5100, TMS5110 or TMS5220C. It does not discover the
 phrase layout for you. It does not update ROM checksums. It runs no emulator:
 each converted phrase is re-parsed with the target tables and checked frame by
-frame, which is a structural check, not an acoustic one. No physical chip has
-been measured for this project. [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) is the full
+frame, which is a structural check and not an acoustic one. [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) is the full
 list.
 
 ## Licence

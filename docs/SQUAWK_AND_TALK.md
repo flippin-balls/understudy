@@ -107,19 +107,31 @@ addresses all of U4's speech through it, so pointers land at `$E800`, not
 ```python
 import sys
 
-image = bytearray(b"\xFF" * 0x4000)          # $C000-$FFFF
+WINDOW = 0xC000                                # CPU address the image starts at
+SIZE = 0x4000                                  # $C000-$FFFF
+image = bytearray(b"\xFF" * SIZE)              # 0xFF = erased, so gaps show
 
-def place(path, cpu_addr):
+def place(path, cpu_addr, size):
     data = open(path, "rb").read()
-    at = cpu_addr - 0xC000
-    image[at:at + len(data)] = data
-    if len(data) == 0x800:                    # 2 KB device in a 4 KB socket
-        image[at + 0x800:at + 0x1000] = data  # mirrored into the upper half
+    if len(data) != size:
+        raise SystemExit("%s is %d bytes, expected %d" % (path, len(data), size))
+    at = cpu_addr - WINDOW
+    if at < 0 or at + size > SIZE:
+        raise SystemExit("%s at 0x%04X does not fit the window" % (path, cpu_addr))
+    image[at:at + size] = data
+    if size == 0x800:                          # 2 KB device in a 4 KB socket
+        image[at + 0x800:at + 0x1000] = data   # mirrored into the upper half
 
-place("841-01_4.716", 0xE000)                 # U4, 2716
-place("841-02_5.532", 0xF000)                 # U5, 2532
-open("embryon_snt.bin", "wb").write(bytes(image))
+place("841-01_4.716", 0xE000, 0x800)           # U4, 2716
+place("841-02_5.532", 0xF000, 0x1000)          # U5, 2532
+assert len(image) == SIZE                      # slice assignment can resize
+open(sys.argv[1], "wb").write(bytes(image))
 ```
+
+The size and range checks are not ceremony. Python slice assignment silently
+*resizes* a `bytearray` when the slice and the data disagree, so an oversized or
+misplaced dump would produce a longer-than-16 KB image with every subsequent
+address shifted, and nothing would say so.
 
 **2. Convert it.** Use the layout from the section below.
 
@@ -143,11 +155,14 @@ looks plausible and burns fine. Take the half that actually changed:
 ```python
 import sys
 
+WINDOW = 0xC000
 before = open(sys.argv[1], "rb").read()      # the image you converted FROM
 after = open(sys.argv[2], "rb").read()       # the image convert produced
+if len(before) != len(after):
+    raise SystemExit("the two images are different sizes")
 
-def extract(path, cpu_addr, size):
-    at = cpu_addr - 0xC000
+def extract(path, cpu_addr, size, holds_speech):
+    at = cpu_addr - WINDOW
     halves = [(at, at + size)]
     if size == 0x800:                        # 2 KB device in a 4 KB socket
         halves.append((at + 0x800, at + 0x1000))
@@ -155,23 +170,33 @@ def extract(path, cpu_addr, size):
     changed = [(lo, hi) for lo, hi in halves if after[lo:hi] != before[lo:hi]]
     if len(changed) > 1:
         raise SystemExit("%s: both mirror halves changed; the layout puts "
-                         "phrases in both, which cannot be burned to one device"
+                         "phrases at both addresses, which one device cannot "
+                         "represent" % path)
+    if holds_speech and not changed:
+        raise SystemExit("%s: declared as holding speech but nothing in it "
+                         "changed -- the layout is probably wrong" % path)
+    if changed and not holds_speech:
+        raise SystemExit("%s: declared as holding no speech but it changed"
                          % path)
+
     lo, hi = changed[0] if changed else halves[0]
     open(path, "wb").write(after[lo:hi])
-    return (hi - lo), len(changed)
+    return hi - lo
 
-for path, addr, size in (("841-01_4_5220.716", 0xE000, 0x800),
-                         ("841-02_5_5220.532", 0xF000, 0x1000)):
-    wrote, touched = extract(path, addr, size)
-    print("%-22s %5d bytes  %s" % (path, wrote,
-                                   "converted" if touched else "unchanged"))
+# Declare which devices you expect to carry speech.
+DEVICES = [("841-01_4_5220.716", 0xE000, 0x800, True),
+           ("841-02_5_5220.532", 0xF000, 0x1000, True)]
+
+for path, addr, size, speech in DEVICES:
+    print("%-22s %5d bytes" % (path, extract(path, addr, size, speech)))
 ```
 
-A device reported as `unchanged` holds no speech, and you do not need to reburn
-it. If the script stops because both halves changed, your layout has phrases at
-both the real and mirrored addresses, which a single device cannot represent —
-the layout is wrong.
+**Declare the speech-bearing devices, and mean it.** A device that simply comes
+out `unchanged` is ambiguous: it might hold no speech, or the layout might have
+missed its phrases entirely, and those look identical from here. Saying which
+devices you expect to change turns that ambiguity into an error. If the script
+stops because both mirror halves changed, your layout has phrases at both the
+real and mirrored addresses, which a single device cannot represent.
 
 **Check before you burn.** Each output must be exactly the size of the original,
 and the differing byte counts must add up to what conversion reported:

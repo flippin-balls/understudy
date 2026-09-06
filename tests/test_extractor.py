@@ -274,8 +274,12 @@ class TestExtractorEndToEnd(unittest.TestCase):
             self.assertIn("not the revision this extractor was verified",
                           buffer.getvalue())
 
-    def test_neither_table_is_written_if_the_second_fails(self):
-        """A stale file beside a fresh one is worse than neither."""
+    def test_nothing_is_written_if_the_second_table_fails_to_validate(self):
+        """Both are extracted and validated before either is written.
+
+        This covers the validation stage. The two renames that follow are not a
+        single transaction, and PROVENANCE.md says so.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "fake-pinmame"
             (root / "src" / "sound").mkdir(parents=True)

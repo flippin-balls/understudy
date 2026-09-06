@@ -1,8 +1,8 @@
 """TMS5200/TMS5220 LPC frame bitstream: parse, rebuild, and locate every bit.
 
 The frame grammar below is the one both chips implement. It is documented in
-Texas Instruments' TMS5220 Voice Synthesis Processor data manual and is
-independently visible in every emulator and encoder listed in docs/PRIOR_ART.md.
+Texas Instruments' TMS5220 Voice Synthesis Processor data manual and reflected
+in the implementations listed in docs/PRIOR_ART.md.
 
     energy      4 bits      0 = silence, 15 = stop, otherwise an index
     repeat      1 bit       set -> the frame ends here and reuses the previous

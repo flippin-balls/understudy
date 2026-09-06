@@ -83,6 +83,12 @@ extractor against a synthetic C file with the same awkward shape as the real one
 backslash-continued macro bodies — and asserts both the extracted values and
 that a changed source shape is refused rather than misparsed.
 
+It writes both tables only after extracting and validating both, so a failure
+on the second cannot leave a fresh file beside a stale one. Two renames are
+still two renames: a filesystem failure between them could leave one new table
+and one old, which is why conversion manifests record the SHA-256 of both table
+files.
+
 `from_pinmame.py` checks the source file's SHA-256 against the revision above
 and says so if it differs, and it validates every extracted table against the
 width its own struct declares. That catches a changed table *shape*. It does not
