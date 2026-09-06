@@ -109,12 +109,40 @@ class TestPatch(RomFixture):
         self.assertNotEqual(out, self.rom)
         self.assertTrue(all(r.changed_bytes > 0 for r in results))
 
-    def test_reports_clamping_per_phrase(self):
-        _out, results = patch_rom(self.rom, self.table, self.src, self.dst)
+    def test_reports_clamping_with_exact_counts(self):
+        """Exact numbers, from a phrase built to clamp a known count.
+
+        `clamped_percent >= 0` was the original assertion and is true of any
+        number the summary could possibly produce, including one from a
+        summariser that had stopped counting.
+        """
+        longest = max(range(len(self.src.pitch)),
+                      key=lambda i: self.src.pitch[i])
+        reachable = max(p for p in self.dst.pitch if p)
+        # Two frames beyond the target's reach, one comfortably inside it.
+        # An index inside the target's range that it cannot hold EXACTLY, so
+        # the frame is approximated rather than clamped or unchanged.
+        low = next(i for i in range(1, len(self.src.pitch))
+                   if 0 < self.src.pitch[i] <= reachable
+                   and self.src.pitch[i] not in self.dst.pitch)
+        body = stream(self.src, [(7, 0, longest, list(range(10))),
+                                 (8, 0, longest, list(range(10))),
+                                 (9, 0, low, list(range(10))),
+                                 (0xF, 0, 0, [])])
+        rom = bytearray(6)
+        for i, value in enumerate([6, 6 + len(body)]):
+            rom[2 * i:2 * i + 2] = value.to_bytes(2, "big")
+        rom += body
+        table = PhraseTable.from_pointers(bytes(rom), 0, 1)
+
+        _out, results = patch_rom(bytes(rom), table, self.src, self.dst)
         summary = summarise(results)
-        self.assertEqual(summary["phrases"], 2)
-        self.assertGreater(summary["frames"], 0)
-        self.assertGreaterEqual(summary["clamped_percent"], 0.0)
+        self.assertEqual(summary["phrases"], 1)
+        self.assertEqual(summary["frames"], 4)
+        self.assertEqual(summary["frames_clamped"], 2)
+        self.assertEqual(summary["frames_approximated"], 1)
+        self.assertAlmostEqual(summary["clamped_percent"], 50.0)
+        self.assertEqual(results[0].clamped, 2)
 
     def test_truncated_convention_leaves_the_final_byte_alone(self):
         """Comparing the two whole outputs for inequality is not the right test:
@@ -123,18 +151,38 @@ class TestPatch(RomFixture):
         truncated convention the last ROM byte of every phrase is untouched,
         because the player never transmits it.
         """
+        # allow_unterminated: this fixture's final bytes carry the stop frame,
+        # so truncating removes the terminator. That is the guard doing its job
+        # and is tested elsewhere; here the subject is which BYTES get written.
         out, _ = patch_rom(self.rom, self.table, self.src, self.dst,
-                           truncate_last_byte=True)
+                           truncate_last_byte=True, allow_unterminated=True)
         for phrase in self.table.phrases:
             self.assertEqual(out[phrase.end - 1], self.rom[phrase.end - 1],
                              "phrase %d's untransmitted final byte was written"
                              % phrase.index)
 
-    def test_patching_is_idempotent_under_the_same_tables(self):
-        """Converting an already-converted ROM with the same pair is stable."""
+    def test_converting_a_rom_to_its_own_tables_changes_nothing(self):
+        """Target-to-target is a fixed point, which is what makes a re-run safe.
+
+        NOTE WHAT THIS IS NOT. It does not say source-to-target conversion is
+        idempotent -- it is not, and must not be run twice. The second pass here
+        is dst -> dst, i.e. a converted ROM re-examined against the tables it is
+        now written in, which is the case a user hits by re-running the tool on
+        its own output.
+        """
         once, _ = patch_rom(self.rom, self.table, self.src, self.dst)
         twice, _ = patch_rom(once, self.table, self.dst, self.dst)
         self.assertEqual(once, twice)
+
+    def test_running_the_conversion_twice_is_not_safe(self):
+        """The other half of the warning above, demonstrated rather than stated.
+
+        A second source->target pass re-reads already-converted indexes as
+        though they were source indexes, and moves them again.
+        """
+        once, _ = patch_rom(self.rom, self.table, self.src, self.dst)
+        twice, _ = patch_rom(once, self.table, self.src, self.dst)
+        self.assertNotEqual(once, twice)
 
 
 
@@ -246,6 +294,41 @@ class TestLayoutRefusals(RomFixture):
         self.assertGreater(accepted, 1000)   # the sweep really did exercise it
 
 
+class TestLibraryFailsClosed(RomFixture):
+    """The refusal lives in the library, not only in the command line.
+
+    A caller who imports `patch_rom` gets the same protection as one who runs
+    the CLI. Safety implemented only at the command line is safety that the
+    people most likely to automate this do not get.
+    """
+
+    def test_patch_rom_refuses_an_unterminated_phrase(self):
+        # Truncating a phrase whose final byte carries the stop frame removes
+        # the terminator, which is the cheapest way to produce the condition.
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(self.rom, self.table, self.src, self.dst,
+                      truncate_last_byte=True)
+        self.assertIn("do not end in a stop frame", str(caught.exception))
+
+    def test_the_override_is_available(self):
+        out, results = patch_rom(self.rom, self.table, self.src, self.dst,
+                                 truncate_last_byte=True,
+                                 allow_unterminated=True)
+        self.assertEqual(len(out), len(self.rom))
+        self.assertFalse(all(r.stopped_cleanly for r in results))
+
+    def test_a_clean_conversion_needs_no_override(self):
+        out, results = patch_rom(self.rom, self.table, self.src, self.dst)
+        self.assertTrue(all(r.stopped_cleanly for r in results))
+        self.assertNotEqual(out, self.rom)
+
+    def test_frame_kinds_are_checked_against_the_written_output(self):
+        _out, results = patch_rom(self.rom, self.table, self.src, self.dst)
+        for r in results:
+            self.assertEqual(r.kinds_preserved, r.frames,
+                             "phrase %d changed a frame kind" % r.phrase.index)
+
+
 class TestTableAbovePhrases(unittest.TestCase):
     """The pointer table does not have to sit below the speech it points at.
 
@@ -310,9 +393,11 @@ class TestLastByteConvention(RomFixture):
     def test_truncation_can_be_selected_per_phrase(self):
         """A single ROM set can use both conventions, so one flag is not enough."""
         only_second, _ = patch_rom(self.rom, self.table, self.src, self.dst,
-                                   truncate_last_byte=[1])
+                                   truncate_last_byte=[1],
+                                   allow_unterminated=True)
         all_of_them, _ = patch_rom(self.rom, self.table, self.src, self.dst,
-                                   truncate_last_byte=True)
+                                   truncate_last_byte=True,
+                                   allow_unterminated=True)
         none_of_them, _ = patch_rom(self.rom, self.table, self.src, self.dst)
 
         first, second = self.table.phrases
@@ -327,7 +412,8 @@ class TestLastByteConvention(RomFixture):
 
     def test_results_record_which_phrases_were_truncated(self):
         _out, results = patch_rom(self.rom, self.table, self.src, self.dst,
-                                  truncate_last_byte=[1])
+                                  truncate_last_byte=[1],
+                                  allow_unterminated=True)
         self.assertEqual([r.last_byte_truncated for r in results], [False, True])
 
     def test_an_unknown_phrase_index_is_rejected(self):
@@ -335,12 +421,20 @@ class TestLastByteConvention(RomFixture):
             patch_rom(self.rom, self.table, self.src, self.dst,
                       truncate_last_byte=[99])
 
-    def test_diagnosis_reads_whether_the_final_byte_is_needed(self):
-        verdicts = diagnose_last_byte(self.rom, self.table, self.src)
-        self.assertEqual(sorted(verdicts), [0, 1])
-        for index, verdict in verdicts.items():
-            self.assertIn(verdict, ("required", "spare"),
-                          "phrase %d: %s" % (index, verdict))
+    def test_diagnosis_gives_the_exact_verdict_for_a_known_phrase(self):
+        """Built to be `required`, and asserted to be exactly that.
+
+        Accepting "either required or spare" was the original assertion and is
+        true of every phrase that has a stop frame at all, so it constrained
+        nothing.
+        """
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        for pad, expected in ((0, "required"), (1, "spare"), (2, "spare")):
+            data = body + b"\x00" * pad
+            rom = bytes(4) + data
+            table = PhraseTable(phrases=[Phrase(0, 4, 4 + len(data))])
+            self.assertEqual(diagnose_last_byte(rom, table, self.src)[0],
+                             expected, "pad=%d" % pad)
 
     def test_diagnosis_spots_a_phrase_with_no_stop_frame(self):
         """An extent that is not a phrase is named as such, not guessed at."""

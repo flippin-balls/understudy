@@ -143,5 +143,90 @@ class TestFrameGrammar(unittest.TestCase):
                             [f.index_of("K1") for f in wrong])
 
 
+class TestKnownVector(unittest.TestCase):
+    """One frame written out by hand, bit by bit, from the field spec.
+
+    Every other test in this file builds its input with a helper that shares the
+    parser's assumptions, so parser and fixture can be wrong together. This one
+    does not: the bit string below is transcribed from the documented frame
+    grammar, and only the byte-packing rule ("bit N of the stream is bit N%8 of
+    byte N//8, least significant first") is applied programmatically.
+
+    A voiced TMS52xx frame, field by field:
+
+        energy  4 bits  0111    ->  7
+        repeat  1 bit   0
+        pitch   6 bits  010100  -> 20
+        K1      5 bits  00001   ->  1
+        K2      5 bits  00010   ->  2
+        K3      4 bits  0011    ->  3
+        K4      4 bits  0100    ->  4
+        K5      4 bits  0101    ->  5
+        K6      4 bits  0110    ->  6
+        K7      4 bits  0111    ->  7
+        K8      3 bits  001     ->  1
+        K9      3 bits  010     ->  2
+        K10     3 bits  011     ->  3
+
+    which is 4+1+6+5+5+4+4+4+4+4+3+3+3 = 50 bits, the documented voiced length.
+    """
+
+    BITS = ("0111" "0" "010100" "00001" "00010" "0011" "0100"
+            "0101" "0110" "0111" "001" "010" "011")
+    FIELDS = [("energy", 7, 0, 4), ("repeat", 0, 4, 1), ("pitch", 20, 5, 6),
+              ("K1", 1, 11, 5), ("K2", 2, 16, 5), ("K3", 3, 21, 4),
+              ("K4", 4, 25, 4), ("K5", 5, 29, 4), ("K6", 6, 33, 4),
+              ("K7", 7, 37, 4), ("K8", 1, 41, 3), ("K9", 2, 44, 3),
+              ("K10", 3, 47, 3)]
+
+    @classmethod
+    def packed(cls):
+        data = bytearray((len(cls.BITS) + 7) // 8)
+        for i, bit in enumerate(cls.BITS):
+            if bit == "1":
+                data[i // 8] |= 1 << (i % 8)
+        return bytes(data)
+
+    def test_the_vector_is_the_documented_length(self):
+        self.assertEqual(len(self.BITS), 50)
+        self.assertEqual(sum(w for _n, _v, _o, w in self.FIELDS), 50)
+
+    def test_parse_recovers_every_field_at_its_stated_offset(self):
+        chip = original()
+        frames, stopped = parse(self.packed(), chip.pitch_bits, chip.k_widths)
+        self.assertFalse(stopped)
+        self.assertEqual(frames[0].kind, "voiced")
+        for name, value, offset, width in self.FIELDS:
+            field = frames[0].fields[name]
+            self.assertEqual(field.index, value, "%s value" % name)
+            self.assertEqual(field.start_bit, offset, "%s offset" % name)
+            self.assertEqual(field.width, width, "%s width" % name)
+
+    def test_rebuild_from_nothing_reproduces_the_vector(self):
+        """No `base`, so the bytes can only come from the recorded bit offsets.
+
+        With `base=data` a rebuild that ignored every field and returned the
+        base unchanged would pass. Here there is nothing to return.
+        """
+        chip = original()
+        data = self.packed()
+        frames, _ = parse(data, chip.pitch_bits, chip.k_widths)
+        self.assertEqual(rebuild(frames, len(data)), data)
+
+    def test_changing_one_index_changes_exactly_the_expected_bits(self):
+        """The write path is checked against a hand-computed expectation too."""
+        chip = original()
+        data = self.packed()
+        frames, _ = parse(data, chip.pitch_bits, chip.k_widths)
+        frames[0].fields["pitch"].index = 0b101011            # 43
+        expected_bits = (self.BITS[:5] + "101011" + self.BITS[11:])
+        expected = bytearray((len(expected_bits) + 7) // 8)
+        for i, bit in enumerate(expected_bits):
+            if bit == "1":
+                expected[i // 8] |= 1 << (i % 8)
+        self.assertEqual(rebuild(frames, len(data)), bytes(expected))
+        self.assertNotEqual(rebuild(frames, len(data)), data)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

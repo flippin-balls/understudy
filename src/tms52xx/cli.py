@@ -190,8 +190,12 @@ def cmd_convert(args) -> int:
         print("bad --truncate-last-byte: %s" % error, file=sys.stderr)
         return 2
     try:
+        # allow_unterminated is passed through unconditionally: the CLI reports
+        # the failure in its own words below, with the phrase extents and the
+        # layout flags to check, which is more use than the library's message.
         out, results = patch_rom(rom, table, source, target,
-                                 truncate_last_byte=truncate)
+                                 truncate_last_byte=truncate,
+                                 allow_unterminated=True)
     except ValueError as error:
         print("%s" % error, file=sys.stderr)
         return 2
@@ -220,6 +224,12 @@ def cmd_convert(args) -> int:
     print("frames pitch-approximated %d  -- nearest available period"
           % stats["frames_approximated"])
     print("bytes changed        %d of %d" % (stats["bytes_changed"], len(rom)))
+    print("frame kinds preserved %d of %d  -- checked by re-parsing the output"
+          % (stats["frame_kinds_preserved"], stats["frames"]))
+    if "f0_error_hz" in stats:
+        e = stats["f0_error_hz"]
+        print("f0 error, unclamped frames: median %.2f Hz, max %.2f Hz  (n=%d)"
+              % (e["median"], e["max"], e["frames"]))
     if stats["frames_truncated"]:
         print("frames left unconverted (truncated): %d"
               % stats["frames_truncated"])
@@ -266,7 +276,15 @@ def cmd_convert(args) -> int:
                   "bytes": len(rom)},
         "output": {"path": str(out_path), "sha256": _sha256(out),
                    "bytes": len(out)},
+        # Hash the table FILES, not just their self-declared names. Two runs
+        # with different tables that both call themselves "tms5220" would
+        # otherwise produce indistinguishable manifests, which defeats the point
+        # of writing one.
         "tables": {"source": source.name, "target": target.name,
+                   "source_file": str(args.source_tables),
+                   "target_file": str(args.target_tables),
+                   "source_sha256": _sha256(Path(args.source_tables).read_bytes()),
+                   "target_sha256": _sha256(Path(args.target_tables).read_bytes()),
                    "source_lowest_f0_hz": round(source.lowest_f0_hz, 2),
                    "target_lowest_f0_hz": round(target.lowest_f0_hz, 2)},
         "layout": {"table_offset": args.table_offset,
@@ -340,8 +358,9 @@ def main(argv=None) -> int:
                          help="phrases whose final ROM byte the player never "
                               "transmits, so it must be left untouched. Bare "
                               "flag means every phrase; otherwise a list of "
-                              "phrase indexes. `inspect` reports which phrases "
-                              "need it")
+                              "phrase indexes. `inspect --source-tables` "
+                              "reports which phrases it is SAFE for; whether it "
+                              "is needed depends on your player's firmware")
     convert.add_argument("--dry-run", action="store_true")
     convert.add_argument("--force", action="store_true",
                          help="allow overwriting an existing output file; never "

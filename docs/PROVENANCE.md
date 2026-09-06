@@ -4,9 +4,12 @@ This project ships no TMS5200 or TMS5220 coefficient data. You supply it.
 
 ## Why
 
-The values themselves are technical facts about the silicon — an index-to-period
-mapping is not anyone's creative work — so this is a practical constraint rather
-than a legal one.
+This is a practical decision about provenance, and the paragraphs below are not
+legal advice. Individual values in these tables are measurements of silicon, but
+that observation does not by itself settle anything: selection, transcription
+and arrangement can matter, and so can the licence of whatever file you extract
+from. The position taken here is to keep that decision with you rather than make
+it for you.
 
 The practical problem is provenance. Every convenient machine-readable copy of
 these tables traces back to an emulator source tree. The most complete of those,
@@ -16,8 +19,12 @@ restrict commercial use. Vendoring a generated copy would carry that ambiguity
 into every project that depends on this one, permanently, in exchange for saving
 each user a single command.
 
-So the extraction is a step you run, against a source you have chosen, with the
-licence position you have decided is right for your use.
+So the extraction is a step you run, against a source you have chosen, under a
+licence you have read. To be plain about what that does and does not achieve:
+extracting the values yourself is **not a licence workaround**. Output generated
+from a file may carry that file's terms with it. You are responsible for
+complying with whatever governs the source you use; this project simply declines
+to make that choice on your behalf and then hide it in a data file.
 
 ## Format
 
@@ -29,7 +36,7 @@ Two files, `tms5200.json` and `tms5220.json`:
   "pitch_bits": 6,
   "k_widths": [5, 5, 4, 4, 4, 4, 4, 3, 3, 3],
   "energy": [ ... 16 entries ... ],
-  "pitch":  [ ... 32 or 64 entries; index 0 is unvoiced ... ],
+  "pitch":  [ ... 64 entries; index 0 is unvoiced ... ],
   "k":      [ [ ... ], ... ten tables ... ]
 }
 ```
@@ -64,8 +71,17 @@ revision this was run against:
 
 At that revision the extracted tables were compared value-for-value against an
 independently written parser of the same file — 12 tables per part, energy,
-pitch and K1–K10 — and matched exactly. That is a check on the extractor, not on
-PinMAME: it says two different readers agree about what the file says.
+pitch and K1–K10 — and matched exactly. That second parser lives in a private
+repository and is **not included here**, so the comparison is an assertion about
+work done elsewhere, not something you can re-run from this checkout. It is also
+only a check on the extractor: it says two readers agree about what the file
+says, and nothing about whether PinMAME is right.
+
+What you CAN reproduce here is `tests/test_extractor.py`, which runs the
+extractor against a synthetic C file with the same awkward shape as the real one
+— positional struct fields, a dead `#if 0` branch holding a decoy table, and
+backslash-continued macro bodies — and asserts both the extracted values and
+that a changed source shape is refused rather than misparsed.
 
 `from_pinmame.py` validates every table against the width its own struct
 declares, so if a later revision changes the file's shape you should get an

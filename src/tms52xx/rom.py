@@ -1,36 +1,21 @@
 """Patch a Bally Squawk & Talk speech ROM from TMS5200 tables to TMS5220 tables.
 
-WHY THIS IS SAFE TO DO IN PLACE
-
-The two parts share every field width, so conversion changes index VALUES and
-nothing else. A converted phrase occupies exactly the bytes the original did.
-Nothing moves, so the pointer table stays valid, phrase boundaries stay valid,
-and playback timing is unchanged. `patch_rom` verifies the length rather than
-assuming it.
-
-WHAT YOU HAVE TO TELL IT, AND WHY IT CANNOT GUESS
+Conversion changes index values and nothing else, so a converted phrase occupies
+exactly the bytes the original did: the pointer table stays valid, phrase
+boundaries stay valid, and timing is unchanged. `patch_rom` verifies the length
+rather than assuming it, and re-parses its own output to confirm no frame
+changed kind.
 
 Squawk & Talk stores phrases as a table of 16-bit big-endian pointers followed
-by the speech data, and that is the only part that generalises. Three things
-vary between games and are not derivable from the ROM alone:
-
-  * ORDERING. Some titles list phrases in address order; others list them in
-    command order, so consecutive table entries are not consecutive in memory.
-    At least one duplicates every entry.
-  * BOUNDS. Most tables carry N+1 entries for N phrases, the last being the end
-    bound of the final phrase. Some carry exactly N, leaving the final phrase's
-    end implicit.
-  * THE FINAL BYTE. Some players stream `rom[start:end]` verbatim; others send
-    `rom[start:end-1]` and substitute a zero for the last byte, so the final ROM
-    byte of a phrase is never transmitted. This is a property of the individual
-    STREAM, not of the game -- single ROM sets are known to use both.
-
-None of that changes what conversion does to the bits, but all of it changes
-which bytes are a phrase. `PhraseTable.from_pointers` takes the decisions
-explicitly so they are visible in your code rather than guessed in ours.
+by the speech data, and that is the only part that generalises. Ordering
+(address or command), whether the table carries an end bound, and whether the
+player transmits each phrase's final ROM byte all vary between titles and are
+not derivable from the ROM alone -- so `PhraseTable.from_pointers` takes them
+explicitly rather than guessing. docs/SQUAWK_AND_TALK.md covers how to find
+them, and what each one does if you get it wrong.
 
 This module reads and writes only ROM images you already possess. It contains no
-ROM data.
+ROM data of any kind.
 """
 from __future__ import annotations
 
@@ -154,15 +139,12 @@ class PhraseTable:
             # the byte range must only be converted ONCE.
             seen.setdefault((phrase.start, phrase.end), []).append(phrase.index)
 
-        # NO OVERLAP CHECK, because a partial overlap cannot be built here and a
-        # check that can never fire is worse than none: it implies a hazard the
-        # code does not actually have. Two extents are always either identical
-        # or disjoint. Address-ordered extents are consecutive pointer pairs, so
-        # any decrease trips the end <= start refusal above and the surviving
-        # tables are strictly increasing; command-ordered extents run from each
-        # pointer to the next DISTINCT sorted pointer, which partitions the ROM.
-        # `test_extents_are_identical_or_disjoint` proves this exhaustively over
-        # every small layout, and is what protects the property if this changes.
+        # No overlap check: two extents here are always identical or disjoint.
+        # Address-ordered extents are consecutive pointer pairs, so any decrease
+        # trips the end <= start refusal above; command-ordered extents run to
+        # the next distinct sorted pointer. `test_extents_are_identical_or_
+        # disjoint` exercises every layout over a small bounded domain, which is
+        # what guards the property if this changes.
         return cls(phrases)
 
 
@@ -176,6 +158,15 @@ class PhraseResult:
     stopped_cleanly: bool
     changed_bytes: int
     last_byte_truncated: bool = False
+    #: Frames whose kind (voiced/unvoiced/silence/stop) survived conversion,
+    #: measured by re-parsing the OUTPUT with the target tables rather than by
+    #: trusting the conversion. A kind change means the bit layout moved, which
+    #: desynchronises everything after it.
+    kinds_preserved: int = 0
+    #: Absolute f0 error in hertz for each voiced frame the target could reach.
+    #: Clamped frames are excluded: their error is the pitch floor, not
+    #: quantisation, and averaging the two together hides both.
+    f0_errors: Sequence[float] = ()
 
     @property
     def clamped_fraction(self) -> float:
@@ -238,14 +229,22 @@ def diagnose_last_byte(rom: bytes, table: PhraseTable,
 
 
 def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
-              target: ChipTables,
-              truncate_last_byte=False) -> Tuple[bytes, List[PhraseResult]]:
+              target: ChipTables, truncate_last_byte=False,
+              allow_unterminated: bool = False
+              ) -> Tuple[bytes, List[PhraseResult]]:
     """Convert every phrase in place. Returns (new_rom, per-phrase results).
 
     `truncate_last_byte` selects the phrases whose final ROM byte is never
     transmitted, and so must be left untouched: `False` for none (the default),
     `True` for all, or an iterable of phrase indexes. It is per-phrase because
     the convention is per-stream -- see `diagnose_last_byte`.
+
+    FAILS CLOSED. If any phrase does not end in a stop frame this raises rather
+    than returning, because the usual cause is a wrong layout aimed at code or
+    data and the result would be a plausible-looking corrupt ROM. Pass
+    `allow_unterminated=True` if you have checked and the phrases really are
+    unterminated. This lives here rather than in the command line so that a
+    library caller gets the same protection as a CLI user.
 
     The ROM is the same length as the input and differs only inside phrase
     extents. Nothing outside them -- pointer table, code, data -- is written.
@@ -265,7 +264,33 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
                 "phrase %d changed length; conversion must be in place"
                 % phrase.index)
         out[phrase.start:end] = converted
+
+        # SELF-CHECK. Re-parse what was actually written, with the TARGET
+        # tables, and compare frame kinds against the source. This is the one
+        # structural property that must hold -- if a frame changed kind, its
+        # length changed, and every frame after it is being read at the wrong
+        # bit offset. Checking the output rather than the report means a bug in
+        # the conversion cannot report its way past this.
+        source_frames, _ = parse(original, source.pitch_bits,
+                                 list(source.k_widths))
+        target_frames, _ = parse(converted, target.pitch_bits,
+                                 list(target.k_widths))
+        preserved = sum(1 for a, b in zip(source_frames, target_frames)
+                        if a.kind == b.kind)
+        if len(source_frames) != len(target_frames) or \
+                preserved != len(source_frames):
+            raise AssertionError(
+                "phrase %d: conversion changed the frame structure (%d of %d "
+                "kinds preserved, %d frames in and %d out). The output would "
+                "desynchronise; refusing to return it."
+                % (phrase.index, preserved, len(source_frames),
+                   len(source_frames), len(target_frames)))
+
         results.append(PhraseResult(
+            kinds_preserved=preserved,
+            f0_errors=tuple(abs(r.f0_error_hz) for r in report
+                            if r.f0_error_hz is not None
+                            and not r.pitch_clamped),
             phrase=phrase,
             last_byte_truncated=phrase.index in truncated,
             frames=len(report),
@@ -276,6 +301,14 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
             changed_bytes=sum(1 for a, b in zip(original, converted) if a != b),
         ))
 
+    unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
+    if unterminated and not allow_unterminated:
+        raise ValueError(
+            "%d of %d phrase(s) do not end in a stop frame (first is phrase "
+            "%d); the declared layout is probably wrong. Pass "
+            "allow_unterminated=True to convert them anyway."
+            % (len(unterminated), len(results), unterminated[0]))
+
     return bytes(out), results
 
 
@@ -283,7 +316,7 @@ def summarise(results: Sequence[PhraseResult]) -> Dict[str, float]:
     """Headline numbers for a patched ROM."""
     frames = sum(r.frames for r in results)
     clamped = sum(r.clamped for r in results)
-    return {
+    summary = {
         "phrases": len(results),
         "frames": frames,
         "frames_clamped": clamped,
@@ -293,4 +326,14 @@ def summarise(results: Sequence[PhraseResult]) -> Dict[str, float]:
         "phrases_without_stop_frame": sum(1 for r in results
                                           if not r.stopped_cleanly),
         "bytes_changed": sum(r.changed_bytes for r in results),
+        "frame_kinds_preserved": sum(r.kinds_preserved for r in results),
     }
+    errors = sorted(e for r in results for e in r.f0_errors)
+    if errors:
+        summary["f0_error_hz"] = {
+            "frames": len(errors),
+            "median": round(errors[len(errors) // 2], 3),
+            "mean": round(sum(errors) / len(errors), 3),
+            "max": round(errors[-1], 3),
+        }
+    return summary

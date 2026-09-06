@@ -45,6 +45,29 @@ from typing import Dict, List, Sequence
 SAMPLE_RATE = 8000
 
 
+def _integer(value, where: str) -> None:
+    """Reject anything that is not a plain int.
+
+    `bool` is excluded explicitly because it is a subclass of `int`, so a table
+    of `true`/`false` would otherwise pass every numeric check and then quantise
+    the whole stream onto two levels.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("%s must be an integer, got %r" % (where, value))
+
+
+def _non_negative(value, where: str) -> None:
+    """For energies, periods and widths. NOT for K: those are signed.
+
+    Reflection coefficients are signed Q values -- the real tables run from
+    about -501 to +506 -- so a non-negative rule applied to them would reject
+    every genuine chip table.
+    """
+    _integer(value, where)
+    if value < 0:
+        raise ValueError("%s must not be negative, got %r" % (where, value))
+
+
 @dataclass(frozen=True)
 class ChipTables:
     """One chip variant's coefficient tables."""
@@ -68,13 +91,34 @@ class ChipTables:
         if len(self.energy) != 16:
             raise ValueError("energy table must have 16 entries (a 4-bit field), "
                              "got %d" % len(self.energy))
+
+        # Types before values. JSON will happily hand over floats, strings and
+        # booleans, and `True == 1` in Python, so a table of booleans would pass
+        # every numeric check below and then quantise everything to two levels.
+        _non_negative(self.pitch_bits, "pitch_bits")
+        for i, width in enumerate(self.k_widths, start=1):
+            _non_negative(width, "K%d width" % i)
+        for i, value in enumerate(self.energy):
+            _non_negative(value, "energy[%d]" % i)
+        for i, value in enumerate(self.pitch):
+            _non_negative(value, "pitch[%d]" % i)
+        for i, values in enumerate(self.k, start=1):
+            for j, value in enumerate(values):
+                _integer(value, "K%d[%d]" % (i, j))      # signed
+
         if self.pitch[0] != 0:
             raise ValueError("pitch index 0 must be 0 (unvoiced); got %r"
                              % (self.pitch[0],))
-        if any(p < 0 for p in self.pitch):
-            raise ValueError("pitch periods must be non-negative")
-        if len([p for p in self.pitch if p]) == 0:
-            raise ValueError("pitch table contains no usable periods")
+        # EVERY other entry must be a usable period, not merely non-negative. A
+        # zero at, say, index 7 is silently fatal twice over: `nearest_index`
+        # forbids only index 0, so a voiced frame can be quantised onto index 7
+        # and emerge unvoiced -- which drops K5-K10 and desynchronises the rest
+        # of the stream -- and `f0_hz` then divides by that zero.
+        zeros = [i for i, p in enumerate(self.pitch) if i and p == 0]
+        if zeros:
+            raise ValueError(
+                "pitch periods must be positive except at index 0 (unvoiced); "
+                "zero at index %s" % ", ".join(str(i) for i in zeros[:8]))
         if len(self.pitch) != 1 << self.pitch_bits:
             raise ValueError(
                 "pitch table has %d entries but pitch_bits=%d implies %d"

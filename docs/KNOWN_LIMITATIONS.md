@@ -27,8 +27,11 @@ Calling them "working ROMs" would require hardware testing we have not done.
 
 `convert` maps each parameter independently to the closest entry in the
 destination table. Choosing K indexes jointly per frame, scored by rendering
-rather than by table distance, does measurably better in our private
-experiments, because the reflection coefficients interact.
+rather than by table distance, did better in our own private experiments,
+because the reflection coefficients interact. **That comparison is not
+reproducible from this repository** -- no scorer, harness or measurement is
+included -- so it is an assertion about work done elsewhere and should be read
+as one.
 
 That work is not in this repository. Scoring by rendering requires a
 synthesiser, our synthesiser is PinMAME, and shipping a scorer whose licence

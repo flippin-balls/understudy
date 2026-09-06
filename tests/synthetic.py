@@ -27,9 +27,22 @@ K_WIDTHS = [5, 5, 4, 4, 4, 4, 4, 3, 3, 3]
 PITCH_BITS = 6
 
 
-def _k_tables(offset: int):
-    """Ten plausible monotonic K tables; `offset` makes the two parts differ."""
-    return [[(-500 + offset) + i * (1000 // (1 << w))
+def _k_tables(curve: float):
+    """Ten monotonic K tables spanning -500..+500, shaped by `curve`.
+
+    THE CURVE IS THE POINT, and an earlier version of this file got it wrong.
+    The two parts originally differed by a constant offset of 7, which is far
+    smaller than a table step -- so every source index mapped back onto itself
+    and no test in the suite could observe K conversion happening at all. A
+    mutation that removed the K mapping entirely still passed.
+
+    Real tables diverge in SHAPE, not by an offset: comparing PinMAME's TMS5200
+    and TMS5220 coefficients, 106 of 168 K entries (63%) quantise onto a
+    different index. `curve` reproduces that by companding one part's table
+    relative to the other; 1.0 against 1.2 remaps 109 of 168 (65%), which is
+    close enough to the real figure for the fixture to be representative.
+    """
+    return [[round(-500 + 1000 * ((i / ((1 << w) - 1)) ** curve))
              for i in range(1 << w)] for w in K_WIDTHS]
 
 
@@ -44,7 +57,7 @@ def original() -> ChipTables:
     return ChipTables(name="synthetic-original", pitch_bits=PITCH_BITS,
                       k_widths=K_WIDTHS,
                       energy=[0] + [i * 4 for i in range(1, 15)] + [0],
-                      pitch=_periods(210), k=_k_tables(0))
+                      pitch=_periods(210), k=_k_tables(1.0))
 
 
 def understudy() -> ChipTables:
@@ -56,4 +69,4 @@ def understudy() -> ChipTables:
     return ChipTables(name="synthetic-understudy", pitch_bits=PITCH_BITS,
                       k_widths=K_WIDTHS,
                       energy=[0] + [i * 4 for i in range(1, 15)] + [0],
-                      pitch=_periods(159), k=_k_tables(7))
+                      pitch=_periods(159), k=_k_tables(1.2))

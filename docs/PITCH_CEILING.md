@@ -21,6 +21,17 @@ because the constraint is the destination table, not the mapping.
 
 ## What was tried
 
+**Evidence not included.** The nine experiments below were run in a separate
+private harness that renders bitstreams through PinMAME, which this repository
+deliberately does not ship (see [PROVENANCE.md](PROVENANCE.md)). They are
+recorded here because knowing what has already failed saves the next person the
+work, but they are an assertion, not something you can reproduce from this
+repository. Treat them accordingly.
+
+What IS reproducible here is the ceiling itself: it is a property of the pitch
+table, and `ChipTables.lowest_f0_hz` reads it straight off whatever tables you
+supply.
+
 Nine candidate workarounds were each constructed as a real bitstream, rendered,
 and measured rather than reasoned about:
 

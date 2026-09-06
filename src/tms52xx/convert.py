@@ -1,35 +1,22 @@
 """TMS5200 -> TMS5220 stream conversion.
 
-THE PROBLEM
+The two chips share the frame grammar and every field width; only the contents
+of the coefficient tables differ. So a TMS5200 stream played on a TMS5220 parses
+perfectly and sounds wrong -- every index lands in the right place and means
+something else. Conversion re-indexes each parameter into the destination
+chip's tables.
 
-The two chips share the frame grammar AND every field width. What differs is the
-contents of the coefficient tables behind the indexes. A TMS5200 stream played
-on a TMS5220 therefore parses perfectly and sounds wrong: every index still
-lands in the right place and still means something else.
-
-Conversion is not transcoding audio. It is re-indexing each parameter into the
-destination chip's tables so the synthesised result is as close as that chip can
-get -- which, for pitch, is sometimes not close at all. See
-docs/PITCH_CEILING.md.
-
-LENGTH IS PRESERVED, EXACTLY
-
-Because no field changes width and no frame changes kind, a converted stream
+Because no field changes width and no frame changes kind, the converted stream
 occupies exactly as many bits as the original. That is what makes patching a
-speech ROM in place viable: the converted phrase is written over the original at
-the same offset, and no pointer table, phrase boundary or timing changes.
-`convert_stream` asserts this rather than trusting it.
+speech ROM in place viable, and `convert_stream` asserts it rather than trusting
+it.
 
-WHAT THIS MODULE DOES, AND WHAT IT DOES NOT
-
-Each parameter is mapped independently to the destination index whose table
-value is closest.
-
-That is not optimal. The reflection coefficients interact, so choosing the ten K
-indexes jointly per frame -- scored by rendering the result rather than by table
-distance -- can do better. This module does not attempt it: independent nearest
-mapping is what the frame grammar guarantees is length-preserving and safe to
-patch in place, and it is auditable frame by frame from the manifest.
+Each parameter is mapped independently to the nearest destination value. That is
+not optimal -- the reflection coefficients interact, so choosing the ten K
+indexes jointly per frame would do better -- but it is the mapping the frame
+grammar guarantees is length-preserving, and it is auditable frame by frame from
+the manifest. What conversion cannot fix at all is pitch below the TMS5220's
+floor; see docs/PITCH_CEILING.md.
 """
 from __future__ import annotations
 
@@ -37,6 +24,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 from .bitstream import Frame, K_FIELDS, parse, rebuild
+
+#: The TMS52xx frame grammar. Both the TMS5200 and the TMS5220 use exactly
+#: these widths -- that identity is what makes conversion length-preserving and
+#: therefore patchable in place. Anything else is a different chip family.
+PITCH_BITS = 6
+K_WIDTHS = (5, 5, 4, 4, 4, 4, 4, 3, 3, 3)
 from .tables import ChipTables
 
 
@@ -167,6 +160,16 @@ def convert_stream(data: bytes, source: ChipTables,
     The output is the same length as the input, byte for byte, and every field
     keeps its original bit offset. Only index values change.
     """
+    for chip in (source, target):
+        if (chip.pitch_bits, list(chip.k_widths)) != (PITCH_BITS, list(K_WIDTHS)):
+            raise ValueError(
+                "%s declares pitch_bits=%d and K widths %s, which is not the "
+                "TMS52xx frame grammar (pitch_bits=6, K widths %s). This tool "
+                "converts between the TMS5200 and the TMS5220 and nothing else; "
+                "a table file with different widths describes a different chip "
+                "family and its frames do not have this layout."
+                % (chip.name, chip.pitch_bits, list(chip.k_widths),
+                   list(K_WIDTHS)))
     if source.pitch_bits != target.pitch_bits or \
             list(source.k_widths) != list(target.k_widths):
         raise ValueError(

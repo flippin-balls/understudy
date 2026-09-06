@@ -37,8 +37,21 @@ proceeding, and `--command-ordered` sorts the pointers first.
 
 **End bound.** Most tables carry N+1 entries for N phrases, the last being the
 end of the final phrase. At least one carries exactly N, leaving the final
-phrase's end implicit — pass `--no-end-bound` and it is taken to run to the end
-of the image.
+phrase's end implicit — pass `--no-end-bound`.
+
+The implicit end is then the first of these that lies above the phrase's start:
+**the pointer table, or the end of the image.** The table is included because
+its own bytes cannot be speech, and on this board it very often sits *above* the
+phrases it points at (Embryon's is at `$FC1C` in U5 while its speech starts at
+`$E800` in U4), so "run to the end of the image" would swallow it. When the
+table is below the speech, as it is on some sets, the implicit end is simply the
+end of the image.
+
+That rule handles the table, and nothing else. If anything other than speech and
+the pointer table sits above your last phrase — code, sound effect data, a
+checksum — the implicit end will run into it. Give the table an explicit end
+bound if you can; otherwise check the reported extent of the last phrase before
+converting.
 
 **The final byte.** Some players stream a phrase verbatim. Others send
 `rom[start:end-1]` and substitute a zero for the last byte, so a phrase's final
@@ -80,7 +93,7 @@ mirrored into `$E800` and U5 at `$F000` — and the layout is:
 | speech | starts at CPU `$E800`, i.e. through U4's mirror |
 
 ```
-understudy inspect embryon_snt.bin \
+python -m tms52xx.cli inspect embryon_snt.bin \
     --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
     --no-end-bound --command-ordered \
     --source-tables tables/tms5200.json
@@ -99,22 +112,84 @@ wrong and neither is unusual:
 
 ## Working out the layout for your ROM
 
-`understudy inspect` reports size and hash. Given `--table-offset` and
-`--phrases` it interprets the table and prints the extents it derives, without
-writing anything.
+There are five things to find: where the pointer table is, how many entries it
+has, what base address its pointers are relative to, whether it is in address or
+command order, and whether it carries an end bound. `inspect` writes nothing, so
+this is safe to iterate on.
+
+### 1. Find the pointer table
+
+A speech pointer table is a run of 16-bit big-endian values that all land inside
+the ROM's address window and are mostly increasing. That is a distinctive enough
+shape to scan for:
+
+```python
+import sys
+data = open(sys.argv[1], "rb").read()
+base, count = 0xC000, 8          # CPU base, and how many entries to require
+for offset in range(0, len(data) - 2 * count, 2):
+    values = [int.from_bytes(data[offset + 2 * i:offset + 2 * i + 2], "big")
+              for i in range(count)]
+    if all(base <= v < base + len(data) for v in values) and \
+            all(b > a for a, b in zip(values, values[1:])):
+        print("0x%04X  %s" % (offset, ["0x%04X" % v for v in values]))
+```
+
+Run it over the whole image. Real tables show up as a short list of candidates;
+most are false positives from ordinary code, which the next steps eliminate.
+Relax `all(b > a ...)` to a majority if you suspect command order.
+
+### 2. Confirm it by where it points
+
+Take a candidate and look at what the first pointer addresses. Speech data is
+dense and high-entropy; code is not. A run of bytes with no long zero fills, no
+obvious ASCII, and no repeating 6800 opcodes is a good sign.
+
+### 3. Find the base address
+
+The pointers are CPU addresses; the file is a socket image or a window over
+several. Subtract the address the socket is mapped at. If the pointers are in
+the `$Exxx`/`$Fxxx` range and your file is a 16 KB window over `$C000-$FFFF`,
+the base is `$C000`. Get this wrong by a socket and every extent lands in the
+wrong place, which the next step catches immediately.
+
+### 4. Find the count and the end bound
+
+Extend the run until the values stop looking like addresses. If the last
+plausible value is one more than the number of phrases you expect, that last one
+is an end bound; otherwise pass `--no-end-bound`. Bally command handlers often
+make the count visible as a range check on the command byte before the table
+lookup, if you are disassembling.
+
+### 5. Check it, and know what the check is worth
+
+```
+python -m tms52xx.cli inspect speech.bin \
+    --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
+    --no-end-bound --command-ordered --source-tables tables/tms5200.json
+```
 
 A layout is probably right when:
 
-- every phrase extent is positive and they tile the speech region without gaps
-  or overlaps;
-- `understudy convert --dry-run` reports a stop frame found in every phrase
-  (`phrases with no stop frame: 0`);
-- phrase lengths are plausible — a few dozen to a few hundred bytes for a word
-  or a short sentence at roughly 1.8 kbit/s.
+- every extent is positive, and they tile the speech region without gaps;
+- **every phrase ends in a stop frame** — with `--source-tables`, any phrase
+  reported as `no stop` has not terminated;
+- phrase lengths are plausible: a word or short sentence is typically a few
+  dozen to a few hundred bytes.
 
-A layout is wrong when extents overlap, when lengths are wildly uneven, or when
-phrases decode without ever reaching a stop frame. The dry run is there to be
-used before anything is written.
+**What the stop-frame check is worth.** A stop frame is four bits of `0xF`, and
+that pattern occurs by chance in arbitrary data, so a single phrase terminating
+proves very little. What carries weight is *every* phrase in a table terminating
+and doing so at its own end rather than somewhere in the middle — a wrong
+offset would have to be lucky repeatedly. Treat it as a strong consistency
+check, not a proof. If some phrases terminate and others do not, the offset or
+the count is wrong; if all of them do but the lengths are wildly uneven, suspect
+the ordering or the base address.
+
+A layout is wrong when extents overlap, when a phrase runs into the pointer
+table, or when phrases decode without reaching a stop frame. `convert` refuses
+all three rather than writing a file, and `--dry-run` is there to be used before
+anything is written.
 
 ## What we have not solved
 

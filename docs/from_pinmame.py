@@ -184,8 +184,12 @@ def main(argv) -> int:
                          % source_file)
 
     raw = strip_comments(source_file.read_text(errors="replace"))
+    # Drop dead branches BEFORE collecting macros. Collecting from the raw text
+    # would pick up definitions inside `#if 0`, and if a name is defined in both
+    # arms the dead one can win by being later in the file -- a misparse that
+    # would look like a plausible table rather than an error.
     text = drop_dead_blocks(raw)
-    text = expand_macros(text, collect_macros(raw))
+    text = expand_macros(text, collect_macros(text))
     outdir.mkdir(parents=True, exist_ok=True)
 
     for our_name, struct_name in VARIANTS.items():

@@ -3,7 +3,8 @@
 Convert TMS5200 LPC speech data so it plays correctly on a TMS5220.
 
 The TMS5200 has been out of production for decades. Machines that shipped with
-one still need to talk, and the TMS5220 is the part you can still buy.
+one still need to talk, and the TMS5220 is the usual substitute: a later part
+from the same family, and the one most likely to be findable.
 
 The two are close enough to be tempting and different enough to be wrong. They
 share the frame grammar and every field width, so a TMS5200 stream fed to a
@@ -15,8 +16,6 @@ field changes width, a converted stream is **exactly as long as the original**,
 so a speech ROM can be patched in place with no pointer table, phrase boundary
 or timing changed.
 
-It is also explicit about the part of the job that cannot be done, which is the
-more useful half of the answer.
 
 ## The constraint worth knowing before you start
 
@@ -37,10 +36,28 @@ It follows from the coefficient table and the counter comparison, both of which
 are documented chip behaviour rather than emulator artefacts, so it should
 transfer — but that is an expectation, not a measurement. Treat it accordingly.
 
-Conversion therefore reproduces the timbre and the timing, and raises the pitch
-of frames that sit below the substitute chip's floor. `FrameConversion` reports
+Conversion therefore preserves the frame structure and timing exactly, maps each
+coefficient to the nearest entry in the substitute chip's tables, and raises the
+pitch of frames below that chip's floor. How close the result sounds to the
+original has not been measured on hardware. `FrameConversion` reports
 `pitch_clamped` per frame so you can see exactly where and how often that
 happened rather than discovering it by ear.
+
+## Installing
+
+Pure Python, standard library only, no dependencies. Python 3.8 or newer.
+
+```
+git clone https://github.com/flippin-balls/understudy
+cd understudy
+python -m unittest discover -s tests -t .     # 120 tests, all offline
+```
+
+There is no package to install. Run it as a module, or put `src` on your path:
+
+```
+PYTHONPATH=src python -m tms52xx.cli --help
+```
 
 ## Converting a ROM
 
@@ -49,10 +66,10 @@ You need the ROM you already own, chip tables you have supplied
 ([docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md)).
 
 ```
-understudy inspect speech.bin --table-offset 0x40 --phrases 20 \
+python -m tms52xx.cli inspect speech.bin --table-offset 0x40 --phrases 20 \
     --source-tables tables/tms5200.json
 
-understudy convert speech.bin -o speech-5220.bin \
+python -m tms52xx.cli convert speech.bin -o speech-5220.bin \
     --source-tables tables/tms5200.json \
     --target-tables tables/tms5220.json \
     --table-offset 0x40 --phrases 20 --dry-run
@@ -76,10 +93,16 @@ fields run past the end of its phrase is left exactly as found rather than
 half-rewritten. Before writing, the tool re-reads its own output and refuses to
 emit the file if anything outside the declared phrase extents changed.
 
-Output and manifest are written through a temporary file and renamed, so an
-interrupted run cannot leave a half-written ROM in place of a good one. The
-manifest records the hashes, the layout you declared, the per-phrase results and
-the exact byte ranges that changed.
+Output and manifest are each written through a temporary file and renamed, so an
+interrupted run cannot leave a half-written ROM in place of a good one. The two
+renames are not a single transaction: the manifest is committed first, so an
+interruption between them leaves a manifest describing a ROM that was not
+written. Compare the manifest's `output.sha256` against the file before
+trusting a pair you did not watch complete.
+
+The manifest records the hashes of the input, the output and both table files,
+the layout you declared, the per-phrase results and the exact byte ranges that
+changed.
 
 ## Has it been run on a real ROM?
 
@@ -88,9 +111,10 @@ Squawk & Talk speech image assembled from an original Bally *Embryon* ROM set
 (a 2716 in U4, a 2532 in U5, mapped at `$E000` and `$F000`). No ROM data from
 that set appears in this repository.
 
-All 21 phrases parsed, and every one ended in a stop frame — a wrong layout
-essentially never produces that, since each phrase would have to terminate
-correctly by accident. Converting them:
+All 21 phrases parsed and every one ended in a stop frame. That is a necessary
+consistency check rather than proof: a 4-bit `0xF` can occur by chance in
+arbitrary data, so clean termination across every phrase is evidence the layout
+is right, not a demonstration of it. Converting them:
 
 | | |
 |---|---|
@@ -100,6 +124,11 @@ correctly by accident. Converting them:
 | f0 error on the rest | median 1.07 Hz, max 3.40 Hz |
 | bytes changed outside the phrase extents | 0 |
 | pointer table modified | no |
+
+Every one of those numbers is printed by `convert` itself and recorded in the
+manifest it writes, so the same table can be produced from any ROM — including
+yours. Nothing here is a figure you have to take on trust; what you cannot
+reproduce without the same ROM set is this particular row of it.
 
 The f0 figures are the difference between the source period decoded on a
 TMS5200 and the converted period decoded on a TMS5220 — that is, what the
@@ -162,4 +191,4 @@ welcome and not expected.
 ---
 
 Built by [Flashback Fleet LLC](https://github.com/flippin-balls), who operate
-pinball machines on location and would rather the speech boards kept working.
+pinball machines on location.

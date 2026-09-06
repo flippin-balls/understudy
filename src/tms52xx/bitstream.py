@@ -11,26 +11,23 @@ independently visible in every emulator and encoder listed in docs/PRIOR_ART.md.
     K1..K4      5,5,4,4     always present in a non-repeat, non-silence frame
     K5..K10     4,4,4,3,3,3 present only when pitch != 0, i.e. voiced
 
-The TMS5200 and the TMS5220 use IDENTICAL field widths. Only the coefficient
-tables behind the indexes differ. That is worth stating plainly because it is
-easy to assume otherwise -- the earlier TMS5100/5110 family does use a 5-bit
-pitch field, and confusing the two families leads to a 5-bit assumption that
-desynchronises every frame after the first voiced one.
+The TMS5200 and the TMS5220 use IDENTICAL field widths; only the coefficient
+tables behind the indexes differ. Worth stating because it is easy to assume
+otherwise: the earlier TMS5100/5110 family DOES use a 5-bit pitch field, and
+carrying that assumption over desynchronises every frame after the first voiced
+one. `test_wrong_pitch_width_desynchronises` demonstrates it.
 
-The practical consequence is large and good: converting between the two 52xx
-parts changes only index VALUES, never any field's width or position, so a
-converted stream is exactly as long as the original and can be written back
-over it in place.
-
-Two details cost more time than they should if you do not know them, so they
-are stated rather than left to be rediscovered:
+Two details cost more time than they should if you do not know them:
 
 * Bits leave a byte LSB-first but assemble into fields MSB-first. `BitReader`
   does both, and getting only one of them right produces plausible-looking
   frames that decode to noise.
-* Reads past the end of the data return zero bits rather than raising. That
-  matches the chip: the FIFO reads zeroes when it runs dry, and a stream whose
-  final frame is truncated still parses as far as it goes.
+* Reads past the end of the data return zero bits rather than raising. This is
+  a decoding convention adopted here, not a documented chip behaviour: it is
+  what makes a truncated final frame parse as far as it goes instead of
+  aborting the phrase. Frames that depend on those invented bits are marked
+  `truncated` and the converter leaves them alone, so nothing is written back
+  from a bit that was never in the ROM.
 
 Every field records the absolute bit offsets it occupies. That is what makes
 `rebuild` a genuine round-trip test rather than a re-encode: if the bit map is
