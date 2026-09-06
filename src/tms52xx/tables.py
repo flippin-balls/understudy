@@ -58,12 +58,23 @@ class ChipTables:
 
     def __post_init__(self) -> None:
         if self.pitch_bits not in (5, 6):
-            raise ValueError("pitch_bits must be 5 (TMS5200) or 6 (TMS5220), "
-                             "got %r" % (self.pitch_bits,))
+            raise ValueError("pitch_bits must be 6 (both 52xx parts) or 5 "
+                             "(the earlier 51xx family), got %r"
+                             % (self.pitch_bits,))
         if len(self.k_widths) != 10:
             raise ValueError("expected 10 K widths, got %d" % len(self.k_widths))
         if len(self.k) != 10:
             raise ValueError("expected 10 K tables, got %d" % len(self.k))
+        if len(self.energy) != 16:
+            raise ValueError("energy table must have 16 entries (a 4-bit field), "
+                             "got %d" % len(self.energy))
+        if self.pitch[0] != 0:
+            raise ValueError("pitch index 0 must be 0 (unvoiced); got %r"
+                             % (self.pitch[0],))
+        if any(p < 0 for p in self.pitch):
+            raise ValueError("pitch periods must be non-negative")
+        if len([p for p in self.pitch if p]) == 0:
+            raise ValueError("pitch table contains no usable periods")
         if len(self.pitch) != 1 << self.pitch_bits:
             raise ValueError(
                 "pitch table has %d entries but pitch_bits=%d implies %d"

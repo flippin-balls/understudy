@@ -10,8 +10,8 @@ These take a recording and produce a TMS5220 bitstream. That is the harder and
 more general problem, and it is **not** what this project does.
 
 - **[QBoxPro](https://forums.atariage.com/topic/260857-introducing-bluewizard-qboxpro-replacement-speech-analysis-tms5220-tool/)**
-  — the original commercial TI-era analysis tool. Windows, unsupported, and the
-  reference everything since has been measured against.
+  — the commercial Windows analysis tool that the projects below were written to
+  replace. Unsupported, and the reference most of them are measured against.
 - **[BlueWizard](https://github.com/patrick99e99/BlueWizard)** (Patrick Kelly) —
   macOS, Objective-C. Written explicitly as a QBoxPro replacement, and the
   ancestor of most of what follows.
@@ -28,16 +28,18 @@ more general problem, and it is **not** what this project does.
 - **[Talkie](https://github.com/ArminJo/Talkie)** — Arduino playback of LPC
   bitstreams, originally by Peter Knight. The reason a great deal of TMS5220
   speech data exists in hobbyist projects at all.
-- **PinMAME / MAME `tms5220.c`** — the most complete public implementation of
-  the chip's behaviour, including the coefficient tables and the interpolation
-  and excitation logic. The pitch-ceiling result in
-  [PITCH_CEILING.md](PITCH_CEILING.md) was derived against it.
+- **PinMAME / MAME TMS52xx** — the most complete public implementation of the
+  chip's behaviour: `src/sound/tms5220.c` holds the interpolation and excitation
+  logic, `src/sound/tms5220r.c` the per-variant coefficient tables. The
+  pitch-ceiling result in [PITCH_CEILING.md](PITCH_CEILING.md) was derived
+  against it, and it is where `from_pinmame.py` reads the tables from.
 
 ## Where this project fits
 
 All of the above either **produce** LPC from audio or **play** LPC that already
-exists. None of them re-indexes existing LPC data from one chip variant's tables
-into another's.
+exists. We have not found a tool that re-indexes existing LPC data from one
+52xx variant's tables into another's — if one exists, we would rather link to it
+than duplicate it, so please open an issue.
 
 That gap is narrow and it is the only thing here. If your TMS5200 has failed and
 you have its speech ROM, you do not need to re-analyse anything: the parameters

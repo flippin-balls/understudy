@@ -1,4 +1,4 @@
-"""Conversion behaviour, including the case the project exists to be honest about."""
+"""Conversion behaviour, including the frames the TMS5220 cannot reproduce."""
 import sys
 import unittest
 from pathlib import Path
@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from synthetic import original, understudy                    # noqa: E402
 from tms52xx import convert_stream, nearest_index, parse      # noqa: E402
+from tms52xx.convert import convert_frames                    # noqa: E402
 from tms52xx.tables import ChipTables                         # noqa: E402
 
 
@@ -59,7 +60,8 @@ class TestConversion(unittest.TestCase):
         """Re-indexing is only valid within a family that shares the layout."""
         from synthetic import K_WIDTHS
         narrow = ChipTables(name="fake-51xx", pitch_bits=5, k_widths=K_WIDTHS,
-                            energy=list(self.dst.energy), pitch=[0] * 32,
+                            energy=list(self.dst.energy),
+                            pitch=[0] + [20 + i for i in range(31)],
                             k=[list(v) for v in self.dst.k])
         with self.assertRaises(ValueError):
             convert_stream(b"\x00", self.src, narrow)
@@ -162,6 +164,176 @@ class TestTableValidation(unittest.TestCase):
 
     def test_pitch_index_zero_has_no_frequency(self):
         self.assertIsNone(original().f0_hz(0))
+
+
+class TestTruncatedFrames(unittest.TestCase):
+    """A frame whose fields run off the end is left exactly as it was found.
+
+    `parse` supplies zero bits past the end of the buffer so a truncated final
+    frame still parses. Converting one is the trap: the fields that fit get
+    re-indexed and written back, while the invented tail is discarded, so the
+    frame emerges neither original nor converted. Since the stream is
+    length-preserved in place, that silently corrupts real ROM bytes.
+    """
+
+    def setUp(self):
+        self.src, self.dst = original(), understudy()
+
+    def _stream(self):
+        from test_rom import stream
+        return stream(self.src, [(7, 0, 40, list(range(10))),
+                                 (9, 0, 12, list(range(10)))])
+
+    def test_truncated_frame_bytes_are_untouched(self):
+        full = self._stream()
+        data = full[:-1]                       # chop the last byte
+        out, report, _stopped = convert_stream(data, self.src, self.dst)
+
+        truncated = [r for r in report if r.skipped_truncated]
+        self.assertEqual(len(truncated), 1)
+        self.assertEqual(truncated[0].index, 1)
+        self.assertEqual(truncated[0].fields, {})
+
+        # The first frame converted, so the call did real work...
+        self.assertNotEqual(out, data)
+        # ...but every byte from the truncated frame's first bit onward is
+        # identical to the input. Frame 0 is 50 bits, so byte 6 (bit 48) is the
+        # first byte the truncated frame can reach.
+        self.assertEqual(out[7:], data[7:])
+        self.assertEqual(len(out), len(data))
+
+    def test_every_truncation_length_is_safe(self):
+        """Not one hand-picked cut: every cut leaves a valid, same-length stream."""
+        full = self._stream()
+        for cut in range(1, len(full)):
+            data = full[:len(full) - cut]
+            out, report, _ = convert_stream(data, self.src, self.dst)
+            self.assertEqual(len(out), len(data), "cut=%d" % cut)
+            for record in report:
+                if record.skipped_truncated:
+                    self.assertEqual(record.fields, {}, "cut=%d" % cut)
+
+
+class TestIndexGuards(unittest.TestCase):
+    """Reserved index values are never produced by a nearest-value search.
+
+    Energy 0 is silence and energy 15 is the stop frame; pitch 0 is unvoiced.
+    None of the three is an amplitude or a period, so a table whose nearest
+    entry happens to be one of them must not be chosen -- converting a voiced
+    frame into an unvoiced one, or an ordinary frame into a stop, truncates
+    everything after it in the stream.
+    """
+
+    def test_energy_never_converts_to_silence_or_stop(self):
+        self.assertNotIn(nearest_index(0, [0, 5, 9] + [99] * 13, forbid=(0, 15)),
+                         (0, 15))
+        table = [0] + [1] * 14 + [0]
+        self.assertNotIn(nearest_index(0, table, forbid=(0, 15)), (0, 15))
+
+    def test_pitch_never_converts_to_unvoiced(self):
+        self.assertNotEqual(nearest_index(0, [0, 20, 40], forbid=(0,)), 0)
+
+    def test_a_fully_forbidden_table_raises_rather_than_guessing(self):
+        with self.assertRaises(ValueError):
+            nearest_index(5, [1, 2], forbid=(0, 1))
+
+    def test_a_hostile_energy_table_cannot_produce_a_stop_frame(self):
+        """The guard is for TABLES A USER SUPPLIES, so test it with one.
+
+        With the real 52xx tables the nearest entry is never a reserved index,
+        so the guard never fires and a test using them proves nothing about the
+        call site. These tables are valid -- 16 energy entries, pitch[0] == 0 --
+        but place a reserved index right next to the value being matched, which
+        is exactly the situation the guard exists to survive.
+        """
+        src = original()
+        hostile = ChipTables(
+            name="hostile", pitch_bits=src.pitch_bits,
+            k_widths=list(src.k_widths),
+            # index 15 (STOP) is the nearest entry to every source energy;
+            # every legal index is far away.
+            energy=[0] + [1000] * 14 + [src.energy[3]],
+            pitch=list(src.pitch), k=[list(v) for v in src.k])
+        frames, _ = parse(_one_frame(src, 3, 40), src.pitch_bits,
+                          list(src.k_widths))
+        convert_frames(frames, src, hostile)
+        self.assertNotIn(frames[0].fields["energy"].index, (0, 15))
+
+    def test_a_hostile_pitch_table_cannot_unvoice_a_frame(self):
+        """Index 0 means unvoiced; choosing it would drop the K5-K10 fields."""
+        src = original()
+        hostile = ChipTables(
+            name="hostile", pitch_bits=src.pitch_bits,
+            k_widths=list(src.k_widths), energy=list(src.energy),
+            # 0 (unvoiced) is numerically nearest to any short period here.
+            pitch=[0] + [1000] * (len(src.pitch) - 1),
+            k=[list(v) for v in src.k])
+        frames, _ = parse(_one_frame(src, 7, 40), src.pitch_bits,
+                          list(src.k_widths))
+        self.assertEqual(frames[0].kind, "voiced")
+        convert_frames(frames, src, hostile)
+        self.assertNotEqual(frames[0].fields["pitch"].index, 0)
+
+    def test_real_conversion_never_emits_a_reserved_index(self):
+        """The guarantee end to end, over every source index, not just a unit."""
+        src, dst = original(), understudy()
+        for energy in range(1, 15):
+            for pitch in (0, 1, 20, 40, 63):
+                frames, _ = parse(
+                    _one_frame(src, energy, pitch), src.pitch_bits,
+                    list(src.k_widths))
+                convert_frames(frames, src, dst)
+                # Only the frame actually built above. Padding a stream to a
+                # byte boundary appends zero bits, which parse correctly reads
+                # as a trailing SILENCE frame -- its energy index is 0 by
+                # definition, and asserting over it tests the padding, not the
+                # guard.
+                subject = frames[0]
+                self.assertEqual(subject.kind,
+                                 "voiced" if pitch else "unvoiced")
+                got = subject.fields["energy"].index
+                self.assertNotIn(got, (0, 15), "energy %d -> %d" % (energy, got))
+                if pitch:
+                    self.assertNotEqual(subject.fields["pitch"].index, 0,
+                                        "voiced frame %d went unvoiced" % pitch)
+
+
+def _one_frame(chip, energy, pitch):
+    from test_rom import stream
+    return stream(chip, [(energy, 0, pitch, list(range(10)))])
+
+
+class TestTableValidation(unittest.TestCase):
+    """Table files are user-supplied, so they are checked, not trusted."""
+
+    def _tables(self, **overrides):
+        base = original()
+        kwargs = {"name": base.name, "pitch_bits": base.pitch_bits,
+                  "k_widths": list(base.k_widths),
+                  "energy": list(base.energy), "pitch": list(base.pitch),
+                  "k": [list(v) for v in base.k]}
+        kwargs.update(overrides)
+        return ChipTables(**kwargs)
+
+    def test_energy_must_have_sixteen_entries(self):
+        with self.assertRaises(ValueError):
+            self._tables(energy=[0] * 15)
+
+    def test_pitch_index_zero_must_be_unvoiced(self):
+        table = list(original().pitch)
+        table[0] = 40
+        with self.assertRaises(ValueError):
+            self._tables(pitch=table)
+
+    def test_pitch_must_contain_a_usable_period(self):
+        with self.assertRaises(ValueError):
+            self._tables(pitch=[0] * 64)
+
+    def test_periods_cannot_be_negative(self):
+        table = list(original().pitch)
+        table[5] = -1
+        with self.assertRaises(ValueError):
+            self._tables(pitch=table)
 
 
 if __name__ == "__main__":

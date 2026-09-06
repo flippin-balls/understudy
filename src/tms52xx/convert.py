@@ -20,17 +20,16 @@ speech ROM in place viable: the converted phrase is written over the original at
 the same offset, and no pointer table, phrase boundary or timing changes.
 `convert_stream` asserts this rather than trusting it.
 
-WHAT THIS MODULE DOES, AND WHAT IT DELIBERATELY DOES NOT
+WHAT THIS MODULE DOES, AND WHAT IT DOES NOT
 
-`nearest` maps each parameter independently to the destination index whose table
-value is closest. It is the honest baseline: simple, auditable, and good enough
-to establish what the harder approaches have to beat.
+Each parameter is mapped independently to the destination index whose table
+value is closest.
 
-It is NOT optimal, and this project does not pretend otherwise. Choosing K
-indexes jointly per frame -- scored by rendering rather than by table distance
--- does better, because the reflection coefficients interact. That work is
-measured in docs/RESULTS.md and is not in this module, so that the baseline
-stays readable and stays a baseline.
+That is not optimal. The reflection coefficients interact, so choosing the ten K
+indexes jointly per frame -- scored by rendering the result rather than by table
+distance -- can do better. This module does not attempt it: independent nearest
+mapping is what the frame grammar guarantees is length-preserving and safe to
+patch in place, and it is auditable frame by frame from the manifest.
 """
 from __future__ import annotations
 
@@ -41,17 +40,31 @@ from .bitstream import Frame, K_FIELDS, parse, rebuild
 from .tables import ChipTables
 
 
-def nearest_index(value: int, table: Sequence[int]) -> int:
-    """Index of the table entry closest to `value`.
+def nearest_index(value: int, table: Sequence[int],
+                  forbid: Sequence[int] = ()) -> int:
+    """Index of the table entry closest to `value`, skipping `forbid`.
 
     Ties go to the lower index, which is arbitrary but fixed: an unstable
     tie-break makes conversion non-deterministic and diffs meaningless.
+
+    `forbid` exists because some indexes are grammar, not data. Energy 0 means
+    silence and energy 15 means stop; pitch 0 means unvoiced. Choosing one of
+    those as a "nearest value" would not merely pick a poor amplitude, it would
+    change what the frame IS -- turning speech into a stop frame truncates
+    everything after it. On the real tables this does not currently occur, which
+    is exactly why it must be enforced structurally rather than left to luck
+    with whatever tables a user supplies.
     """
-    best, best_delta = 0, None
+    forbidden = set(forbid)
+    best, best_delta = None, None
     for index, entry in enumerate(table):
+        if index in forbidden:
+            continue
         delta = abs(entry - value)
         if best_delta is None or delta < best_delta:
             best, best_delta = index, delta
+    if best is None:
+        raise ValueError("every table entry was forbidden")
     return best
 
 
@@ -71,6 +84,10 @@ class FrameConversion:
     #: hitting the floor -- conflating the two makes conversion look far worse
     #: than it is.
     pitch_approximated: bool = False
+    #: The frame's fields run past the end of the buffer, so it was left exactly
+    #: as it was found. Converting it would rewrite the bits that fit and drop
+    #: the ones that do not, which corrupts a frame that was merely incomplete.
+    skipped_truncated: bool = False
     fields: Dict[str, int] = None
 
     @property
@@ -99,10 +116,20 @@ def convert_frames(frames: List[Frame], source: ChipTables,
             report.append(record)
             continue
 
+        # A truncated frame is one whose fields ran off the end of the buffer;
+        # `parse` supplied zero bits for the missing ones. Re-indexing it would
+        # write back the fields that fit while the invented tail is discarded,
+        # so the frame would emerge neither original nor converted. Leave it.
+        if frame.truncated:
+            record.skipped_truncated = True
+            report.append(record)
+            continue
+
         energy_spec = frame.fields.get("energy")
         if energy_spec is not None:
             want = source.energy[energy_spec.index]
-            energy_spec.index = nearest_index(want, target.energy)
+            # 0 is silence and 15 is stop; neither is an amplitude.
+            energy_spec.index = nearest_index(want, target.energy, forbid=(0, 15))
             record.fields["energy"] = energy_spec.index
 
         pitch_spec = frame.fields.get("pitch")
@@ -110,9 +137,9 @@ def convert_frames(frames: List[Frame], source: ChipTables,
             want_period = source.pitch[pitch_spec.index]
             record.source_f0 = source.f0_hz(pitch_spec.index)
             # Index 0 is unvoiced and must never be chosen as a "nearest period".
-            candidates = list(target.pitch)
-            candidates[0] = 10 ** 9
-            pitch_spec.index = nearest_index(want_period, candidates)
+            # 0 is unvoiced; a voiced frame must never convert into one.
+            pitch_spec.index = nearest_index(want_period, target.pitch,
+                                             forbid=(0,))
             record.target_f0 = target.f0_hz(pitch_spec.index)
             got_period = target.pitch[pitch_spec.index]
             longest = max(p for p in target.pitch if p)
@@ -150,6 +177,6 @@ def convert_stream(data: bytes, source: ChipTables,
     frames, stopped = parse(data, source.pitch_bits, list(source.k_widths))
     report = convert_frames(frames, source, target)
     out = rebuild(frames, len(data), base=data)
-    if len(out) != len(data):                    # cannot happen; cheap to prove
+    if len(out) != len(data):
         raise AssertionError("conversion changed the stream length")
     return out, report, stopped

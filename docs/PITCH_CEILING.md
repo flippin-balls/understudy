@@ -42,7 +42,8 @@ changing the excitation rate.
 
 **It is an emulator-derived result. It has not been confirmed on silicon.**
 
-The measurements were made against PinMAME's unmodified `tms5220.c`. Two things
+The measurements were made against PinMAME's unmodified synthesiser
+(`src/sound/tms5220.c`) reading the tables in `src/sound/tms5220r.c`. Two things
 argue that the conclusion transfers:
 
 1. it follows from the coefficient table and the counter comparison, both of
@@ -57,8 +58,8 @@ Two things argue for caution:
    another — depend on the emulator's interpolation and lattice arithmetic being
    faithful, which is a stronger assumption than the ceiling itself needs.
 
-The honest summary: the ceiling is very likely real and the exact figure of
-50.31 Hz is contingent on the emulator's table being correct.
+In summary: the ceiling is very likely real, and the exact figure of 50.31 Hz is
+contingent on the emulator's table being correct.
 
 ## What the library does about it
 

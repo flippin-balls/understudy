@@ -2,13 +2,14 @@
 
 The TMS5200 is long out of production. Machines that shipped with one still
 need to talk, and the TMS5220 is the part you can actually buy. It runs the same
-frame grammar but different coefficient tables and a different pitch field
-width, so existing speech data does not simply play on it.
+frame grammar with the same field widths, but different coefficient tables, so
+the index values in existing speech data mean different things to it.
 
-This library re-indexes TMS5200 LPC data into TMS5220 tables, and is honest
-about where that cannot work: the TMS5220's excitation period table stops
-shorter than the TMS5200's, so the bottom of the pitch range has no destination
-to map to. See docs/PITCH_CEILING.md.
+This library re-indexes TMS5200 LPC data into TMS5220 tables. Because no field
+changes width, the result is the same length as the original and can be patched
+into a ROM in place. One thing it cannot fix: the TMS5220's excitation period
+table stops shorter than the TMS5200's, so the bottom of the pitch range has no
+destination to map to and is clamped upward. See docs/PITCH_CEILING.md.
 """
 from .bitstream import (ENERGY_SILENCE, ENERGY_STOP, K_FIELDS, BitReader,
                         Frame, parse, rebuild, summarize)

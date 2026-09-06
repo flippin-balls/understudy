@@ -1,8 +1,5 @@
 # Known limitations
 
-Kept deliberately, because a public tool that hides its edges is worse than one
-that names them.
-
 ## The pitch floor cannot be worked around
 
 A TMS5220 cannot produce a fundamental below about 50.3 Hz; a TMS5200 reaches
@@ -13,7 +10,9 @@ measured; none recovered the range. See [PITCH_CEILING.md](PITCH_CEILING.md).
 ## Emulator-derived, not silicon-confirmed
 
 The pitch ceiling and every measurement behind it were derived against PinMAME's
-`tms5220.c`. No physical TMS5200 or TMS5220 has been measured for this project.
+TMS52xx emulation — the tables in `src/sound/tms5220r.c`, rendered by the
+synthesiser in `src/sound/tms5220.c`. No physical TMS5200 or TMS5220 has been
+measured for this project.
 
 The ceiling follows from the coefficient table and the counter comparison, which
 are documented chip behaviour, so it should transfer. Finer claims — how one
