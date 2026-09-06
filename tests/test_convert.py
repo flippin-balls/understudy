@@ -49,7 +49,9 @@ class TestConversion(unittest.TestCase):
         self.dst = understudy()
 
     def test_conversion_preserves_length_exactly(self):
-        """The property that makes in-place ROM patching possible."""
+        """Necessary for in-place patching, and not sufficient on its own --
+        a no-op would also preserve length. `TestEmittedIndexes` is what shows
+        the conversion happened."""
         data = build(self.src, [(7, 0, 10, list(range(10))),
                                 (9, 0, 0, [1, 2, 3, 4]),
                                 (0xF, 0, 0, [])])
@@ -144,10 +146,9 @@ class TestConversion(unittest.TestCase):
         several approximated by under 3 Hz. Reporting all of them as clamped
         would tell an operator the conversion is far worse than it is.
         """
-        # Search for an index the target CANNOT hold exactly. Picking the
-        # middle of the table and hoping was the earlier approach, and the
-        # middle index happens to have an exact counterpart, so the positive
-        # assertion below could never have held.
+        # Search for an index the target CANNOT hold exactly, rather than
+        # picking the middle of the table and hoping: the middle index has an
+        # exact counterpart here, which would make the assertion below vacuous.
         reachable = max(p for p in self.dst.pitch if p)
         mid = next(i for i in range(1, len(self.src.pitch))
                    if 0 < self.src.pitch[i] <= reachable
@@ -274,8 +275,8 @@ class TestIndexGuards(unittest.TestCase):
         """The guard is for TABLES A USER SUPPLIES, so test it with one.
 
         With the real 52xx tables the nearest entry is never a reserved index,
-        so the guard never fires and a test using them proves nothing about the
-        call site. These tables are valid -- 16 energy entries, pitch[0] == 0 --
+        so the guard never fires and a test using them cannot reach the call
+        site. These tables are valid -- 16 energy entries, pitch[0] == 0 --
         but place a reserved index right next to the value being matched, which
         is exactly the situation the guard exists to survive.
         """

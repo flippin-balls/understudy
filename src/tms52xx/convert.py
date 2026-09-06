@@ -129,8 +129,7 @@ def convert_frames(frames: List[Frame], source: ChipTables,
         if pitch_spec is not None and pitch_spec.index != 0:
             want_period = source.pitch[pitch_spec.index]
             record.source_f0 = source.f0_hz(pitch_spec.index)
-            # Index 0 is unvoiced and must never be chosen as a "nearest period".
-            # 0 is unvoiced; a voiced frame must never convert into one.
+            # Index 0 is unvoiced: a voiced frame must never convert into one.
             pitch_spec.index = nearest_index(want_period, target.pitch,
                                              forbid=(0,))
             record.target_f0 = target.f0_hz(pitch_spec.index)

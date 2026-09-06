@@ -5,9 +5,9 @@ WHY THIS SHIPS NO TABLE DATA
 A TMS5200 or TMS5220 stream is meaningless without the chip's coefficient
 tables: energy, pitch and K1..K10. This project does not distribute them.
 
-The values are technical facts about the silicon rather than anyone's creative
-work, so the constraint is practical rather than legal. Every convenient
-machine-readable copy in circulation traces back to an emulator source tree,
+The reason is provenance, not a legal conclusion -- docs/PROVENANCE.md sets out
+the position and its limits. Every convenient machine-readable copy in
+circulation traces back to an emulator source tree,
 and the largest of those -- PinMAME -- is mid-migration from the old MAME
 licence to 3-Clause BSD on a per-file basis, with unconverted files still under
 terms that restrict commercial use. Vendoring a generated copy would inherit
@@ -40,8 +40,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Sequence
 
-#: Frame rate the TMS52xx family runs at. Period values are in samples at this
-#: rate, so f0 = SAMPLE_RATE / period.
+#: Synthesis sample rate of the TMS52xx family. Pitch table entries are periods
+#: in samples at this rate, so f0 = SAMPLE_RATE / period. This is not the LPC
+#: frame rate, which is a different and slower thing.
 SAMPLE_RATE = 8000
 
 

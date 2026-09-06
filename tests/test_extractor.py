@@ -16,11 +16,10 @@ including the three features that make extraction more than a regex:
   * the live tables are written as macro references with backslash-continued
     bodies, so a parser that does not expand macros finds an empty struct.
 
-Each of those has its own test, because each was a real failure during
-development rather than a hypothetical.
+Each has its own test.
 """
-import json
-import subprocess
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -146,7 +145,7 @@ class TestExtractor(unittest.TestCase):
         self.assertNotEqual(got["pitch"], PITCH_DEAD)
 
     def test_ignoring_the_preprocessor_would_pick_the_wrong_table(self):
-        """Proves the previous test is not vacuous.
+        """The previous test's counterpart: the dead branch really is a trap.
 
         Without `drop_dead_blocks` the `#if 0` copy is still in the text, and
         because it is declared first it is what a brace-matching search finds.
@@ -247,8 +246,13 @@ class TestExtractorEndToEnd(unittest.TestCase):
                 fixture_source().replace("fixture_live_coeff", "tms5220_coeff")
                                 .replace("fixture_dead_coeff", "tms5200_coeff"))
             out = Path(tmp) / "tables"
-            self.assertEqual(
-                from_pinmame.main(["from_pinmame.py", str(root), str(out)]), 0)
+            # main() reports to stdout; capture it so `unittest discover` output
+            # stays readable.
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                self.assertEqual(
+                    from_pinmame.main(["from_pinmame.py", str(root), str(out)]), 0)
+            self.assertIn("Check the licence header", buffer.getvalue())
 
             for name in ("tms5200", "tms5220"):
                 table = ChipTables.from_json(out / ("%s.json" % name))

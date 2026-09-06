@@ -6,8 +6,9 @@ boundaries stay valid, and timing is unchanged. `patch_rom` verifies the length
 rather than assuming it, and re-parses its own output to confirm no frame
 changed kind.
 
-Squawk & Talk stores phrases as a table of 16-bit big-endian pointers followed
-by the speech data, and that is the only part that generalises. Ordering
+Squawk & Talk addresses phrases through a table of 16-bit big-endian pointers,
+and that is the only part that generalises. The table may sit below the speech
+or above it. Ordering
 (address or command), whether the table carries an end bound, and whether the
 player transmits each phrase's final ROM byte all vary between titles and are
 not derivable from the ROM alone -- so `PhraseTable.from_pointers` takes them
@@ -19,6 +20,7 @@ ROM data of any kind.
 """
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -256,7 +258,16 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     for phrase in table.phrases:
         end = phrase.end - 1 if phrase.index in truncated else phrase.end
         if end <= phrase.start:
-            continue
+            # Skipping here would drop the phrase from the results entirely:
+            # no stop-frame check, no manifest entry, and a conversion that
+            # reports fewer phrases than the layout declared while claiming
+            # success. A phrase with nothing left to convert is a layout error.
+            raise ValueError(
+                "phrase %d has no convertible bytes (0x%X-0x%X%s); check the "
+                "layout, and --truncate-last-byte if you passed it"
+                % (phrase.index, phrase.start, phrase.end,
+                   ", less its untransmitted final byte"
+                   if phrase.index in truncated else ""))
         original = bytes(rom[phrase.start:end])
         converted, report, stopped = convert_stream(original, source, target)
         if len(converted) != len(original):
@@ -301,6 +312,10 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
             changed_bytes=sum(1 for a, b in zip(original, converted) if a != b),
         ))
 
+    # Every declared phrase produces a result -- the loop above has no early
+    # `continue`, and duplicates that share an extent still each get their own
+    # entry so their command identities survive. `test_every_phrase_declared_
+    # produces_a_result` is what holds that.
     unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
     if unterminated and not allow_unterminated:
         raise ValueError(
@@ -332,8 +347,8 @@ def summarise(results: Sequence[PhraseResult]) -> Dict[str, float]:
     if errors:
         summary["f0_error_hz"] = {
             "frames": len(errors),
-            "median": round(errors[len(errors) // 2], 3),
-            "mean": round(sum(errors) / len(errors), 3),
+            "median": round(statistics.median(errors), 3),
+            "mean": round(statistics.fmean(errors), 3),
             "max": round(errors[-1], 3),
         }
     return summary

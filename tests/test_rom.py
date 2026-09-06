@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from synthetic import original, understudy                 # noqa: E402
-from tms52xx.rom import (Phrase, PhraseTable,                  # noqa: E402
+from tms52xx.rom import (Phrase, PhraseResult, PhraseTable,    # noqa: E402
                          diagnose_last_byte,
                          patch_rom, summarise)
 
@@ -112,9 +112,9 @@ class TestPatch(RomFixture):
     def test_reports_clamping_with_exact_counts(self):
         """Exact numbers, from a phrase built to clamp a known count.
 
-        `clamped_percent >= 0` was the original assertion and is true of any
-        number the summary could possibly produce, including one from a
-        summariser that had stopped counting.
+        `clamped_percent >= 0` holds for any number the summary could produce,
+        including one from a summariser that had stopped counting, so the
+        counts are asserted exactly.
         """
         longest = max(range(len(self.src.pitch)),
                       key=lambda i: self.src.pitch[i])
@@ -329,13 +329,87 @@ class TestLibraryFailsClosed(RomFixture):
                              "phrase %d changed a frame kind" % r.phrase.index)
 
 
+class TestEveryPhraseIsReported(RomFixture):
+    """A declared phrase always produces a result, or the run fails.
+
+    Silently dropping one would take its stop-frame check with it: the
+    conversion would report success over fewer phrases than the layout
+    declared, and the manifest would not show the difference.
+    """
+
+    def _one_byte_phrase_rom(self):
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        rom = bytearray(6)
+        # Phrase 0 is a single byte; phrase 1 is the rest.
+        for i, value in enumerate([6, 7, 7 + len(body)]):
+            rom[2 * i:2 * i + 2] = value.to_bytes(2, "big")
+        rom += b"\x00" + body
+        return bytes(rom)
+
+    def test_a_phrase_with_nothing_left_to_convert_is_an_error(self):
+        rom = self._one_byte_phrase_rom()
+        table = PhraseTable.from_pointers(rom, 0, 2)
+        self.assertEqual(table.phrases[0].length, 1)
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(rom, table, self.src, self.dst, truncate_last_byte=[0],
+                      allow_unterminated=True)
+        self.assertIn("no convertible bytes", str(caught.exception))
+
+    def test_every_phrase_declared_produces_a_result(self):
+        """Including duplicates, which share an extent but not an identity."""
+        _out, results = patch_rom(self.rom, self.table, self.src, self.dst)
+        self.assertEqual(len(results), len(self.table.phrases))
+        self.assertEqual([r.phrase.index for r in results],
+                         [p.index for p in self.table.phrases])
+
+        a_start = self.table.phrases[0].start
+        b_start = self.table.phrases[1].start
+        rom = bytearray(self.rom)
+        for i, value in enumerate([a_start, a_start, b_start]):
+            rom[2 * i:2 * i + 2] = value.to_bytes(2, "big")
+        duplicated = PhraseTable.from_pointers(bytes(rom), 0, 2,
+                                               address_ordered=False)
+        _out, results = patch_rom(bytes(rom), duplicated, self.src, self.dst)
+        self.assertEqual([r.phrase.index for r in results], [0, 1])
+
+
+class TestSummaryStatistics(RomFixture):
+    def test_median_is_the_true_median_for_an_even_count(self):
+        """`errors[len // 2]` is the upper middle value, not the median.
+
+        With an even number of samples it overstates a documented measurement,
+        which is the number a reader is most likely to quote.
+        """
+        results = [PhraseResult(phrase=self.table.phrases[0], frames=1,
+                                clamped=0, approximated=0, truncated=0,
+                                stopped_cleanly=True, changed_bytes=0,
+                                f0_errors=(1.0, 2.0, 3.0, 10.0))]
+        summary = summarise(results)
+        self.assertEqual(summary["f0_error_hz"]["median"], 2.5)
+        self.assertEqual(summary["f0_error_hz"]["mean"], 4.0)
+        self.assertEqual(summary["f0_error_hz"]["max"], 10.0)
+        self.assertEqual(summary["f0_error_hz"]["frames"], 4)
+
+    def test_median_for_an_odd_count(self):
+        results = [PhraseResult(phrase=self.table.phrases[0], frames=1,
+                                clamped=0, approximated=0, truncated=0,
+                                stopped_cleanly=True, changed_bytes=0,
+                                f0_errors=(1.0, 4.0, 100.0))]
+        self.assertEqual(summarise(results)["f0_error_hz"]["median"], 4.0)
+
+    def test_no_f0_section_when_nothing_was_voiced(self):
+        results = [PhraseResult(phrase=self.table.phrases[0], frames=1,
+                                clamped=0, approximated=0, truncated=0,
+                                stopped_cleanly=True, changed_bytes=0)]
+        self.assertNotIn("f0_error_hz", summarise(results))
+
+
 class TestTableAbovePhrases(unittest.TestCase):
     """The pointer table does not have to sit below the speech it points at.
 
     On a Squawk & Talk the table commonly lives in one ROM socket and the
     phrases in another at a LOWER address -- Embryon's table is at CPU $FC1C in
-    U5 while its speech starts at $E800 in U4. Two things follow, and both were
-    originally wrong here:
+    U5 while its speech starts at $E800 in U4. Two things follow:
 
       * a phrase starting below the table is normal, not a layout error; and
       * with no end bound, the last phrase runs to the TABLE, not to the end of
@@ -424,9 +498,8 @@ class TestLastByteConvention(RomFixture):
     def test_diagnosis_gives_the_exact_verdict_for_a_known_phrase(self):
         """Built to be `required`, and asserted to be exactly that.
 
-        Accepting "either required or spare" was the original assertion and is
-        true of every phrase that has a stop frame at all, so it constrained
-        nothing.
+        "either required or spare" holds for every phrase that has a stop
+        frame at all, so the exact verdict is asserted instead.
         """
         body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
         for pad, expected in ((0, "required"), (1, "spare"), (2, "spare")):

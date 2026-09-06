@@ -9,7 +9,7 @@ The largest entry in that table is **159 samples**. The synthesiser counts up to
 `current_pitch` and resets; interpolation moves that value *between* two table
 entries, so it can never exceed the larger of them.
 
-At the 8 kHz frame rate that puts the lowest reachable fundamental at
+At the 8 kHz sample rate that puts the lowest reachable fundamental at
 8000 / 159 = **50.31 Hz**.
 
 The TMS5200's table reaches **211 samples**, i.e. **37.9 Hz**.

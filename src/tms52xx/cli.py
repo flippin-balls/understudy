@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
@@ -135,18 +136,26 @@ def _atomic_write(path: Path, data: bytes) -> None:
     """Write via a temporary file in the same directory, then rename.
 
     A converted ROM is written to be flashed. A half-written one is a file that
-    looks like a ROM, has a plausible size, and is wrong -- the worst possible
-    failure for this tool. `os.replace` is atomic within a directory, so the
-    destination either holds the previous content or the complete new content
-    and never anything in between.
+    looks like a ROM, has a plausible size, and is wrong. `os.replace` is atomic
+    within a directory, so the destination holds either the previous content or
+    the complete new content, never anything in between.
+
+    The temporary name comes from `mkstemp`, which creates it exclusively and
+    unpredictably. A derived name like `<output>.tmp` would be neither: it can
+    collide with a file the user gave us -- converting `out.bin.tmp` into
+    `out.bin` truncated the input ROM before reading finished with it -- and an
+    attacker or a stale symlink sitting at a guessable path could redirect the
+    write somewhere else entirely.
     """
-    tmp = path.with_name(path.name + ".tmp")
-    handle = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    handle, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                        prefix=path.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
     try:
         with os.fdopen(handle, "wb") as fh:
             fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
+        os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except BaseException:
         try:

@@ -26,7 +26,7 @@ TMS5200 stream have no destination to map to and must be clamped upward.
 Working from the coefficient tables as implemented in PinMAME's
 `src/sound/tms5220r.c`,
 the longest period a TMS5220 can be driven to is 159 samples against the
-TMS5200's 211 — about 50.3 Hz against 37.9 Hz at the 8 kHz frame rate. Nine
+TMS5200's 211 — about 50.3 Hz against 37.9 Hz at the 8 kHz sample rate. Nine
 candidate workarounds were each built as a real bitstream and rendered; none
 moved the fundamental below the table's floor, which is the threshold they were
 judged against.
@@ -45,19 +45,29 @@ happened rather than discovering it by ear.
 
 ## Installing
 
-Pure Python, standard library only, no dependencies. Python 3.8 or newer.
+Pure Python, standard library only, no dependencies. Python 3.9 or newer.
 
 ```
 git clone https://github.com/flippin-balls/understudy
 cd understudy
-python -m unittest discover -s tests -t .     # 120 tests, all offline
+PYTHONPATH=src python -m unittest discover -s tests    # 127 tests, all offline
 ```
 
-There is no package to install. Run it as a module, or put `src` on your path:
+Either install it, which gives you an `understudy` command:
+
+```
+pip install .
+understudy --help
+```
+
+or run it in place without installing anything:
 
 ```
 PYTHONPATH=src python -m tms52xx.cli --help
 ```
+
+The examples below use the second form. If you installed it, replace
+`python -m tms52xx.cli` with `understudy`.
 
 ## Converting a ROM
 
@@ -127,8 +137,13 @@ is right, not a demonstration of it. Converting them:
 
 Every one of those numbers is printed by `convert` itself and recorded in the
 manifest it writes, so the same table can be produced from any ROM — including
-yours. Nothing here is a figure you have to take on trust; what you cannot
-reproduce without the same ROM set is this particular row of it.
+yours. The manifest from that run is checked in as
+[examples/embryon.manifest.json](examples/embryon.manifest.json): 21 phrases,
+899 changed byte ranges, and the input's SHA-256, so you can confirm you have
+the same image before comparing. It records offsets, counts and hashes only.
+
+What you cannot do without that ROM set is reproduce this particular row. The
+ROM is not included and is not ours to distribute.
 
 The f0 figures are the difference between the source period decoded on a
 TMS5200 and the converted period decoded on a TMS5220 — that is, what the

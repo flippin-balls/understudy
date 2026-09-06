@@ -110,6 +110,44 @@ class TestCli(RomFixture):
         self.assertIn("is the input ROM", result.stderr)
         self.assertEqual(rom_path.read_bytes(), self.rom)
 
+    def test_a_temporary_file_cannot_land_on_the_input(self):
+        """Converting `x.tmp` into `x` must not destroy `x.tmp`.
+
+        A temporary file named `<output>.tmp` is a path a user can legitimately
+        hold, and opening it with O_TRUNC would destroy the input ROM part-way
+        through the run. Temporary names come from mkstemp instead, so they are
+        unpredictable and created exclusively.
+        """
+        for suffix in (".tmp", ".manifest.json.tmp"):
+            source = self.dir / ("target.bin%s" % suffix)
+            source.write_bytes(self.rom)
+            result = run("convert", str(source),
+                         "-o", str(self.dir / "target.bin"),
+                         "--source-tables", str(self.dir / "src.json"),
+                         "--target-tables", str(self.dir / "dst.json"),
+                         "--table-offset", "0", "--phrases", "2", "--force",
+                         cwd=self.dir)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(source.exists(),
+                            "input %s was destroyed by the temporary file"
+                            % source.name)
+            self.assertEqual(source.read_bytes(), self.rom)
+            source.unlink()
+            (self.dir / "target.bin").unlink()
+            (self.dir / "target.bin.manifest.json").unlink()
+
+    def test_an_output_symlink_pointing_at_the_input_is_refused(self):
+        link = self.dir / "link.bin"
+        link.symlink_to(self.rom_path)
+        result = run("convert", str(self.rom_path), "-o", str(link),
+                     "--source-tables", str(self.dir / "src.json"),
+                     "--target-tables", str(self.dir / "dst.json"),
+                     "--table-offset", "0", "--phrases", "2", "--force",
+                     cwd=self.dir)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("is the input ROM", result.stderr)
+        self.assertEqual(self.rom_path.read_bytes(), self.rom)
+
     def test_leaves_no_temporary_files_behind(self):
         self.assertEqual(self._convert().returncode, 0)
         strays = [p.name for p in self.dir.iterdir() if p.name.endswith(".tmp")]

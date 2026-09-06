@@ -18,8 +18,9 @@ documentation agrees. Trust the decode, not the comment.
 
 ## What generalises
 
-Phrases are addressed through a table of **16-bit big-endian pointers** that
-precedes the speech data. That much holds everywhere we have looked.
+Phrases are addressed through a table of **16-bit big-endian pointers**. That
+much holds everywhere we have looked. Where the table SITS does not generalise:
+it may lie below the speech it points at or above it, and Embryon's is above.
 
 ## What does not generalise
 
@@ -74,6 +75,109 @@ not recorded in the speech data. The diagnostic tells you where truncation is
 There is no terminator byte, no length field and no checksum. A phrase's end is
 positional: it is wherever the next phrase begins.
 
+## From socket dumps to a converted set
+
+You start with one file per ROM device and you need to end with one file per ROM
+device. The converter works on a single image, because a phrase can begin in one
+socket and the pointers are CPU addresses, so the middle of this is a 16 KB view
+of `$C000-$FFFF`.
+
+**1. Assemble the CPU's view.** Fill unpopulated sockets with `0xFF`, the erased
+state, so it is obvious they are not data. A 2 KB device in a 4 KB socket is
+mirrored into the upper half, and that mirror matters: Embryon's firmware
+addresses all of U4's speech through it, so pointers land at `$E800`, not
+`$E000`.
+
+```python
+import sys
+
+image = bytearray(b"\xFF" * 0x4000)          # $C000-$FFFF
+
+def place(path, cpu_addr):
+    data = open(path, "rb").read()
+    at = cpu_addr - 0xC000
+    image[at:at + len(data)] = data
+    if len(data) == 0x800:                    # 2 KB device in a 4 KB socket
+        image[at + 0x800:at + 0x1000] = data  # mirrored into the upper half
+
+place("841-01_4.716", 0xE000)                 # U4, 2716
+place("841-02_5.532", 0xF000)                 # U5, 2532
+open("embryon_snt.bin", "wb").write(bytes(image))
+```
+
+**2. Convert it.** Use the layout from the section below.
+
+**3. Split it back into devices — and mind the mirror.** This is the step with
+a trap in it, and it is not obvious.
+
+Conversion rewrites the bytes the *pointers* address. When a 2 KB device is
+mirrored into a 4 KB socket and the firmware addresses its speech through the
+mirror, only the mirror gets converted. The lower copy is left exactly as it
+was. On Embryon that is precisely what happens:
+
+```
+U4 lower copy  $E000-$E7FF      0 bytes changed     <- stale
+U4 mirror      $E800-$EFFF   1560 bytes changed     <- the converted data
+U5             $F000-$FFFF   1960 bytes changed
+```
+
+So "take the lower half of a mirrored device" gives you an unconverted ROM that
+looks plausible and burns fine. Take the half that actually changed:
+
+```python
+import sys
+
+before = open(sys.argv[1], "rb").read()      # the image you converted FROM
+after = open(sys.argv[2], "rb").read()       # the image convert produced
+
+def extract(path, cpu_addr, size):
+    at = cpu_addr - 0xC000
+    halves = [(at, at + size)]
+    if size == 0x800:                        # 2 KB device in a 4 KB socket
+        halves.append((at + 0x800, at + 0x1000))
+
+    changed = [(lo, hi) for lo, hi in halves if after[lo:hi] != before[lo:hi]]
+    if len(changed) > 1:
+        raise SystemExit("%s: both mirror halves changed; the layout puts "
+                         "phrases in both, which cannot be burned to one device"
+                         % path)
+    lo, hi = changed[0] if changed else halves[0]
+    open(path, "wb").write(after[lo:hi])
+    return (hi - lo), len(changed)
+
+for path, addr, size in (("841-01_4_5220.716", 0xE000, 0x800),
+                         ("841-02_5_5220.532", 0xF000, 0x1000)):
+    wrote, touched = extract(path, addr, size)
+    print("%-22s %5d bytes  %s" % (path, wrote,
+                                   "converted" if touched else "unchanged"))
+```
+
+A device reported as `unchanged` holds no speech, and you do not need to reburn
+it. If the script stops because both halves changed, your layout has phrases at
+both the real and mirrored addresses, which a single device cannot represent —
+the layout is wrong.
+
+**Check before you burn.** Each output must be exactly the size of the original,
+and the differing byte counts must add up to what conversion reported:
+
+```
+$ ls -l 841-01_4.716 841-01_4_5220.716            # sizes must match
+$ cmp -l 841-01_4.716 841-01_4_5220.716 | wc -l   # 1560
+$ cmp -l 841-02_5.532 841-02_5_5220.532 | wc -l   # 1960
+```
+
+1560 + 1960 = 3520, which is the `bytes changed` the conversion printed. If the
+totals do not reconcile, or a socket that holds no speech has changed, stop.
+
+Re-assembling step 1 from the new devices reproduces the converted image exactly
+across every address the board reads speech from. It differs only in U4's
+`$E000-$E7FF` window, which now carries converted data rather than the stale
+copy — the device holds 2 KB and appears twice, so this is the correct outcome
+rather than a discrepancy.
+
+**Checksums.** This tool does not compute or update any ROM checksum. If your
+board verifies one, that is a separate step and it is on you.
+
 ## A worked layout: Bally Embryon
 
 Layout facts, not ROM contents. They are here because the hardest part of using
@@ -120,24 +224,51 @@ this is safe to iterate on.
 ### 1. Find the pointer table
 
 A speech pointer table is a run of 16-bit big-endian values that all land inside
-the ROM's address window and are mostly increasing. That is a distinctive enough
-shape to scan for:
+the ROM's address window and mostly increase. That shape is distinctive enough
+to scan for. This reports each maximal run rather than every window that starts
+inside one, so the output is a short list rather than a page of near-duplicates:
 
 ```python
 import sys
+
 data = open(sys.argv[1], "rb").read()
-base, count = 0xC000, 8          # CPU base, and how many entries to require
-for offset in range(0, len(data) - 2 * count, 2):
-    values = [int.from_bytes(data[offset + 2 * i:offset + 2 * i + 2], "big")
-              for i in range(count)]
-    if all(base <= v < base + len(data) for v in values) and \
-            all(b > a for a, b in zip(values, values[1:])):
-        print("0x%04X  %s" % (offset, ["0x%04X" % v for v in values]))
+base = int(sys.argv[2], 0) if len(sys.argv) > 2 else 0
+least = 6                       # shortest run worth reporting
+
+def word(at):
+    return int.from_bytes(data[at:at + 2], "big")
+
+def plausible(at):
+    return at + 2 <= len(data) and base <= word(at) < base + len(data)
+
+seen = set()
+for start in range(len(data) - 1):
+    if start in seen or not plausible(start):
+        continue
+    end = start
+    while plausible(end + 2) and word(end + 2) > word(end):
+        end += 2
+    run = (end - start) // 2 + 1
+    if run >= least:
+        seen.update(range(start, end + 2))
+        print("0x%04X  %2d entries  0x%04X..0x%04X"
+              % (start, run, word(start), word(end)))
 ```
 
-Run it over the whole image. Real tables show up as a short list of candidates;
-most are false positives from ordinary code, which the next steps eliminate.
-Relax `all(b > a ...)` to a majority if you suspect command order.
+It scans every offset, not every even one: nothing guarantees these tables are
+aligned, and assuming they are will hide half of them. On the Embryon image it
+prints two candidates:
+
+```
+0x3C1C  21 entries  0xE800..0xF9DA
+0x3EA1  18 entries  0xFEC5..0xFFED
+```
+
+The first is the speech table, and the run length has already told you the entry
+count. The second is not: its entries are evenly spaced 0x11 apart, which is a
+fixed-stride table of something else. Evenly spaced entries are a reliable
+giveaway — real phrases are not all the same length. Relax `word(end + 2) >
+word(end)` to a majority if you suspect command order.
 
 ### 2. Confirm it by where it points
 

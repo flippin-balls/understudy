@@ -30,17 +30,15 @@ PITCH_BITS = 6
 def _k_tables(curve: float):
     """Ten monotonic K tables spanning -500..+500, shaped by `curve`.
 
-    THE CURVE IS THE POINT, and an earlier version of this file got it wrong.
-    The two parts originally differed by a constant offset of 7, which is far
-    smaller than a table step -- so every source index mapped back onto itself
-    and no test in the suite could observe K conversion happening at all. A
-    mutation that removed the K mapping entirely still passed.
+    The two parts must diverge in SHAPE, not by a constant offset. An offset
+    smaller than a table step leaves every source index mapping onto itself, so
+    K conversion becomes invisible and no test can observe it happening.
+    Companding one table relative to the other avoids that: 1.0 against 1.2
+    remaps 109 of the 168 K entries.
 
-    Real tables diverge in SHAPE, not by an offset: comparing PinMAME's TMS5200
-    and TMS5220 coefficients, 106 of 168 K entries (63%) quantise onto a
-    different index. `curve` reproduces that by companding one part's table
-    relative to the other; 1.0 against 1.2 remaps 109 of 168 (65%), which is
-    close enough to the real figure for the fixture to be representative.
+    (For scale, PinMAME's real TMS5200 and TMS5220 tables remap 106 of 168.
+    That comparison needs those tables and so cannot be run from this
+    repository; it is recorded as the reason for the value, not as a result.)
     """
     return [[round(-500 + 1000 * ((i / ((1 << w) - 1)) ** curve))
              for i in range(1 << w)] for w in K_WIDTHS]
