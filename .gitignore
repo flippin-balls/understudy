@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Chip coefficient tables are NOT distributed with this project.
+# See docs/PROVENANCE.md -- you supply them from a source you are entitled to use.
+tables/*.json
+!tables/synthetic-test-tables.json
+
+# Never commit speech data. This project operates on ROMs you already own and
+# does not redistribute any.
+*.wav
+*.snd
+*.rom
+*.bin
