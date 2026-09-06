@@ -48,14 +48,20 @@ quiet nonsense downstream.
 
 ## Getting them
 
-**From a PinMAME checkout.** `from_pinmame.py` in this directory reads the
-coefficient tables out of `src/sound/tms5220r.c` and writes both JSON files.
-Check the licence header on that specific file in your checkout and satisfy
-yourself it suits your use before you rely on the output.
+**From a PinMAME checkout.** The most practical route. Clone the source and run
+the extractor; you need only the source tree, not a built emulator.
 
 ```
-python docs/from_pinmame.py /path/to/pinmame tables/
+git clone https://github.com/vpinball/pinmame
+python docs/from_pinmame.py pinmame tables/
 ```
+
+That writes `tables/tms5200.json` and `tables/tms5220.json`, which is what the
+`--source-tables` and `--target-tables` options take. The file it reads is
+`src/sound/tms5220r.c` — **read the licence header on that specific file in your
+own checkout** and satisfy yourself it suits your use before relying on the
+output. The clone is a few hundred megabytes; `--depth 1` is enough if you only
+want the tables, though the pinned revision below will then not be in it.
 
 ### The revision this was last verified against
 
@@ -99,12 +105,25 @@ contents. If the hash note appears, compare a few values by eye before relying
 on the result.
 
 **From the datasheet.** Texas Instruments' *TMS5220 Voice Synthesis Processor
-Data Manual* documents the frame format and the tables. Transcribing by hand is
-tedious and error-prone, but it is the cleanest provenance available and the
-validation in `ChipTables` will catch a mis-keyed table length.
+Data Manual* documents the frame format and the tables. Scanned copies are
+mirrored publicly:
+
+* archive.org, [the June 1981 preliminary manual](https://archive.org/details/bitsavers_tidataBooksisProcessorDataManualpreliminaryJun81_7901308)
+* archive.org, [an IC datasheet copy](https://archive.org/details/TMS5220)
+* [bitsavers](http://bitsavers.org/components/ti/), under `components/ti`
+
+Transcribing by hand is tedious and error-prone, but it is the cleanest
+provenance available, and `ChipTables` will catch a mis-keyed table length. Note
+that the manual is the TMS5220's: a TMS5200 table transcribed from it would be
+the wrong chip, which is the entire problem this project exists to solve.
 
 **From your own measurements.** If you have working silicon and the patience,
 this is the only route that owes nothing to anyone else's transcription.
+
+**Sanity-check whatever you get.** A TMS5200 table should report a lowest
+reachable f0 near 37.9 Hz and a TMS5220 near 50.3 Hz — see *Verifying what you
+loaded* below. If the two files give the same number, you have extracted the
+same variant twice, and `convert` will refuse the pair.
 
 ## Verifying what you loaded
 

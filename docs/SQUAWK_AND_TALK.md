@@ -91,6 +91,66 @@ not recorded in the speech data. The diagnostic tells you where truncation is
 There is no terminator byte, no length field and no checksum. A phrase's end is
 positional: it is wherever the next phrase begins.
 
+## Where the ROMs come from
+
+This tool operates on speech ROMs you already possess. It distributes none, and
+none are included here. Game ROM images are the manufacturer's or rights
+holder's copyrighted code — owning the machine is not the same as being licensed
+to redistribute its ROMs, and PinMAME does not ship them either. Three routes:
+
+**Read your own board.** This is the normal one, and it is also the only one
+that gives you a dump of *your* machine rather than someone's idea of what it
+should contain — revisions differ, and boards get modified in the field. You
+need an EPROM programmer that can read the devices in the sound board's sockets.
+Pull each device, read it, and save one file per socket. Label the files with
+the socket, because the CPU address a device maps to is what makes the layout
+work and nothing in the file records it.
+
+**The Internet Pinball Database.** [ipdb.org](https://www.ipdb.org/) is the
+community's reference catalogue: an entry per machine, with manuals, schematics
+and flyers, and ROM images for many titles. It is the first place to look, and
+the manual and schematic are worth having even when you dump your own devices —
+the schematic tells you which socket is which and what device type it expects,
+which is exactly what the assembly step below needs. Check the notes on the page
+for the terms attached to a particular download.
+
+**Buy licensed reproduction ROMs.** Several pinball parts vendors sell
+reproduction sets under licence, and some rights holders publish updated
+firmware for their own titles. If you go this way you have a file already and
+can skip to assembling the image.
+
+### Device types, and the trap in them
+
+A Squawk & Talk socket is nominally 4 KB but may hold a 2 KB device, and the
+board carries jumper options for **either a 2532 or a 2732**. Both are 4Kx8
+EPROMs and they are *not* pin-compatible — that is exactly why the jumper
+options exist. Embryon's own documentation lists two jumper sets for this
+reason:
+
+```
+2532: C,E,D,G,Q,S,U,X,Y,AA
+2732: C,E,F,P,R,T,U,X,Z,BB
+```
+
+So before reading or burning anything:
+
+* **identify the device actually fitted**, from its own part number, not from
+  what a ROM list says should be there;
+* **tell your programmer the right device type** — reading a 2532 as a 2732 or
+  the reverse gives you a file of the right size and the wrong contents; and
+* **if you change device type when you reburn, move the jumpers to match.**
+
+Embryon, as a worked example, has a 2716 (2 KB) in U4 and a 2532 (4 KB) in U5.
+
+### Check what you read before you trust it
+
+A speech ROM is mostly high-entropy LPC data. A dump that is all `0xFF`, all
+`0x00`, or visibly repeating at a small period was not read correctly — usually
+the wrong device type or a socket that needed reseating. Read each device twice
+and compare the files; if they differ, fix the read before going any further.
+Once you have an image assembled, `inspect --source-tables` gives you a stronger
+check: a wrong dump does not produce phrases that all end in stop frames.
+
 ## From socket dumps to a converted set
 
 You start with one file per ROM device and you need to end with one file per ROM

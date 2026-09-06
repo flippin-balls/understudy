@@ -69,9 +69,22 @@ The examples below use the second form. If you installed it, replace
 
 ## Converting a ROM
 
-You need the ROM you already own, chip tables you have supplied
-([docs/PROVENANCE.md](docs/PROVENANCE.md)), and the phrase layout for your title
-([docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md)).
+You need three things, and each has a section explaining where to get it:
+
+* **the chip tables** — not included; extract them from a PinMAME checkout with
+  the script provided, or transcribe them from TI's data manual.
+  [docs/PROVENANCE.md](docs/PROVENANCE.md#getting-them) has the commands and the
+  archived datasheet links.
+* **your ROM** — read from your own board, or from the machine's entry on the
+  [Internet Pinball Database](https://www.ipdb.org/), which also carries the
+  manuals and schematics that tell you which socket is which.
+  [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md#where-the-roms-come-from)
+  covers that, and the 2532-versus-2732 pinout trap that will otherwise give you
+  a file of the right size and the wrong contents.
+* **the phrase layout for your title** — five numbers, none of them derivable
+  from the ROM alone.
+  [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md#working-out-the-layout-for-your-rom)
+  is a step-by-step procedure for finding them, with a worked example.
 
 ```
 python -m tms52xx.cli inspect speech.bin --table-offset 0x40 --phrases 20 \
