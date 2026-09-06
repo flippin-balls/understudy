@@ -33,9 +33,10 @@ more general problem, and it is **not** what this project does.
 ## Where this project fits
 
 All of the above either **produce** LPC from audio or **play** LPC that already
-exists. This one re-indexes LPC data that already exists from one 52xx variant's
-tables into another's. If a tool for that already exists we would rather link to
-it than duplicate it; please open an issue.
+exists. This one re-indexes existing LPC data from one 52xx variant's tables
+into another's. We did not find such a tool among the projects reviewed here;
+that is not a claim of novelty, and if one exists we would rather link to it
+than duplicate it — please open an issue.
 
 That gap is narrow and it is the only thing here. If your TMS5200 has failed and
 you have its speech ROM, you do not need to re-analyse anything: the parameters

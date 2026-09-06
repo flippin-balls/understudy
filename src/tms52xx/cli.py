@@ -226,12 +226,25 @@ def cmd_convert(args) -> int:
               "(first at 0x%X)" % (len(stray), stray[0]), file=sys.stderr)
         return 2
 
+    # Print the direction. The tool cannot tell which chip a ROM came from, so
+    # supplying the two tables the wrong way round is a mistake it can only make
+    # visible, not catch -- and a reversed conversion produces a plausible ROM.
+    print("converting           %s -> %s   (lowest f0 %.1f Hz -> %.1f Hz)"
+          % (source.name, target.name, source.lowest_f0_hz,
+             target.lowest_f0_hz))
+    if target.lowest_f0_hz < source.lowest_f0_hz:
+        print("  note: the target reaches LOWER than the source. If you meant "
+              "TMS5200 -> TMS5220,\n  the tables are the wrong way round.")
     print("phrases              %d" % stats["phrases"])
     print("frames               %d" % stats["frames"])
     print("frames at the pitch floor %d (%.1f%%)  -- cannot be reproduced"
           % (stats["frames_clamped"], stats["clamped_percent"]))
     print("frames pitch-approximated %d  -- nearest available period"
           % stats["frames_approximated"])
+    if stats["phrases"] != stats["distinct_phrases"]:
+        print("distinct phrases     %d  -- %d pointer(s) name a phrase another "
+              "already names" % (stats["distinct_phrases"],
+                                 stats["phrases"] - stats["distinct_phrases"]))
     print("bytes changed        %d of %d" % (stats["bytes_changed"], len(rom)))
     print("frame kinds preserved %d of %d  -- checked by re-parsing the output"
           % (stats["frame_kinds_preserved"], stats["frames"]))
@@ -384,13 +397,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except ValueError as error:
+    except (ValueError, OSError) as error:
         # Layout and table problems are the expected failure of this tool, not
         # a crash: the user is guessing at a pointer table and will guess wrong
         # several times. A traceback buries the one line that helps them.
-        print("error: %s" % error, file=sys.stderr)
-        return 2
-    except OSError as error:
         print("error: %s" % error, file=sys.stderr)
         return 2
 

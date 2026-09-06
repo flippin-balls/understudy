@@ -1,37 +1,22 @@
 """Chip coefficient tables -- loaded, never bundled.
 
-WHY THIS SHIPS NO TABLE DATA
-
 A TMS5200 or TMS5220 stream is meaningless without the chip's coefficient
-tables: energy, pitch and K1..K10. This project does not distribute them.
-
-The reason is provenance, not a legal conclusion -- docs/PROVENANCE.md sets out
-the position and its limits. Every convenient machine-readable copy in
-circulation traces back to an emulator source tree,
-and the largest of those -- PinMAME -- is mid-migration from the old MAME
-licence to 3-Clause BSD on a per-file basis, with unconverted files still under
-terms that restrict commercial use. Vendoring a generated copy would inherit
-that ambiguity into every downstream user of this library, permanently, to save
-them one command. That trade is not worth making.
-
-So you supply the tables. `docs/PROVENANCE.md` sets out where to get them and
-what each field means; `from_pinmame.py` in that directory will extract them
-from a checkout you already have.
-
-WHAT THE STRUCTURE MEANS
+tables, and this project does not distribute them: you supply them.
+docs/PROVENANCE.md explains why, sets out the limits of that position, and
+docs/from_pinmame.py will extract them from a checkout you already have.
 
     pitch_bits   6 on both 52xx parts. Present because the earlier TMS5100 and
                  TMS5110 use 5, and assuming that width for a 52xx stream
                  desynchronises every frame after the first voiced one.
     k_widths     bit width of K1..K10, in order.
-    energy       index -> amplitude
+    energy       index -> amplitude.
     pitch        index -> excitation PERIOD IN SAMPLES, not a frequency.
                  f0 = sample_rate / period. Index 0 means unvoiced.
-    k            ten lists, index -> reflection coefficient.
+    k            ten lists, index -> reflection coefficient (signed).
 
-The two 52xx parts share every field width; ONLY the table contents differ.
-The pitch table is where they differ substantively, and that difference is the
-whole reason this project exists. See docs/PITCH_CEILING.md.
+The two 52xx parts share every field width; only the table contents differ. The
+pitch table is where they differ substantively, and that difference is the whole
+reason this project exists -- see docs/PITCH_CEILING.md.
 """
 from __future__ import annotations
 
@@ -149,13 +134,50 @@ class ChipTables:
 
     @classmethod
     def from_json(cls, path) -> "ChipTables":
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
-        return cls(name=raw["name"],
-                   pitch_bits=raw["pitch_bits"],
-                   k_widths=list(raw["k_widths"]),
-                   energy=list(raw["energy"]),
-                   pitch=list(raw["pitch"]),
-                   k=[list(v) for v in raw["k"]])
+        """Load a table file, naming what is wrong with it if it is wrong.
+
+        These files are user-supplied and often hand-edited, so every schema
+        problem becomes a `ValueError` that names the file and the field. A
+        `KeyError` or a `TypeError` escaping from here reaches the user as a
+        traceback, which tells them nothing they can act on.
+        """
+        where = Path(path)
+        try:
+            raw = json.loads(where.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("%s is not valid JSON: %s" % (where, error))
+
+        if not isinstance(raw, dict):
+            raise ValueError("%s must contain a JSON object, not %s"
+                             % (where, type(raw).__name__))
+
+        def field(name, want_list):
+            if name not in raw:
+                raise ValueError("%s: missing required field %r" % (where, name))
+            value = raw[name]
+            if want_list and not isinstance(value, list):
+                raise ValueError("%s: field %r must be a list, not %s"
+                                 % (where, name, type(value).__name__))
+            return value
+
+        name = field("name", False)
+        if not isinstance(name, str):
+            raise ValueError("%s: field 'name' must be a string, not %s"
+                             % (where, type(name).__name__))
+        k_raw = field("k", True)
+        for i, row in enumerate(k_raw, start=1):
+            if not isinstance(row, list):
+                raise ValueError("%s: K%d must be a list, not %s"
+                                 % (where, i, type(row).__name__))
+        try:
+            return cls(name=name,
+                       pitch_bits=field("pitch_bits", False),
+                       k_widths=list(field("k_widths", True)),
+                       energy=list(field("energy", True)),
+                       pitch=list(field("pitch", True)),
+                       k=[list(row) for row in k_raw])
+        except ValueError as error:
+            raise ValueError("%s: %s" % (where, error))
 
     def to_json(self, path) -> None:
         Path(path).write_text(json.dumps({

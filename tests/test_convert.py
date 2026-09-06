@@ -349,6 +349,41 @@ class TestTableValidation(unittest.TestCase):
         kwargs.update(overrides)
         return ChipTables(**kwargs)
 
+    def test_malformed_files_raise_a_named_error_not_a_traceback(self):
+        """These files are hand-edited. Every schema fault must name itself."""
+        import json as _json
+        import tempfile
+        cases = [
+            ("{}", "missing required field"),
+            ("[]", "must contain a JSON object"),
+            ('"hello"', "must contain a JSON object"),
+            ("17", "must contain a JSON object"),
+            ("not json at all", "not valid JSON"),
+            ('{"name": 5, "pitch_bits": 6, "k_widths": [], "energy": [],'
+             ' "pitch": [], "k": []}', "must be a string"),
+            ('{"name": "x", "pitch_bits": 6, "k_widths": null, "energy": [],'
+             ' "pitch": [], "k": []}', "must be a list"),
+            ('{"name": "x", "pitch_bits": 6, "k_widths": [], "energy": [],'
+             ' "pitch": [], "k": [1]}', "K1 must be a list"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tables.json"
+            for text, expected in cases:
+                path.write_text(text)
+                with self.assertRaises(ValueError) as caught:
+                    ChipTables.from_json(path)
+                self.assertIn(expected, str(caught.exception), repr(text))
+                self.assertIn("tables.json", str(caught.exception), repr(text))
+
+    def test_a_valid_file_round_trips(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.json"
+            original().to_json(path)
+            back = ChipTables.from_json(path)
+            self.assertEqual(list(back.pitch), list(original().pitch))
+            self.assertEqual(back.name, original().name)
+
     def test_energy_must_have_sixteen_entries(self):
         with self.assertRaises(ValueError):
             self._tables(energy=[0] * 15)

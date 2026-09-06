@@ -11,8 +11,8 @@ and arrangement can matter, and so can the licence of whatever file you extract
 from. The position taken here is to keep that decision with you rather than make
 it for you.
 
-The practical problem is provenance. Every convenient machine-readable copy of
-these tables traces back to an emulator source tree. The most complete of those,
+The practical problem is provenance. Every convenient machine-readable copy we
+located traces back to an emulator source tree. The most complete of those,
 PinMAME, is part-way through migrating from the old MAME licence to 3-Clause
 BSD, per file, and files that have not been converted remain under terms that
 restrict commercial use. Vendoring a generated copy would carry that ambiguity

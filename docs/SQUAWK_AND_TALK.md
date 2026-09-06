@@ -4,7 +4,20 @@ The converter needs to know which bytes are speech. This page is what we have
 established about that, and — more usefully — which parts of it do not
 generalise.
 
-Everything here is our own analysis of ROM structure. No ROM data is reproduced.
+### Where this comes from, and how far to trust it
+
+This is our own analysis, not a citation of a datasheet, and no ROM data is
+reproduced. The sample is the **49 Squawk & Talk ROM sets PinMAME ships** — the
+count `snt_common.discover_games()` returns from its driver — examined with a
+private toolkit that is not part of this repository. So "most tables", "at least
+one set" and "everywhere we have looked" all mean *within those 49*, read
+statically. They are observations at that sample size, not verified facts about
+every board Bally built, and only **Embryon has been taken end to end**, through
+conversion and rendering. Where a claim rests on something you can check
+yourself, the check is given alongside it.
+
+Board details below are read from PinMAME's driver sources and the board's own
+documentation, both public.
 
 ## The board
 
@@ -12,9 +25,12 @@ Bally AS-2518-61. An M6802 sound CPU, no banking, four fixed 4 KB ROM sockets,
 and a TMS5200 for speech.
 
 One correction worth recording because it costs time: the header comment in
-PinMAME's `by35snd.h` describes this board's CPU as an M6809. The instruction
-decoding in the emulated ROM behaves as an M6802/6800, and the board's own
-documentation agrees. Trust the decode, not the comment.
+PinMAME's `src/wpc/by35snd.h` (line 25) calls this board's CPU an M6809. The
+driver beside it does not — `src/wpc/by35snd.c` line 469 reads
+`MDRV_CPU_ADD(M6802, 3579545./4.)`, and `src/cpu/m6800/m6800.c` line 161 is
+`#define m6802 m6800`. So it is a plain 6800, and the board's own documentation
+agrees. Trust the driver, not the comment. (Line numbers are from the PinMAME
+revision pinned in [PROVENANCE.md](PROVENANCE.md).)
 
 ## What generalises
 

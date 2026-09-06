@@ -45,8 +45,8 @@ def nearest_index(value: int, table: Sequence[int],
     those as a "nearest value" would not merely pick a poor amplitude, it would
     change what the frame IS -- turning speech into a stop frame truncates
     everything after it. On the real tables this does not currently occur, which
-    is exactly why it must be enforced structurally rather than left to luck
-    with whatever tables a user supplies.
+    is why it is enforced here rather than left to whatever tables a user
+    supplies.
     """
     forbidden = set(forbid)
     best, best_delta = None, None
@@ -169,6 +169,15 @@ def convert_stream(data: bytes, source: ChipTables,
                 "family and its frames do not have this layout."
                 % (chip.name, chip.pitch_bits, list(chip.k_widths),
                    list(K_WIDTHS)))
+    if (list(source.energy), list(source.pitch),
+            [list(v) for v in source.k]) == (list(target.energy),
+                                             list(target.pitch),
+                                             [list(v) for v in target.k]):
+        raise ValueError(
+            "%s and %s hold identical tables, so conversion would change "
+            "nothing. The usual cause is passing the same file twice, or "
+            "extracting both from the same variant."
+            % (source.name, target.name))
     if source.pitch_bits != target.pitch_bits or \
             list(source.k_widths) != list(target.k_widths):
         raise ValueError(

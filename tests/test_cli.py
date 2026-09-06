@@ -1,4 +1,5 @@
 """End-to-end CLI behaviour, including the refusals."""
+import hashlib
 import json
 import subprocess
 import sys
@@ -55,15 +56,46 @@ class TestCli(RomFixture):
         self.assertFalse((self.dir / "out.bin").exists())
 
     def test_convert_writes_rom_and_manifest(self):
+        """The manifest must describe the file that was actually written.
+
+        Sizes and phrase counts alone would hold for a tool that copied its
+        input and invented the rest, so every recorded quantity is reconciled
+        against the two files here.
+        """
         result = self._convert()
         self.assertEqual(result.returncode, 0, result.stderr)
         out = self.dir / "out.bin"
-        self.assertTrue(out.exists())
-        self.assertEqual(len(out.read_bytes()), len(self.rom))
+        after = out.read_bytes()
+        self.assertEqual(len(after), len(self.rom))
+        self.assertNotEqual(after, self.rom)
+
         manifest = json.loads((self.dir / "out.bin.manifest.json").read_text())
         self.assertEqual(manifest["input"]["bytes"], len(self.rom))
         self.assertEqual(len(manifest["phrases"]), 2)
-        self.assertIn("changed_ranges", manifest)
+
+        # Hashes name the exact bytes on disk, including the table files.
+        digest = lambda data: hashlib.sha256(data).hexdigest()   # noqa: E731
+        self.assertEqual(manifest["input"]["sha256"], digest(self.rom))
+        self.assertEqual(manifest["output"]["sha256"], digest(after))
+        self.assertEqual(manifest["tables"]["source_sha256"],
+                         digest((self.dir / "src.json").read_bytes()))
+        self.assertEqual(manifest["tables"]["target_sha256"],
+                         digest((self.dir / "dst.json").read_bytes()))
+
+        # changed_ranges must be exactly the bytes that differ, and the summary
+        # must count exactly that many.
+        differing = [i for i, (a, b) in enumerate(zip(self.rom, after)) if a != b]
+        from_ranges = [i for lo, hi in manifest["changed_ranges"]
+                       for i in range(lo, hi)]
+        self.assertEqual(from_ranges, differing)
+        self.assertEqual(manifest["summary"]["bytes_changed"], len(differing))
+
+        # Every phrase's extent and per-phrase byte count must match too.
+        for entry in manifest["phrases"]:
+            span = range(entry["start"], entry["end"])
+            changed = sum(1 for i in span if self.rom[i] != after[i])
+            self.assertEqual(entry["changed_bytes"], changed,
+                             "phrase %d" % entry["index"])
 
     def test_input_is_never_modified(self):
         self._convert()
@@ -159,14 +191,55 @@ class TestCli(RomFixture):
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertEqual((self.dir / "out.bin.manifest.json").read_text(), "{}")
 
-    def test_inspect_reports_the_final_byte_verdicts(self):
+    def test_inspect_reports_a_verdict_on_every_phrase_row(self):
+        """Parse the rows. The legend always prints both words regardless."""
         result = run("inspect", str(self.rom_path), "--table-offset", "0",
                      "--phrases", "2", "--source-tables",
                      str(self.dir / "src.json"), cwd=self.dir)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("final byte", result.stdout)
-        self.assertTrue(any(v in result.stdout
-                            for v in ("required", "spare")), result.stdout)
+
+        rows = {}
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 5 and parts[0].isdigit() and parts[1].startswith("0x"):
+                rows[int(parts[0])] = parts[4]
+        self.assertEqual(sorted(rows), [0, 1], result.stdout)
+        for index, verdict in rows.items():
+            self.assertIn(verdict, ("required", "spare"),
+                          "phrase %d: %r" % (index, verdict))
+
+        # And the verdicts agree with the library, so the row really is derived
+        # rather than printed from a constant.
+        sys.path.insert(0, str(ROOT / "src"))
+        from tms52xx.rom import PhraseTable, diagnose_last_byte
+        table = PhraseTable.from_pointers(self.rom, 0, 2)
+        self.assertEqual(rows, diagnose_last_byte(self.rom, table, original()))
+
+    def test_identical_tables_are_refused(self):
+        """Passing the same file twice is a no-op the user did not intend."""
+        result = run("convert", str(self.rom_path), "-o", str(self.dir / "o.bin"),
+                     "--source-tables", str(self.dir / "src.json"),
+                     "--target-tables", str(self.dir / "src.json"),
+                     "--table-offset", "0", "--phrases", "2", cwd=self.dir)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("identical tables", result.stderr)
+        self.assertFalse((self.dir / "o.bin").exists())
+
+    def test_the_conversion_direction_is_printed(self):
+        result = self._convert("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("synthetic-original -> synthetic-understudy",
+                      result.stdout)
+
+    def test_a_reversed_pair_is_flagged(self):
+        """The tool cannot know which chip a ROM came from, but it can say so."""
+        result = run("convert", str(self.rom_path), "-o", str(self.dir / "o.bin"),
+                     "--source-tables", str(self.dir / "dst.json"),
+                     "--target-tables", str(self.dir / "src.json"),
+                     "--table-offset", "0", "--phrases", "2", "--dry-run",
+                     cwd=self.dir)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("the wrong way round", result.stdout)
 
     def test_bad_layout_fails_loudly(self):
         result = run("convert", str(self.rom_path), "-o", str(self.dir / "x.bin"),

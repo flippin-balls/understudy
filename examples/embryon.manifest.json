@@ -30,6 +30,7 @@
   },
   "summary": {
     "phrases": 21,
+    "distinct_phrases": 21,
     "frames": 871,
     "frames_clamped": 17,
     "frames_approximated": 449,

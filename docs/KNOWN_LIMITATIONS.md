@@ -7,6 +7,18 @@ about 37.9 Hz. Frames below the substitute part's floor are clamped upward and
 will sound higher than the original. Nine candidate workarounds were built and
 measured; none recovered the range. See [PITCH_CEILING.md](PITCH_CEILING.md).
 
+## A converted ROM is not distinguishable from an original
+
+There is no marker in the output saying it has been converted — there is nowhere
+to put one. A TMS52xx stream has no header, no version field and no spare bits,
+and adding any would change its length and break the in-place property the whole
+approach rests on.
+
+The consequence is operational: converting an already-converted ROM moves every
+index a second time and quietly degrades the speech, and neither the tool nor
+the file can warn you. The manifest records the input's SHA-256 precisely so you
+can tell which image you have. Keep the original.
+
 ## Emulator-derived, not silicon-confirmed
 
 The pitch ceiling and every measurement behind it were derived against PinMAME's
@@ -20,8 +32,12 @@ conversion strategy compares with another — depend on the emulator's
 interpolation and lattice arithmetic being faithful, which is a stronger
 assumption.
 
-Outputs of this tool are therefore **structurally valid and emulator-checked**.
-Calling them "working ROMs" would require hardware testing we have not done.
+So an output of this tool is **structurally checked**: the converter re-parses
+what it wrote and confirms every frame kept its kind and the stream its length.
+That is not an acoustic check, and it is not an emulator run — the tool does not
+invoke one. The Embryon experiment in the README was rendered through PinMAME;
+your conversion has not been. Calling any of it a "working ROM" would require
+hardware testing we have not done.
 
 ## Nearest-value conversion is a baseline, not an optimum
 

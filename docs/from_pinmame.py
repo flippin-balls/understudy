@@ -8,13 +8,12 @@ satisfy yourself it suits your use before relying on the output. PinMAME is
 migrating to 3-Clause BSD per file and not every file has been converted; that
 is why this project does not ship the tables itself.
 
-WHY THIS IS NOT A ONE-LINE REGEX
-
-The tables are fields of `struct tms5100_coeffs` instances, not standalone named
-arrays, so they must be read positionally in declaration order. The file also
-contains a second, superseded `tms5220_coeff` inside an `#if 0` block; a parser
-that ignores the preprocessor picks the dead one. Both are handled below, and
-every extracted table is checked against the width its own struct declares, so a
+Not a one-line regex, for three reasons. The tables are fields of
+`struct tms5100_coeffs` instances rather than named arrays, so they are read
+positionally in declaration order; a superseded `tms5220_coeff` sits in an
+`#if 0` block, so a parser that ignores the preprocessor picks the dead one; and
+the live tables are macro references with backslash-continued bodies. Every
+extracted table is checked against the width its own struct declares, so a
 misparse fails here rather than producing quiet nonsense downstream.
 """
 from __future__ import annotations

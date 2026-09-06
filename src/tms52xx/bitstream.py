@@ -15,7 +15,7 @@ The TMS5200 and the TMS5220 use IDENTICAL field widths; only the coefficient
 tables behind the indexes differ. Worth stating because it is easy to assume
 otherwise: the earlier TMS5100/5110 family DOES use a 5-bit pitch field, and
 carrying that assumption over desynchronises every frame after the first voiced
-one. `test_wrong_pitch_width_desynchronises` demonstrates it.
+one.
 
 Two details cost more time than they should if you do not know them:
 
@@ -30,8 +30,8 @@ Two details cost more time than they should if you do not know them:
   from a bit that was never in the ROM.
 
 Every field records the absolute bit offsets it occupies. That is what makes
-`rebuild` a genuine round-trip test rather than a re-encode: if the bit map is
-wrong, the rebuilt stream differs from the original and the test fails.
+`rebuild` a round-trip rather than a re-encode: if the bit map is wrong, the
+rebuilt stream differs from the original.
 """
 from __future__ import annotations
 

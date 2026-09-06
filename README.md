@@ -50,7 +50,7 @@ Pure Python, standard library only, no dependencies. Python 3.9 or newer.
 ```
 git clone https://github.com/flippin-balls/understudy
 cd understudy
-PYTHONPATH=src python -m unittest discover -s tests    # 127 tests, all offline
+PYTHONPATH=src python -m unittest discover -s tests    # 137 tests, all offline
 ```
 
 Either install it, which gives you an `understudy` command:
@@ -92,6 +92,14 @@ is per stream, so the flag takes phrase indexes.
 
 The dry run reports how many frames had to be pitch-clamped before anything is
 written. Drop `--dry-run` to produce the file.
+
+**Convert the original, once.** The input must be the unmodified TMS5200 image.
+Running the same conversion on a ROM that has already been converted re-reads
+its indexes as though they were TMS5200 indexes and moves them a second time —
+the file stays valid, the same length, and structurally correct, and the speech
+degrades. Nothing detects this for you: a converted ROM carries no marker, and
+the tool cannot tell one from an original. Keep the original, and use the
+manifest's `input.sha256` to confirm what you are feeding it.
 
 **What it refuses to do.** The input ROM is never modified, and `--force` will
 not write over it even if you name it as the output — it only permits replacing
@@ -193,9 +201,10 @@ several good tools already solve it — see [docs/PRIOR_ART.md](docs/PRIOR_ART.m
 and start there if you have a recording rather than a ROM.
 
 It does not handle the TMS5100, TMS5110 or TMS5220C. It does not discover the
-phrase layout for you. It does not update ROM checksums. Its outputs are
-structurally valid and emulator-checked; no physical chip has been measured for
-this project. [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) is the full
+phrase layout for you. It does not update ROM checksums. It runs no emulator:
+each converted phrase is re-parsed with the target tables and checked frame by
+frame, which is a structural check, not an acoustic one. No physical chip has
+been measured for this project. [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) is the full
 list.
 
 ## Licence
@@ -205,5 +214,4 @@ welcome and not expected.
 
 ---
 
-Built by [Flashback Fleet LLC](https://github.com/flippin-balls), who operate
-pinball machines on location.
+Built by [Flashback Fleet LLC](https://github.com/flippin-balls).

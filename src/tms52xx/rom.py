@@ -21,7 +21,7 @@ ROM data of any kind.
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .bitstream import parse
@@ -93,8 +93,8 @@ class PhraseTable:
         # image" is the obvious answer and is wrong whenever the pointer table
         # sits above the speech -- which is normal on a Squawk & Talk, where the
         # table lives in one socket and the phrases in another at a lower
-        # address. The table's own bytes are provably not speech, so they bound
-        # the last phrase just as surely as another pointer would.
+        # address. The table's own bytes are not speech, so they bound the last
+        # phrase just as another pointer would.
         def implicit_end(start: int) -> int:
             if start < table_offset:
                 return table_offset
@@ -144,9 +144,8 @@ class PhraseTable:
         # No overlap check: two extents here are always identical or disjoint.
         # Address-ordered extents are consecutive pointer pairs, so any decrease
         # trips the end <= start refusal above; command-ordered extents run to
-        # the next distinct sorted pointer. `test_extents_are_identical_or_
-        # disjoint` exercises every layout over a small bounded domain, which is
-        # what guards the property if this changes.
+        # the next distinct sorted pointer. The test suite exercises every
+        # layout over a small bounded domain to hold this.
         return cls(phrases)
 
 
@@ -160,6 +159,11 @@ class PhraseResult:
     stopped_cleanly: bool
     changed_bytes: int
     last_byte_truncated: bool = False
+    #: When two commands name the same phrase, both are reported so neither
+    #: command's identity is lost, but only the first did the physical work.
+    #: This holds that first phrase's index on every later alias, and `summarise`
+    #: leaves aliases out of its physical totals.
+    alias_of: Optional[int] = None
     #: Frames whose kind (voiced/unvoiced/silence/stop) survived conversion,
     #: measured by re-parsing the OUTPUT with the target tables rather than by
     #: trusting the conversion. A kind change means the bit layout moved, which
@@ -254,9 +258,22 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     truncated = _truncation_set(truncate_last_byte, table)
     out = bytearray(rom)
     results: List[PhraseResult] = []
+    # Duplicate pointers are legal -- two commands can name one phrase -- so the
+    # same bytes can be declared more than once. Convert them ONCE: repeating
+    # the work would be harmless for the output (each pass reads the untouched
+    # source) but would double every total in the manifest, which is the file
+    # whose whole purpose is to be countable.
+    done: Dict[tuple, PhraseResult] = {}
 
     for phrase in table.phrases:
         end = phrase.end - 1 if phrase.index in truncated else phrase.end
+
+        first = done.get((phrase.start, end))
+        if first is not None:
+            results.append(replace(first, phrase=phrase,
+                                   alias_of=first.phrase.index))
+            continue
+
         if end <= phrase.start:
             # Skipping here would drop the phrase from the results entirely:
             # no stop-frame check, no manifest entry, and a conversion that
@@ -297,7 +314,7 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
                 % (phrase.index, preserved, len(source_frames),
                    len(source_frames), len(target_frames)))
 
-        results.append(PhraseResult(
+        result = PhraseResult(
             kinds_preserved=preserved,
             f0_errors=tuple(abs(r.f0_error_hz) for r in report
                             if r.f0_error_hz is not None
@@ -310,12 +327,13 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
             truncated=sum(1 for r in report if r.skipped_truncated),
             stopped_cleanly=stopped,
             changed_bytes=sum(1 for a, b in zip(original, converted) if a != b),
-        ))
+        )
+        done[(phrase.start, end)] = result
+        results.append(result)
 
-    # Every declared phrase produces a result -- the loop above has no early
-    # `continue`, and duplicates that share an extent still each get their own
-    # entry so their command identities survive. `test_every_phrase_declared_
-    # produces_a_result` is what holds that.
+    # Every declared phrase produces a result: duplicates that share an extent
+    # each get their own entry, marked with `alias_of`, so no command loses its
+    # identity and no total is counted twice.
     unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
     if unterminated and not allow_unterminated:
         raise ValueError(
@@ -329,21 +347,26 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
 
 def summarise(results: Sequence[PhraseResult]) -> Dict[str, float]:
     """Headline numbers for a patched ROM."""
-    frames = sum(r.frames for r in results)
-    clamped = sum(r.clamped for r in results)
+    # Physical totals count each converted extent once. `phrases` counts what
+    # the layout DECLARED, which is a different and also useful number: with
+    # duplicate pointers a ROM has more commands than phrases.
+    unique = [r for r in results if r.alias_of is None]
+    frames = sum(r.frames for r in unique)
+    clamped = sum(r.clamped for r in unique)
     summary = {
         "phrases": len(results),
+        "distinct_phrases": len(unique),
         "frames": frames,
         "frames_clamped": clamped,
-        "frames_approximated": sum(r.approximated for r in results),
-        "frames_truncated": sum(r.truncated for r in results),
+        "frames_approximated": sum(r.approximated for r in unique),
+        "frames_truncated": sum(r.truncated for r in unique),
         "clamped_percent": 100.0 * clamped / frames if frames else 0.0,
         "phrases_without_stop_frame": sum(1 for r in results
                                           if not r.stopped_cleanly),
-        "bytes_changed": sum(r.changed_bytes for r in results),
-        "frame_kinds_preserved": sum(r.kinds_preserved for r in results),
+        "bytes_changed": sum(r.changed_bytes for r in unique),
+        "frame_kinds_preserved": sum(r.kinds_preserved for r in unique),
     }
-    errors = sorted(e for r in results for e in r.f0_errors)
+    errors = sorted(e for r in unique for e in r.f0_errors)
     if errors:
         summary["f0_error_hz"] = {
             "frames": len(errors),

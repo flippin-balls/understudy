@@ -161,28 +161,26 @@ class TestPatch(RomFixture):
                              "phrase %d's untransmitted final byte was written"
                              % phrase.index)
 
-    def test_converting_a_rom_to_its_own_tables_changes_nothing(self):
-        """Target-to-target is a fixed point, which is what makes a re-run safe.
+    def test_running_the_conversion_twice_moves_the_indexes_again(self):
+        """The trap the documentation warns about, demonstrated not asserted.
 
-        NOTE WHAT THIS IS NOT. It does not say source-to-target conversion is
-        idempotent -- it is not, and must not be run twice. The second pass here
-        is dst -> dst, i.e. a converted ROM re-examined against the tables it is
-        now written in, which is the case a user hits by re-running the tool on
-        its own output.
-        """
-        once, _ = patch_rom(self.rom, self.table, self.src, self.dst)
-        twice, _ = patch_rom(once, self.table, self.dst, self.dst)
-        self.assertEqual(once, twice)
-
-    def test_running_the_conversion_twice_is_not_safe(self):
-        """The other half of the warning above, demonstrated rather than stated.
-
-        A second source->target pass re-reads already-converted indexes as
-        though they were source indexes, and moves them again.
+        A second source->target pass reads already-converted indexes as though
+        they were source indexes and moves them a second time. The result stays
+        the same length and still parses, so nothing about the file reveals it;
+        only knowing which image you started from does.
         """
         once, _ = patch_rom(self.rom, self.table, self.src, self.dst)
         twice, _ = patch_rom(once, self.table, self.src, self.dst)
         self.assertNotEqual(once, twice)
+        self.assertEqual(len(once), len(twice))
+
+    def test_converting_a_rom_to_its_own_tables_is_refused(self):
+        """A no-op the user cannot have meant, so it is an error rather than a
+        silent rewrite of a ROM with itself."""
+        once, _ = patch_rom(self.rom, self.table, self.src, self.dst)
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(once, self.table, self.dst, self.dst)
+        self.assertIn("identical tables", str(caught.exception))
 
 
 
@@ -371,6 +369,63 @@ class TestEveryPhraseIsReported(RomFixture):
                                                address_ordered=False)
         _out, results = patch_rom(bytes(rom), duplicated, self.src, self.dst)
         self.assertEqual([r.phrase.index for r in results], [0, 1])
+
+
+class TestDuplicatePointerAccounting(RomFixture):
+    """Two commands naming one phrase must not be counted as two phrases.
+
+    The bytes are converted once -- a second pass would read the untouched
+    source and produce the same result -- but summing per-phrase totals across
+    the alias double-counts every physical quantity in the manifest, which is
+    the file whose entire purpose is to be countable.
+    """
+
+    def _duplicated(self):
+        a_start = self.table.phrases[0].start
+        b_start = self.table.phrases[1].start
+        rom = bytearray(self.rom)
+        for i, value in enumerate([a_start, a_start, b_start]):
+            rom[2 * i:2 * i + 2] = value.to_bytes(2, "big")
+        rom = bytes(rom)
+        return rom, PhraseTable.from_pointers(rom, 0, 2, address_ordered=False)
+
+    def test_totals_reconcile_with_the_bytes_that_actually_changed(self):
+        rom, table = self._duplicated()
+        out, results = patch_rom(rom, table, self.src, self.dst)
+        summary = summarise(results)
+        actual = sum(1 for a, b in zip(rom, out) if a != b)
+        self.assertEqual(summary["bytes_changed"], actual)
+
+    def test_both_commands_are_still_reported(self):
+        """Deduplicating must not cost a command its identity."""
+        rom, table = self._duplicated()
+        _out, results = patch_rom(rom, table, self.src, self.dst)
+        self.assertEqual([r.phrase.index for r in results], [0, 1])
+        self.assertIsNone(results[0].alias_of)
+        self.assertEqual(results[1].alias_of, 0)
+        self.assertEqual(results[1].phrase.start, results[0].phrase.start)
+
+    def test_the_summary_distinguishes_commands_from_phrases(self):
+        rom, table = self._duplicated()
+        _out, results = patch_rom(rom, table, self.src, self.dst)
+        summary = summarise(results)
+        self.assertEqual(summary["phrases"], 2)
+        self.assertEqual(summary["distinct_phrases"], 1)
+
+    def test_frames_are_not_counted_twice(self):
+        rom, table = self._duplicated()
+        _out, results = patch_rom(rom, table, self.src, self.dst)
+        solo = PhraseTable.from_pointers(rom, 0, 1, address_ordered=False)
+        _out, solo_results = patch_rom(rom, solo, self.src, self.dst)
+        self.assertEqual(summarise(results)["frames"],
+                         summarise(solo_results)["frames"])
+
+    def test_totals_reconcile_without_duplicates_too(self):
+        """Guards the fix: the ordinary path must not have been broken."""
+        out, results = patch_rom(self.rom, self.table, self.src, self.dst)
+        actual = sum(1 for a, b in zip(self.rom, out) if a != b)
+        self.assertEqual(summarise(results)["bytes_changed"], actual)
+        self.assertEqual(summarise(results)["distinct_phrases"], 2)
 
 
 class TestSummaryStatistics(RomFixture):
