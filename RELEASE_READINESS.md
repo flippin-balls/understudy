@@ -426,8 +426,8 @@ chips.
 
 ## 12. Review rounds
 
-Fifteen adversarial Codex reviews, each briefed to find ways to corrupt a ROM,
-lose an input, use the wrong profile or table, or misrepresent evidence.
+Twenty-three adversarial Codex reviews, each briefed to find ways to corrupt a
+ROM, lose an input, use the wrong profile or table, or misrepresent evidence.
 
 | round | outcome |
 |---|---|
@@ -445,14 +445,24 @@ lose an input, use the wrong profile or table, or misrepresent evidence.
 | 12 | No blocker. Three MEDIUM: documents describing an earlier version of the mirror check, of the termination criterion, and of how many profiles had been board-simulated. |
 | 13 | No blocker. Four MEDIUM: a hand procedure that would have rejected a correct layout, a byte-identity claim that did not follow from hash identification, a precision table naming only Embryon, and a headline stronger than the qualification beneath it. |
 | 14 | No blocker. Two MEDIUM: the corrected hand procedure was still weaker than the tool without saying so, and "the output is not the simulated one" was too strong for options that may not change a byte. |
-| 15 | **Ready.** No HIGH, no MEDIUM. Ship as a clearly-labelled pre-1.0 research preview. |
+| 15 | No HIGH, no MEDIUM. Ship as a clearly-labelled pre-1.0 research preview. |
+| 16 | **Attacked the Rapid Fire exclusion**, which was the whole reason coverage stopped short. One HIGH: the exclusion rested on one observation and the attribution of 35 PIA references was undemonstrated. Disassembly showed the firmware DOES carry the TMS byte-write routine; that claim was retracted. |
+| 17 | One MEDIUM: "nothing reaches it, so it is dead code" did not follow from the absence of a literal address. Conclusion removed rather than defended; the exclusion rests on criterion 3 alone. |
+| 18–19 | Two MEDIUM, one each: an unqualified "has no speech" surviving in §8b and then in the README, both narrowed to "plays no speech under any command the MPU can send". |
+| 20 | **Ready.** No HIGH, no MEDIUM, no LOW. |
+| 21 | Three LOW on the ROM-availability wording: "no identifiable dump", a dump does not by itself make another set, and hash-verified vs verified. |
+| 22 | **Coverage rose to 16 of 19** — Big Bat's ROMs were found in an archive tree the earlier search never walked. Three MEDIUM: the new profile shipped without the traced-evidence fields the other fifteen carry, its 29% U4 coverage was unjustified in the profile itself, and its provenance recorded no SHA-1 to check the SHA-256 against. |
+| 23 | One MEDIUM: the residue above Big Bat's speech was classified as "not speech" when the evidence supports "consistent with sequencer data, and nothing the firmware plays lies there". Plus three stale counts. |
 
-Rounds 10 to 15 covered the traced-layout work: eleven new profiles, two
+Rounds 10 to 23 covered the traced-layout work: eleven new profiles, two
 corrected ones, three new layout facts in the schema, a per-byte merge for
 mirrored devices, and the replacement of the static frame corpus with an
-execution-derived phrase list as criterion 3. Nothing in that round was accepted
-on the first pass, and two of the guards written to answer a finding were
-themselves found to be too strong or to claim more than they did.
+execution-derived phrase list as criterion 3, and finally a sixteenth set.
+Nothing in it was accepted on the first pass. Two of the guards written to
+answer a finding were themselves found to be too strong or to claim more than
+they did, three of the author's claims about Rapid Fire had to be retracted or
+narrowed, and the set that took coverage to 16 was found only because a review
+round refused to accept a negative result whose search had been too narrow.
 
 ## 13. Unresolved blockers
 
@@ -471,7 +481,7 @@ themselves found to be too strong or to claim more than they did.
    the quantified pitch-floor difference remaining.
 5. At least one profile moved to `silicon-verified` on the strength of that
    report; any failure understood and fixed. `silicon-verified` is per profile,
-   so a single hardware test raises one set, not the other fourteen.
+   so a single hardware test raises one set, not the other fifteen.
 6. The exact release artifact still passing every CI check.
 
 More profiles and a better mapper are welcome afterwards. They are not

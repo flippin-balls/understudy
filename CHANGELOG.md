@@ -78,8 +78,8 @@ features.
 - **Big Bat**, whose ROMs were believed unobtainable. They were in a second
   archive tree the first search never walked, filed under descriptive names
   ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN") rather than the driver's
-  `u3.bin` — so neither a hash search of the wrong tree nor a filename search
-  could find them. All three match the driver's SHA-1 exactly. A negative result
+  `u3.bin` — so a hash search of the wrong tree could not find them, and a
+  filename search using the driver's names would not have found them either. All three match the driver's SHA-1 exactly. A negative result
   is only as wide as the search behind it.
 
 ### Fixed
