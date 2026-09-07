@@ -302,9 +302,10 @@ and on ROM images. Its findings are.
 
 ## 8b. Rapid Fire: a boot is not a check
 
-The set expected to be the sixteenth has no speech. Trying to convert it anyway
-is the sharpest demonstration in this project of why criterion 4 cannot stand
-alone.
+The set expected to be the sixteenth plays no speech under any command the MPU
+can send (§3 is precise about what that does and does not establish). Trying to
+convert it anyway is the sharpest demonstration in this project of why criterion
+4 cannot stand alone.
 
 | | |
 |---|---|
