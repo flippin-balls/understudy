@@ -321,10 +321,13 @@ Three conclusions, all acted on:
 2. **The third criterion must come from execution, not from another static
    read.** A phrase list captured from the running board is the only check a
    wrong layout cannot agree with, and it is now what every profile clears.
-3. **Coverage is now reported.** `convert-set` prints what fraction of each
-   speech device the layout reached, and calls out anything under 20%. Correct
-   layouts in the sweep ran 33–70%; the false pass ran 1.5%. Reported rather
-   than gated — 24.3% was wrong and 32.7% was right, so no threshold is safe.
+3. **Coverage is now reported.** `convert-set` prints, per device, the share
+   of the physical part the layout actually converts — each phrase counted to
+   its own stop frame rather than to its declared bound, and mapped through the
+   mirror so a 2 KB part is measured against its own 2048 bytes. Across the
+   sixteen shipped sets that runs 2%–100%, median 98%; the false pass ran 1.5%.
+   Reported rather than gated: a low figure can mean a device that holds mostly
+   something else, so no threshold is safe.
 
 The harness is not in the repository: it depends on a private research toolkit
 and on ROM images. Its findings are.

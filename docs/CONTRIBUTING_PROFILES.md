@@ -154,9 +154,13 @@ ships:
    nothing else in the sixteen sets. Establish which before naming it in
    `unterminated_phrases`, and expect to be held to it — a named phrase that
    does terminate is refused;
-2. **speech coverage that looks like a whole ROM.** `convert-set` prints the
-   percentage of each speech device the layout reached. Correct layouts in that
-   sweep ran 33–70%; the wrong one ran 1.5%. There is no safe threshold, so look
+2. **speech coverage that looks like a whole ROM.** `convert-set` prints, per device, the share of the PHYSICAL part that the
+   layout's phrases actually convert -- each phrase counted to its own stop
+   frame, not to its declared bound, and mapped through the mirror so a 2 KB
+   part in a 4 KB window is measured against 2048 bytes. Across the sixteen
+   shipped sets that runs 2%-100% with a median of 98%; the low figures are
+   devices that hold mostly something other than speech, and the known-wrong
+   layout in the corpus sweep ran 1.5%. There is no safe threshold, so look
    at the number and judge it;
 3. **an independent frame count if you can get one** — four sets matched a
    separately built corpus exactly, and that is the strongest check available

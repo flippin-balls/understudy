@@ -64,9 +64,18 @@ def notices() -> str:
 class Chip:
     """A part Understudy can convert from or to."""
 
+    #: Opcodes a rate-control part reads as SET RATE, where a TMS5200 or
+    #: TMS5220 treats them as a no-op. Masked with 0x70.
+    SET_RATE_OPCODES = (0x00, 0x20)
+
     def __init__(self, chip_id: str, names: List[str], table: str, role: str,
-                 note: str = "") -> None:
+                 note: str = "", rate_control: bool = False) -> None:
         self.id = chip_id
+        #: True for the C family. The LPC tables are identical to the TMS5220's,
+        #: so the converted DATA is the same -- what differs is how the part
+        #: reads one command opcode, which makes this a property of the
+        #: FIRMWARE driving it rather than of the conversion.
+        self.rate_control = rate_control
         #: Markings that identify this part in the wild.
         self.names = names
         #: Basename of the bundled table file this part uses.
@@ -100,12 +109,13 @@ CHIPS: Dict[str, Chip] = {
         "tms5220c", ["TMS5220C", "TMS5220CNL"], "tms5220", "target",
         "LPC tables decap-verified identical to the TMS5220. Adds a SET RATE "
         "command on an opcode the 5220 treats as a NOP; harmless on a board "
-        "that never sends it."),
+        "that never sends it.", rate_control=True),
     "tsp5220c": Chip(
         "tsp5220c", ["TSP5220C"], "tms5220", "target",
         "MAME records TSP5220C as another name for the TMS5220C, so the "
         "converted data is the same. Often the most findable part today. "
-        "Electrical substitution is not something this project has verified."),
+        "Electrical substitution is not something this project has verified.",
+        rate_control=True),
 }
 
 #: Ids accepted where a replacement part is wanted.

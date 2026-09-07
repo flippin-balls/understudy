@@ -291,6 +291,139 @@ class TestLayoutRefusals(RomFixture):
                                 "%r and %r" % (pointers, a, b))
         self.assertGreater(accepted, 1000)   # the sweep really did exercise it
 
+    def test_pair_extents_are_identical_or_disjoint(self):
+        """The same sweep over PAIR tables, which can express partial overlap.
+
+        A list of starts gives identical-or-disjoint extents by construction.
+        A table of (start, end) records can say anything, so the property that
+        `from_pointers` gets for free has to be enforced -- and this asserts it
+        over every small pair table rather than over one hand-made case.
+        """
+        rom = bytes(32)
+        accepted = 0
+        for count in (1, 2, 3):
+            if 4 * count > len(rom):
+                continue
+            for pointers in itertools.product(range(0, 33, 4),
+                                              repeat=2 * count):
+                buf = bytearray(rom)
+                for i, value in enumerate(pointers):
+                    buf[2 * i:2 * i + 2] = value.to_bytes(2, "big")
+                try:
+                    table = PhraseTable.from_pointer_pairs(bytes(buf), 0, count)
+                except ValueError:
+                    continue
+                accepted += 1
+                extents = [(p.start, p.end) for p in table.phrases]
+                for a, b in itertools.combinations(extents, 2):
+                    if a == b:
+                        continue
+                    self.assertFalse(
+                        a[0] < b[1] and b[0] < a[1],
+                        "pair layout %r accepted with overlapping extents "
+                        "%r and %r" % (pointers, a, b))
+        self.assertGreater(accepted, 100)
+
+
+class TestPartialOverlapIsRefused(unittest.TestCase):
+    """Partial overlap corrupts silently, so it must fail closed.
+
+    `patch_rom` converts every phrase from the ORIGINAL bytes and writes each in
+    turn. Where two extents share only part of a range, the second write lands
+    on top of the first phrase's tail with data converted at a different bit
+    alignment. Both conversions validate; the per-phrase re-parse happens before
+    the second write; and the corrupted phrase still re-parses as a clean,
+    terminated stream. Nothing downstream can see it.
+    """
+
+    def setUp(self):
+        self.src, self.dst = original(), understudy()
+        self.body = stream(self.src, [(7, 0, 40, list(range(10))),
+                                      (9, 0, 12, list(range(10))),
+                                      (0xF, 0, 0, [])])
+
+    def pair_rom(self, extents):
+        """A ROM whose pair table declares `extents`."""
+        base, n = 16, len(self.body)
+        table_at = base + n + 8
+        rom = bytearray(table_at + 4 * len(extents) + 8)
+        rom[base:base + n] = self.body
+        for i, (start, end) in enumerate(extents):
+            at = table_at + 4 * i
+            rom[at:at + 2] = start.to_bytes(2, "big")
+            rom[at + 2:at + 4] = end.to_bytes(2, "big")
+        return bytes(rom), table_at, base, n
+
+    def test_a_partially_overlapping_pair_table_is_refused(self):
+        n = len(self.body)
+        rom, table_at, _base, _n = self.pair_rom([(16, 16 + n),
+                                                  (16 + n // 2, 16 + n)])
+        with self.assertRaises(ValueError) as caught:
+            PhraseTable.from_pointer_pairs(rom, table_at, 2)
+        message = str(caught.exception)
+        self.assertIn("overlap in part", message)
+        self.assertIn("identical", message)
+
+    def test_identical_aliases_are_still_accepted(self):
+        """Two commands naming one phrase is normal and must keep working."""
+        n = len(self.body)
+        rom, table_at, base, _ = self.pair_rom([(16, 16 + n), (16, 16 + n)])
+        table = PhraseTable.from_pointer_pairs(rom, table_at, 2)
+        self.assertEqual([(p.start, p.end) for p in table.phrases],
+                         [(16, 16 + n), (16, 16 + n)])
+        out, results = patch_rom(rom, table, self.src, self.dst)
+        self.assertEqual(len(results), 2)
+        self.assertIsNotNone(results[1].alias_of)
+
+    def test_disjoint_extents_are_still_accepted(self):
+        n = len(self.body)
+        rom, table_at, base, _ = self.pair_rom([(16, 16 + n // 2),
+                                                (16 + n // 2, 16 + n)])
+        table = PhraseTable.from_pointer_pairs(rom, table_at, 2)
+        self.assertEqual(len(table.phrases), 2)
+
+    def test_patch_rom_refuses_a_hand_built_overlapping_table(self):
+        """The backstop: a PhraseTable need not come from a pointer table."""
+        n = len(self.body)
+        rom = bytes(16) + self.body + bytes(8)
+        table = PhraseTable(phrases=[Phrase(0, 16, 16 + n),
+                                     Phrase(1, 16 + n // 2, 16 + n)])
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(rom, table, self.src, self.dst)
+        self.assertIn("overlap in part", str(caught.exception))
+
+    def test_the_corruption_this_prevents_is_real(self):
+        """Without the guard the survivor looks perfect. Demonstrate that.
+
+        Converting the two extents separately and replaying the writes in order
+        reproduces exactly what `patch_rom` used to emit: phrase 0's tail
+        overwritten, and still re-parsing as a clean terminated stream.
+        """
+        n = len(self.body)
+        rom = bytes(16) + self.body + bytes(8)
+        first, second = (16, 16 + n), (16 + n // 2, 16 + n)
+        def convert(start, end):
+            """One extent, whether or not it happens to terminate."""
+            one = PhraseTable(phrases=[Phrase(0, start, end)])
+            try:
+                return patch_rom(rom, one, self.src, self.dst)[0]
+            except ValueError:
+                return patch_rom(rom, one, self.src, self.dst,
+                                 allow_unterminated=[0])[0]
+
+        merged = bytearray(rom)
+        for start, end in (first, second):
+            merged[start:end] = convert(start, end)[start:end]
+        alone = convert(*first)
+        self.assertNotEqual(bytes(merged[first[0]:first[1]]),
+                            bytes(alone[first[0]:first[1]]),
+                            "the overlap must actually change phrase 0")
+        from tms52xx.bitstream import parse
+        frames, stopped = parse(bytes(merged[first[0]:first[1]]),
+                                self.dst.pitch_bits, list(self.dst.k_widths))
+        self.assertTrue(stopped, "and the corrupt result still terminates "
+                                 "cleanly, which is why it needs a guard")
+
 
 class TestLibraryFailsClosed(RomFixture):
     """The refusal lives in the library, not only in the command line.

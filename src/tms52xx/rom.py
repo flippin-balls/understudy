@@ -42,6 +42,35 @@ class Phrase:
         return self.end - self.start
 
 
+def _refuse_partial_overlap(phrases, where: str) -> None:
+    """Extents must be EXACTLY IDENTICAL aliases, or DISJOINT.
+
+    Two commands naming the same phrase is normal and is converted once. Two
+    phrases sharing only PART of a range is not: `patch_rom` converts each from
+    the original bytes, so whichever is written second overwrites the first
+    one's tail with data converted at a different bit alignment. Both
+    conversions validate on their own, and the survivor still re-parses as a
+    clean terminated phrase -- the per-phrase check runs before the second write
+    lands -- so nothing downstream notices a ROM that is quietly wrong.
+
+    A list of starts cannot express this: consecutive pointers give extents that
+    are identical or disjoint by construction. A table of (start, end) records
+    can say anything, which is why this is checked rather than assumed.
+    """
+    ordered = sorted({(p.start, p.end) for p in phrases})
+    for i, (start, end) in enumerate(ordered):
+        for other_start, other_end in ordered[i + 1:]:
+            if other_start >= end:
+                break                       # sorted: nothing later can overlap
+            raise ValueError(
+                "%s: phrases (0x%X-0x%X) and (0x%X-0x%X) overlap in part. "
+                "Phrase extents must be identical -- two commands naming one "
+                "phrase -- or disjoint. Converting both would rewrite the "
+                "shared bytes twice at different bit alignments, and the second "
+                "write would corrupt the first phrase."
+                % (where, start, end, other_start, other_end))
+
+
 @dataclass
 class PhraseTable:
     """Where the phrases are. You supply the layout; see the module docstring."""
@@ -101,6 +130,8 @@ class PhraseTable:
                     "0x%X-0x%X; patching it would corrupt the table"
                     % (i, start, end, table_offset, end_of_table))
             phrases.append(Phrase(i, start, end))
+        _refuse_partial_overlap(phrases, "pointer-pair table at 0x%X"
+                                % table_offset)
         return cls(phrases)
 
     @classmethod
@@ -322,6 +353,9 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     extents. Nothing outside them -- pointer table, code, data -- is written.
     """
     truncated = _truncation_set(truncate_last_byte, table)
+    # Checked here as well as in the pair reader: this is where the damage
+    # happens, and a PhraseTable can be built directly.
+    _refuse_partial_overlap(table.phrases, "layout")
     out = bytearray(rom)
     results: List[PhraseResult] = []
     # Duplicate pointers are legal, so the same bytes can be declared twice.

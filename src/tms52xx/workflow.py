@@ -25,7 +25,12 @@ from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
 from .tables import ChipTables
 
 #: Bumped when the manifest's shape changes. Readers should check it.
-MANIFEST_SCHEMA_VERSION = 2
+#: Bumped to 3: `speech_coverage_percent` changed meaning -- it counted the
+#: union of DECLARED phrase extents against the CPU window, and now counts the
+#: bytes each phrase actually consumes through its stop frame, against the
+#: PHYSICAL device. A v2 reader comparing the two would be comparing different
+#: quantities. `source_window` was added alongside it.
+MANIFEST_SCHEMA_VERSION = 3
 
 
 class ConversionRefused(RuntimeError):
@@ -93,8 +98,41 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
                 target: Chip, source: Optional[Chip] = None,
                 source_tables: Optional[Path] = None,
                 target_tables: Optional[Path] = None,
-                allow_unterminated: bool = False) -> SetResult:
+                allow_unterminated: bool = False,
+                allow_unverified_rate_control: bool = False) -> SetResult:
     """Convert one identified ROM set. Returns a SetResult; writes nothing."""
+    # A C-FAMILY TARGET NEEDS EVIDENCE ABOUT THE FIRMWARE, NOT JUST THE DATA.
+    #
+    # The TMS5220C and TSP5220C carry LPC tables decap-verified identical to the
+    # TMS5220's, so the converted bytes are the same whichever of the three is
+    # named. What differs is that the C family reads the 0x00/0x20 opcode as SET
+    # RATE where the 5200 and 5220 treat it as a no-op. Whether that matters is
+    # a property of the BOARD'S FIRMWARE -- does it ever send one? -- and no
+    # amount of looking at speech data answers it.
+    #
+    # So a profile has to carry the answer, measured by running the firmware
+    # through every command its MPU can send. Offering a C-family target without
+    # that would let the tool imply a compatibility nobody established.
+    if target.rate_control and not allow_unverified_rate_control:
+        commands = profile.chip_commands_observed
+        if commands is None:
+            raise ConversionRefused(
+                "%s does not record which commands its firmware sends the TMS, "
+                "so converting it for the %s cannot be justified. That part "
+                "reads the 0x00/0x20 opcode as SET RATE where a TMS5200 or "
+                "TMS5220 ignores it, and whether this board ever sends one is a "
+                "property of its firmware, not of its speech data. Convert for "
+                "the tms5220, or add chip_commands_observed to the profile."
+                % (profile.id, target.id))
+        risky = sorted(c for c in commands
+                       if (c & 0x70) in Chip.SET_RATE_OPCODES)
+        if risky:
+            raise ConversionRefused(
+                "%s's firmware sends %s, which the %s reads as SET RATE and a "
+                "TMS5200 ignores. Converting this set for that part would "
+                "change how the board behaves. Convert for the tms5220."
+                % (profile.id, ", ".join("0x%02X" % c for c in risky),
+                   target.id))
     # A profile whose speech devices carry no hashes cannot authenticate the
     # dumps it is handed. `--game` would then apply a layout to arbitrary
     # correct-sized bytes, and a stop frame is not authentication -- 0xF occurs
@@ -498,20 +536,36 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         # legal -- two commands can name one phrase -- and adding their lengths
         # counted the same bytes twice, which produced coverage above 100% on a
         # real set and would have read as "more than the whole device".
-        spans = []
-        for phrase in sorted(table.phrases, key=lambda p: p.start):
-            lo = max(phrase.start, at)
-            hi = min(phrase.end, at + span)
-            if hi <= lo:
-                continue
-            if spans and lo <= spans[-1][1]:
-                spans[-1][1] = max(spans[-1][1], hi)
-            else:
-                spans.append([lo, hi])
-        covered = sum(hi - lo for lo, hi in spans)
+        # MEASURED IN BYTES THE SPEECH ACTUALLY OCCUPIES, NOT DECLARED EXTENTS.
+        #
+        # A phrase's declared extent runs to the next pointer or to the pointer
+        # table, which can be far past where its speech stops -- one real set
+        # declares a 10 KB extent for a phrase whose speech ends after 207
+        # bytes. Counting extents called that device 100% speech when nearly a
+        # third of it is not, and the summary prints this as a fact about the
+        # ROM.
+        #
+        # So each phrase is parsed and counted only up to and including its stop
+        # frame, and the result is mapped through the mirror to PHYSICAL device
+        # offsets: a 2 KB part answers at two addresses, and a byte reached
+        # through either window is one byte of one ROM.
+        physical = set()
+        for phrase in table.phrases:
+            data = bytes(image[phrase.start:phrase.end])
+            frames, stopped = parse(data, src_tables.pitch_bits,
+                                    list(src_tables.k_widths))
+            used = ((frames[-1].end_bit + 7) // 8) if frames else 0
+            if not stopped:
+                used = phrase.end - phrase.start
+            for offset in range(phrase.start, min(phrase.start + used,
+                                                  phrase.end)):
+                if at <= offset < at + span:
+                    physical.add((offset - at) % device.size)
+        covered = len(physical)
+        span_physical = device.size
         result.outputs.append({
             "socket": device.socket,
-            "speech_coverage_percent": (round(100.0 * covered / span, 1)
+            "speech_coverage_percent": (round(100.0 * covered / span_physical, 1)
                                         if span and device.holds_speech
                                         else None),
             "device_type": device.device_type,
@@ -521,6 +575,10 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "window_changed_bytes": window_changed,
             "changed": extracted.changed,
             "taken_from_mirror": extracted.from_mirror,
+            #: "lower", "mirror", "merged" or "unchanged" -- `taken_from_mirror`
+            #: alone cannot distinguish a device taken wholly from its mirror
+            #: from one merged out of both windows.
+            "source_window": extracted.source,
             "window": [extracted.window[0], extracted.window[1]],
             "data": extracted.data,
         })
