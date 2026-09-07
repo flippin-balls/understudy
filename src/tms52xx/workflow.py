@@ -43,24 +43,38 @@ class SetResult:
         self.stats: dict = {}
         self.phrases: List[dict] = []
         self.warnings: List[str] = []
+        #: True when a table file was supplied instead of the bundled data.
+        self.custom_tables: bool = False
         self.overrides: List[str] = []
         self.manifest: dict = {}
         self.before: bytes = b""
         self.after: bytes = b""
 
 
-def _table_identity(chip: Chip, custom: Optional[Path]) -> dict:
-    """Which coefficient tables were used, and how to recognise them again."""
+def _table_identity(chip: Chip, custom: Optional[Path],
+                    loaded: ChipTables) -> dict:
+    """Which coefficient tables were used, and how to recognise them again.
+
+    When a custom file is supplied, `chip` is only what the user ASKED for.
+    Nothing checks that the file describes that part, so both are recorded: the
+    requested id, and the name the table gives itself.
+    """
     path = Path(custom) if custom else chip.table_path
     raw = path.read_bytes()
     identity = {
-        "chip": chip.id,
+        "requested_chip": chip.id,
+        "table_name": loaded.name,
         "bundled": custom is None,
         "path": str(path) if custom else "data/%s.json" % chip.table,
         "sha256": hashlib.sha256(raw).hexdigest(),
     }
     if custom is None:
+        identity["chip"] = chip.id
         identity["provenance"] = bundled_provenance(chip.table)
+    else:
+        # Deliberately NOT the requested id: a reader of this manifest must not
+        # be able to conclude the output was quantised to that part.
+        identity["chip"] = "custom"
     return identity
 
 
@@ -131,6 +145,32 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         address_ordered=profile.address_ordered,
         has_end_bound=profile.has_end_bound,
         base_address=profile.base_address)
+
+    # EVERY PHRASE MUST LIE INSIDE A SPEECH-BEARING DEVICE.
+    #
+    # `assemble` fills windows no device covers with 0xFF, and 0xF is the stop
+    # frame's energy code -- so a pointer into unpopulated space parses as a
+    # clean, one-frame phrase. Nothing downstream catches it: it terminates, it
+    # changes no bytes, its frame kinds are trivially preserved, and the
+    # reconciliation only counts bytes that changed. The result is a ROM missing
+    # however many phrases pointed into the gap, reported as a success.
+    covered = set()
+    for device in profile.speech_devices:
+        at = device.cpu_address - profile.window_base
+        span = device.size * (2 if device.mirrored else 1)
+        covered.update(range(at, at + span))
+    outside = [p for p in table.phrases
+               if not set(range(p.start, p.end)) <= covered]
+    if outside:
+        first = outside[0]
+        raise ConversionRefused(
+            "phrase %d (0x%X-0x%X) is not inside any device the profile marks "
+            "as holding speech. Unpopulated space reads as 0xFF, which parses "
+            "as a stop frame, so such a phrase looks valid and converts to "
+            "nothing -- the ROM would be missing it. %d of %d phrases are "
+            "affected."
+            % (first.index, first.start, first.end, len(outside),
+               len(table.phrases)))
 
     verdicts = diagnose_last_byte(image, table, src_tables)
     stuck = sorted(i for i, v in verdicts.items() if v == "no stop")
@@ -210,6 +250,17 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "image. Some change lies outside every device window."
             % (total_changed, result.stats["bytes_changed"]))
 
+    # A phrase whose every byte is the fill value is not speech either, even if
+    # it does sit inside a device -- an erased region of a real EPROM reads the
+    # same as an unpopulated window.
+    empty = [r.phrase.index for r in results
+             if set(image[r.phrase.start:r.phrase.end]) == {profile.fill}]
+    if empty:
+        raise ConversionRefused(
+            "phrase(s) %s contain nothing but 0x%02X fill bytes, which parse as "
+            "a stop frame. Either the layout is wrong or those devices are "
+            "erased." % (", ".join(str(i) for i in empty), profile.fill))
+
     if result.stats["frames_clamped"]:
         result.warnings.append(
             "%d frame(s) (%.1f%%) sit below the %s pitch floor and were raised; "
@@ -222,6 +273,16 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "played on a real board." % profile.status)
     if allow_unterminated:
         result.overrides.append("allow_unterminated")
+    if source_tables or target_tables:
+        result.overrides.append("custom_tables")
+        result.warnings.append(
+            "CUSTOM COEFFICIENT TABLES were used (%s). Nothing checks that a "
+            "supplied table describes the part you named, so this output is NOT "
+            "known to be quantised for a %s. The files are named and recorded "
+            "as `custom`."
+            % (", ".join(str(t) for t in (source_tables, target_tables) if t),
+               target.id))
+    result.custom_tables = bool(source_tables or target_tables)
 
     result.manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -230,10 +291,16 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         "profile": {"id": profile.id, "version": profile.version,
                     "title": profile.label, "status": profile.status,
                     "source": profile.source},
-        "chips": {"source": result.source_chip.id, "target": target.id},
+        "chips": {
+            "source": ("custom" if source_tables else result.source_chip.id),
+            "target": ("custom" if target_tables else target.id),
+            "requested_source": result.source_chip.id,
+            "requested_target": target.id,
+        },
         "tables": {
-            "source": _table_identity(result.source_chip, source_tables),
-            "target": _table_identity(target, target_tables),
+            "source": _table_identity(result.source_chip, source_tables,
+                                      src_tables),
+            "target": _table_identity(target, target_tables, dst_tables),
         },
         "layout": {"table_offset": profile.table_offset,
                    "phrases": profile.phrases,
@@ -260,8 +327,20 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     return result
 
 
-def output_name(source_name: str, device, target: Chip) -> str:
-    """A filename that says what the file is and what to burn it into."""
+def output_name(source_name: str, device, target: Chip,
+                custom_tables: bool = False) -> str:
+    """A filename that says what the file is and what to burn it into.
+
+    It carries the socket AND the device type, because those are the two things
+    a technician needs at the programmer, and a file named only for the socket
+    invites burning a 2716 image into a 2532.
+
+    With custom tables the target is named `custom` rather than the part that
+    was requested: nothing checked that the supplied table describes that part,
+    and a file called `..._tsp5220c.bin` says it did.
+    """
     stem = Path(source_name).stem
     suffix = Path(source_name).suffix or ".bin"
-    return "%s_%s_%s%s" % (stem, device.socket, target.id, suffix)
+    label = "custom" if custom_tables else target.id
+    return "%s_%s_%s_%s%s" % (stem, device.socket, device.device_type, label,
+                              suffix)

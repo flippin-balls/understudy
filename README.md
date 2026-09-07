@@ -89,9 +89,9 @@ conversion
 
 output devices
   U4   2716       2048 bytes  1560 changed  (taken from the mirror half)
-       burn into 2716: out/841-01_4_U4_tsp5220c.716
+       burn into 2716: out/841-01_4_U4_2716_tsp5220c.716
   U5   2532       4096 bytes  1960 changed
-       burn into 2532: out/841-02_5_U5_tsp5220c.532
+       burn into 2532: out/841-02_5_U5_2532_tsp5220c.532
 
   reconciliation         3520 changed across devices == 3520 in the image
 
@@ -104,6 +104,11 @@ warnings
 
 Read the reconciliation line. It is the arithmetic check that the bytes changed
 in the image are exactly the bytes changed in the files you are about to burn.
+
+Output filenames carry the socket **and the device type**, because those are the
+two things you need at the programmer. Nothing is written until every file has
+been checked, and then they are written as a set — a failure part-way leaves the
+directory as it was rather than a mixture of new and stale images.
 
 ## Supported games
 

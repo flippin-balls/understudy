@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -64,6 +65,11 @@ class Device:
         self.device_type = need("type", str, "a string")
         self.size = need("size", int, "an integer")
         self.cpu_address = need("cpu_address", int, "an integer")
+        for key in ("mirrored", "holds_speech"):
+            if key in raw and not isinstance(raw[key], bool):
+                raise ProfileError(
+                    "%s: device %s: %s must be true or false, got %r"
+                    % (where, self.socket, key, raw[key]))
         self.mirrored = bool(raw.get("mirrored", False))
         self.holds_speech = bool(raw.get("holds_speech", False))
         self.sha256 = raw.get("sha256")
@@ -105,6 +111,14 @@ class Profile:
                                    % (where, key))
 
         self.id = raw["profile_id"]
+        # The id becomes a filename: `<outdir>/<id>.manifest.json`. Anything
+        # with a separator or a parent reference would write outside --output.
+        if not isinstance(self.id, str) or not re.match(r"^[a-z0-9][a-z0-9_-]*$",
+                                                        self.id):
+            raise ProfileError(
+                "%s: profile_id %r must be lower-case letters, digits, "
+                "hyphens and underscores, starting with a letter or digit. It "
+                "is used as a filename." % (where, self.id))
         self.version = raw["profile_version"]
         self.title = raw["title"]
         self.manufacturer = raw.get("manufacturer")
@@ -121,9 +135,26 @@ class Profile:
                                % (where, self.status, ", ".join(STATUS_VALUES)))
 
         memory = raw["memory"]
+        if not isinstance(memory, dict):
+            raise ProfileError("%s: memory must be an object" % where)
+        for key in ("window_base", "window_size"):
+            if key not in memory:
+                raise ProfileError("%s: memory is missing %r" % (where, key))
+            if isinstance(memory[key], bool) or not isinstance(memory[key], int):
+                raise ProfileError("%s: memory.%s must be an integer"
+                                   % (where, key))
+        if not isinstance(raw["devices"], list):
+            raise ProfileError("%s: devices must be a list" % where)
+        if not isinstance(raw["layout"], dict):
+            raise ProfileError("%s: layout must be an object" % where)
         self.window_base = memory["window_base"]
         self.window_size = memory["window_size"]
         self.fill = memory.get("fill", 0xFF)
+        if isinstance(self.fill, bool) or not isinstance(self.fill, int):
+            raise ProfileError("%s: memory.fill must be an integer" % where)
+        if self.window_base < 0:
+            raise ProfileError("%s: memory.window_base must not be negative"
+                               % where)
         if not isinstance(self.window_size, int) or self.window_size <= 0:
             raise ProfileError("%s: memory.window_size must be positive" % where)
         if not 0 <= self.fill <= 0xFF:
@@ -134,6 +165,27 @@ class Profile:
                     "address_ordered", "has_end_bound"):
             if key not in layout:
                 raise ProfileError("%s: layout is missing %r" % (where, key))
+        # Types before values. JSON hands over whatever was written, and a
+        # string where an int belongs, or a truthy string where a bool belongs,
+        # would silently change the layout rather than fail.
+        for key in ("table_offset", "phrases", "base_address"):
+            value = layout[key]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ProfileError("%s: layout.%s must be an integer, got %r"
+                                   % (where, key, value))
+            if value < 0:
+                raise ProfileError("%s: layout.%s must not be negative"
+                                   % (where, key))
+        for key in ("address_ordered", "has_end_bound"):
+            if not isinstance(layout[key], bool):
+                raise ProfileError(
+                    "%s: layout.%s must be true or false, got %r -- a string "
+                    "here would silently change the layout"
+                    % (where, key, layout[key]))
+        if not isinstance(layout.get("truncate_last_byte", []), list):
+            raise ProfileError("%s: layout.truncate_last_byte must be a list"
+                               % where)
+
         self.table_offset = layout["table_offset"]
         self.phrases = layout["phrases"]
         self.base_address = layout["base_address"]
@@ -167,6 +219,21 @@ class Profile:
                     % (where, device.socket, device.cpu_address, device.size,
                        ", mirrored" if device.mirrored else "",
                        self.window_size, self.window_base))
+
+        occupied = {}
+        for device in self.devices:
+            at = device.cpu_address - self.window_base
+            span = device.size * (2 if device.mirrored else 1)
+            for offset in range(at, at + span):
+                other = occupied.get(offset)
+                if other is not None:
+                    raise ProfileError(
+                        "%s: devices %s and %s both cover 0x%04X. Two devices "
+                        "cannot answer one address, and a phrase there would be "
+                        "read from whichever was placed last."
+                        % (where, other, device.socket,
+                           offset + self.window_base))
+                occupied[offset] = device.socket
 
         if not self.speech_devices:
             raise ProfileError("%s: no device is marked holds_speech" % where)

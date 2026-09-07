@@ -260,6 +260,155 @@ class TestProfileMustAuthenticate(WorkflowFixture):
                         allow_unterminated=True)
 
 
+class TestPhraseCoverage(WorkflowFixture):
+    """A phrase must live inside a device the profile says holds speech.
+
+    `assemble` fills windows no device covers with 0xFF, and 0xF is the stop
+    frame's energy code -- so a pointer into unpopulated space parses as a
+    clean, one-frame phrase that changes nothing. Every other check passes it:
+    it terminates, its frame kinds are trivially preserved, and reconciliation
+    only counts bytes that changed. The ROM would simply be missing that phrase.
+    """
+
+    def test_a_phrase_pointing_into_unpopulated_fill_is_refused(self):
+        raw = copy.deepcopy(self.raw)
+        raw["devices"][0]["mirrored"] = False        # 0xE800 becomes fill
+        raw["devices"][0]["holds_speech"] = False
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dict(self.dumps), Profile(raw, "<gap>"), self.target)
+        self.assertIn("not inside any device", str(caught.exception))
+
+    def test_one_erased_phrase_inside_a_working_device_is_refused(self):
+        """An erased region of a real EPROM reads the same as an unmapped gap.
+
+        A wholly erased device is caught earlier, by the "socket marked as
+        holding speech did not change" rule. This is the case that slips past
+        it: one phrase erased while others in the same device convert normally.
+        """
+        # Phrase 0 lives at the start of U5. Erase exactly its bytes.
+        from tms52xx.rom import PhraseTable
+        table = PhraseTable.from_pointers(
+            self.profile.assemble(self.dumps), self.profile.table_offset,
+            self.profile.phrases, address_ordered=self.profile.address_ordered,
+            has_end_bound=self.profile.has_end_bound,
+            base_address=self.profile.base_address)
+        target_phrase = next(p for p in table.phrases if p.start >= 0x3000)
+        u5_offset = target_phrase.start - 0x3000
+
+        dumps = dict(self.dumps)
+        u5 = bytearray(dumps["U5"])
+        for i in range(u5_offset, u5_offset + target_phrase.length):
+            u5[i] = 0xFF
+        dumps["U5"] = bytes(u5)
+
+        raw = copy.deepcopy(self.raw)
+        raw["devices"][0]["sha256"] = sha256(dumps["U4"])
+        raw["devices"][1]["sha256"] = sha256(dumps["U5"])
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dumps, Profile(raw, "<erased>"), self.target)
+        self.assertIn("fill", str(caught.exception))
+
+    def test_the_normal_case_still_converts(self):
+        """Guard: the coverage check must not reject a valid mirrored layout."""
+        result = self.convert()
+        self.assertEqual(result.stats["phrases"], 4)
+
+
+class TestPublishIsAllOrNothing(unittest.TestCase):
+    """A converted set is only useful complete."""
+
+    def test_a_staging_failure_leaves_nothing_behind(self):
+        from tms52xx.cli import _publish
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "existing.bin").write_bytes(b"OLD")
+            payloads = [(d / "a.bin", b"A"),
+                        (d / "existing.bin", b"NEW"),
+                        (d / "missing-dir" / "c.bin", b"C")]
+            with self.assertRaises(OSError):
+                _publish(payloads)
+            self.assertEqual(sorted(p.name for p in d.iterdir()),
+                             ["existing.bin"])
+            self.assertEqual((d / "existing.bin").read_bytes(), b"OLD")
+
+    def test_a_clean_publish_replaces_everything(self):
+        from tms52xx.cli import _publish
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "existing.bin").write_bytes(b"OLD")
+            _publish([(d / "a.bin", b"A"), (d / "existing.bin", b"NEW")])
+            self.assertEqual((d / "a.bin").read_bytes(), b"A")
+            self.assertEqual((d / "existing.bin").read_bytes(), b"NEW")
+            leftovers = [p.name for p in d.iterdir()
+                         if ".part" in p.name or ".replaced" in p.name]
+            self.assertEqual(leftovers, [])
+
+
+class TestCustomTables(WorkflowFixture):
+    """A supplied table must not be presented as a named physical part.
+
+    Nothing checks that a table file describes the chip the user named, so a
+    file called `..._tsp5220c.bin` and a manifest saying `target: tsp5220c`
+    would both assert something unverified about bytes a technician is going to
+    burn.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.custom = Path(self.tmp.name) / "mine.json"
+        chips.resolve("tms5220").tables().to_json(self.custom)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_manifest_does_not_claim_the_requested_part(self):
+        result = self.convert(target_tables=self.custom)
+        self.assertEqual(result.manifest["chips"]["target"], "custom")
+        self.assertEqual(result.manifest["chips"]["requested_target"],
+                         "tms5220")
+        self.assertEqual(result.manifest["tables"]["target"]["chip"], "custom")
+        self.assertFalse(result.manifest["tables"]["target"]["bundled"])
+
+    def test_it_records_the_table_s_own_name_and_hash(self):
+        result = self.convert(target_tables=self.custom)
+        identity = result.manifest["tables"]["target"]
+        self.assertEqual(identity["requested_chip"], "tms5220")
+        self.assertTrue(identity["table_name"])
+        self.assertEqual(len(identity["sha256"]), 64)
+
+    def test_it_warns_and_records_an_override(self):
+        result = self.convert(target_tables=self.custom)
+        self.assertIn("custom_tables", result.overrides)
+        self.assertTrue(any("CUSTOM COEFFICIENT TABLES" in w
+                            for w in result.warnings))
+
+    def test_the_output_filename_says_custom(self):
+        from tms52xx.workflow import output_name
+        device = self.profile.device_for("U4")
+        target = chips.resolve("tsp5220c")
+        self.assertIn("custom",
+                      output_name("u4.bin", device, target, custom_tables=True))
+        self.assertNotIn("tsp5220c",
+                         output_name("u4.bin", device, target,
+                                     custom_tables=True))
+
+    def test_bundled_tables_still_name_the_part(self):
+        result = self.convert()
+        self.assertEqual(result.manifest["chips"]["target"], "tms5220")
+        self.assertEqual(result.manifest["tables"]["target"]["chip"], "tms5220")
+        self.assertNotIn("custom_tables", result.overrides)
+
+    def test_the_filename_carries_the_device_type(self):
+        """A file named only for the socket invites burning it into the wrong
+        device: a Squawk & Talk socket takes a 2716, 2532 or 2732."""
+        from tms52xx.workflow import output_name
+        device = self.profile.device_for("U4")
+        name = output_name("u4.bin", device, chips.resolve("tms5220"))
+        self.assertIn(device.socket, name)
+        self.assertIn(device.device_type, name)
+
+
 class TestDoubleConversion(WorkflowFixture):
     """Converting an already-converted set is caught, on both paths.
 

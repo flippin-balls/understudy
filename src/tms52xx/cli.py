@@ -196,6 +196,70 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
+def _publish(payloads) -> None:
+    """Write a whole set of files, or none of them.
+
+    A converted ROM set is only useful complete. Writing the device images one
+    at a time meant a failure part-way -- a full disk, a permission change, a
+    removable drive pulled -- left some new files beside some stale ones, and a
+    technician can burn that mixture without noticing.
+
+    Every payload is staged in the destination directory first, then renamed
+    into place. Renaming cannot be made atomic across several names, but the
+    slow, failure-prone part is the writing; by the time the renames start,
+    every byte is on disk. If staging fails nothing is published, and if a
+    rename fails the ones already done are rolled back to what was there
+    before.
+    """
+    staged = []
+    try:
+        for path, data in payloads:
+            handle, name = tempfile.mkstemp(dir=str(path.parent),
+                                            prefix=path.name + ".",
+                                            suffix=".part")
+            with os.fdopen(handle, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.chmod(name, 0o644)
+            staged.append((Path(name), path))
+    except BaseException:
+        for temporary, _ in staged:
+            _unlink(temporary)
+        raise
+
+    published, replaced = [], []
+    try:
+        for temporary, destination in staged:
+            if destination.exists():
+                backup = destination.with_name(destination.name + ".replaced")
+                _unlink(backup)
+                os.replace(destination, backup)
+                replaced.append((backup, destination))
+            os.replace(temporary, destination)
+            published.append(destination)
+    except BaseException:
+        for destination in published:
+            _unlink(destination)
+        for backup, destination in replaced:
+            try:
+                os.replace(backup, destination)
+            except OSError:
+                pass
+        for temporary, _ in staged:
+            _unlink(temporary)
+        raise
+    for backup, _ in replaced:
+        _unlink(backup)
+
+
+def _unlink(path) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def _same_file(a: Path, b: Path) -> bool:
     """Would writing `b` overwrite `a`? Handles links, and `b` not existing yet.
 
@@ -385,12 +449,17 @@ def cmd_convert(args) -> int:
                      "stopped_cleanly": r.stopped_cleanly}
                     for r in results],
     }
-    # Manifest first: a manifest with no ROM beside it is an obvious, harmless
-    # leftover, while a ROM with no manifest is an unauditable image that looks
-    # finished. If the second rename fails, fail in the recoverable direction.
-    _atomic_write(manifest_path,
-                  json.dumps(manifest, indent=2).encode("utf-8"))
-    _atomic_write(out_path, out)
+    # Both files, or neither. A manifest describing an image that was never
+    # written is a lie about what happened, and an image with no manifest is
+    # unauditable; `_publish` stages both before renaming either.
+    try:
+        _publish([(out_path, out),
+                  (manifest_path,
+                   json.dumps(manifest, indent=2).encode("utf-8"))])
+    except OSError as error:
+        print("failed to write the output: %s\nNothing was left behind."
+              % error, file=sys.stderr)
+        return 2
     print("\nwrote %s\nwrote %s" % (out_path, manifest_path))
     return 0
 
@@ -667,7 +736,8 @@ def cmd_convert_set(args) -> int:
         origin = sources.get(entry["socket"])
         source_name = (Path(origin).name if origin
                        else "%s_%s" % (profile.id, entry["socket"]))
-        plan.append((outdir / output_name(source_name, device, target), entry))
+        plan.append((outdir / output_name(source_name, device, target,
+                                          result.custom_tables), entry))
 
     destinations = [path for path, _ in plan] + [manifest_path]
 
@@ -700,11 +770,18 @@ def cmd_convert_set(args) -> int:
         for entry, manifest_entry in zip(result.outputs,
                                          result.manifest["outputs"]):
             manifest_entry["path"] = entry.get("path")
-        for path, entry in plan:
-            _atomic_write(path, entry["data"])
-            written.append((path, entry))
-        _atomic_write(manifest_path,
-                      json.dumps(result.manifest, indent=2).encode("utf-8"))
+
+        payloads = [(path, entry["data"]) for path, entry in plan]
+        payloads.append((manifest_path,
+                         json.dumps(result.manifest, indent=2).encode("utf-8")))
+        try:
+            _publish(payloads)
+        except OSError as error:
+            print("failed to write the output set: %s\nNothing was left behind; "
+                  "no file in %s was created or replaced."
+                  % (error, outdir), file=sys.stderr)
+            return 2
+        written = [(path, entry) for path, entry in plan]
 
     _print_set_summary(result, profile, target, written, args)
     if not args.dry_run:

@@ -8,15 +8,18 @@ version = "0.3.0"
 description = "Convert Bally Squawk & Talk TMS5200 speech ROMs to run on TMS5220-family replacements"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "0BSD" }
-# The project's own code is 0BSD. Bundled third-party data is not; see
-# THIRD_PARTY_NOTICES.md, which ships inside the package as well.
+# Understudy's own code and documentation are 0BSD. The distribution also
+# contains third-party coefficient data under BSD-3-Clause (MAME), so the
+# distribution as a whole is not 0BSD -- see THIRD_PARTY_NOTICES.md, which
+# ships inside the package.
+license = { text = "0BSD AND BSD-3-Clause" }
 authors = [{ name = "Flashback Fleet LLC" }]
 keywords = ["tms5200", "tms5220", "tms5220c", "tsp5220c", "lpc", "speech",
             "pinball", "bally", "squawk-and-talk", "retrocomputing",
             "preservation", "rom-hacking"]
 classifiers = [
   "License :: OSI Approved :: BSD License",
+  "License :: OSI Approved :: Zero-Clause BSD (0BSD)",
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
   "Topic :: System :: Hardware",

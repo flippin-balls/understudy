@@ -1,4 +1,15 @@
-Copyright <YEAR> <COPYRIGHT HOLDER>
+This is the licence covering the TMS5200 and TMS5220 coefficient tables that
+Understudy bundles in src/tms52xx/data/. It is NOT the licence of Understudy's
+own code, which is Zero-Clause BSD -- see 0BSD.txt.
+
+The tables come from MAME's src/devices/sound/tms5110r.hxx, whose header reads
+`// license:BSD-3-Clause` and names the copyright holders below. See
+THIRD_PARTY_NOTICES.md for the exact commit, file hash and what was taken.
+
+----------------------------------------------------------------------
+
+Copyright (c) Frank Palazzolo, Couriersud, Jonathan Gevaryahu
+and the MAME contributors.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

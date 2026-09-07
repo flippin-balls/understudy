@@ -11,14 +11,18 @@
   },
   "chips": {
     "source": "tms5200",
-    "target": "tsp5220c"
+    "target": "tsp5220c",
+    "requested_source": "tms5200",
+    "requested_target": "tsp5220c"
   },
   "tables": {
     "source": {
-      "chip": "tms5200",
+      "requested_chip": "tms5200",
+      "table_name": "tms5200",
       "bundled": true,
       "path": "data/tms5200.json",
       "sha256": "b5295263819250f84e9ec7f4feeadafd662b063ab53f69047e759c146d457b17",
+      "chip": "tms5200",
       "provenance": {
         "repository": "https://github.com/mamedev/mame",
         "path": "src/devices/sound/tms5110r.hxx",
@@ -29,10 +33,12 @@
       }
     },
     "target": {
-      "chip": "tsp5220c",
+      "requested_chip": "tsp5220c",
+      "table_name": "tms5220",
       "bundled": true,
       "path": "data/tms5220.json",
       "sha256": "f15418abad1bbe838edc67036961c8675692c2196a8be3d70d2b316c628c983c",
+      "chip": "tsp5220c",
       "provenance": {
         "repository": "https://github.com/mamedev/mame",
         "path": "src/devices/sound/tms5110r.hxx",
@@ -84,7 +90,7 @@
         10240,
         12288
       ],
-      "path": "out/841-01_4_U4_tsp5220c.716"
+      "path": "out/841-01_4_U4_2716_tsp5220c.716"
     },
     {
       "socket": "U5",
@@ -98,7 +104,7 @@
         12288,
         16384
       ],
-      "path": "out/841-02_5_U5_tsp5220c.532"
+      "path": "out/841-02_5_U5_2532_tsp5220c.532"
     }
   ],
   "image": {

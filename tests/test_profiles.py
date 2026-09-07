@@ -201,6 +201,71 @@ class TestProfileValidation(SynthProfile):
         with self.assertRaises(ProfileError):
             Profile(raw, "<x>")
 
+    def test_layout_flags_must_be_booleans_not_strings(self):
+        """A truthy string would silently flip the layout."""
+        for key in ("address_ordered", "has_end_bound"):
+            raw = copy.deepcopy(self.raw)
+            raw["layout"][key] = "false"          # truthy!
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn(key, str(caught.exception))
+
+    def test_layout_numbers_must_be_integers(self):
+        for key in ("table_offset", "phrases", "base_address"):
+            raw = copy.deepcopy(self.raw)
+            raw["layout"][key] = "0x3C1C"
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn(key, str(caught.exception))
+
+    def test_device_flags_must_be_booleans(self):
+        for key in ("mirrored", "holds_speech"):
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0][key] = "yes"
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn(key, str(caught.exception))
+
+    def test_containers_must_be_the_right_shape(self):
+        for key, value in (("devices", {}), ("layout", []), ("memory", 7)):
+            raw = copy.deepcopy(self.raw)
+            raw[key] = value
+            with self.assertRaises(ProfileError):
+                Profile(raw, "<x>")
+
+    def test_overlapping_devices_are_rejected(self):
+        """Two devices cannot answer one address."""
+        raw = copy.deepcopy(self.raw)
+        raw["devices"][1]["cpu_address"] = raw["devices"][0]["cpu_address"]
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<x>")
+        self.assertIn("both cover", str(caught.exception))
+
+    def test_a_mirror_overlapping_the_next_device_is_rejected(self):
+        """The mirror occupies address space too, and it is easy to forget."""
+        raw = copy.deepcopy(self.raw)
+        # U4 is 0x800 at 0xE000 mirrored to 0xE800; put U5 at 0xE800.
+        raw["devices"][1]["cpu_address"] = 0xE800
+        raw["devices"][1]["size"] = 0x800
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<x>")
+        self.assertIn("both cover", str(caught.exception))
+
+    def test_a_profile_id_that_is_a_path_is_rejected(self):
+        """The id becomes `<outdir>/<id>.manifest.json`."""
+        for bad in ("../evil", "a/b", "a\\b", "Embryon", "-x", "", "a b"):
+            raw = copy.deepcopy(self.raw)
+            raw["profile_id"] = bad
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn("profile_id", str(caught.exception), repr(bad))
+
+    def test_ordinary_ids_are_accepted(self):
+        for good in ("embryon", "flash-gordon", "eight_ball", "m_mpac2"):
+            raw = copy.deepcopy(self.raw)
+            raw["profile_id"] = good
+            self.assertEqual(Profile(raw, "<x>").id, good)
+
     def test_a_file_that_is_not_json_is_named(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bad.json"
