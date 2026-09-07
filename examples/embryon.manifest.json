@@ -4,10 +4,10 @@
   "understudy_version": "0.3.0",
   "profile": {
     "id": "embryon",
-    "version": 1,
+    "version": 2,
     "title": "Bally Embryon (1981)",
     "status": "emulator-verified",
-    "sha256": "13d2dae21697d163723aea1e8fcb436f390a9bf69a24a63871ff6651dabce10d",
+    "sha256": "8f9b0a74593c6193bd0cdbffedaa3875b555aa2a40c55252814eee400825d397",
     "source": "data/profiles/embryon.json"
   },
   "chips": {
@@ -52,10 +52,10 @@
   },
   "layout": {
     "table_offset": 15388,
-    "phrases": 21,
+    "phrases": 20,
     "base_address": 49152,
     "address_ordered": false,
-    "has_end_bound": false,
+    "has_end_bound": true,
     "truncate_last_byte": [],
     "window_base": 49152,
     "window_size": 16384
@@ -98,9 +98,9 @@
       "socket": "U5",
       "device_type": "2532",
       "bytes": 4096,
-      "sha256": "e89f77c94afff433b40657c40d058983c799649092dfe70d629356c1c2faef73",
-      "changed_bytes": 1960,
-      "window_changed_bytes": 1960,
+      "sha256": "977ac758d65d1be2e6b7c38397a756a400b6589c5fda368f8a2b3838f024a81e",
+      "changed_bytes": 1948,
+      "window_changed_bytes": 1948,
       "changed": true,
       "taken_from_mirror": false,
       "window": [
@@ -112,24 +112,24 @@
   ],
   "image": {
     "before_sha256": "4d0f159c5d36c242450854f914cdb379751db61541eda6d404be960c02a0b1ce",
-    "after_sha256": "a2bd47866af49341c814639ebb155512bbf12afa6fd15c35e4103d5a9d57a6f3",
+    "after_sha256": "ea73b6b9bfbaad619742485968fe4131324d36e6707e2cc12d1a1d25a155ab7b",
     "bytes": 16384
   },
   "summary": {
-    "phrases": 21,
-    "distinct_phrases": 21,
-    "frames": 871,
+    "phrases": 20,
+    "distinct_phrases": 20,
+    "frames": 850,
     "frames_clamped": 17,
-    "frames_approximated": 449,
+    "frames_approximated": 446,
     "frames_truncated": 0,
-    "clamped_percent": 1.9517795637198623,
+    "clamped_percent": 2.0,
     "phrases_without_stop_frame": 0,
-    "bytes_changed": 3520,
-    "frame_kinds_preserved": 871,
+    "bytes_changed": 3508,
+    "frame_kinds_preserved": 850,
     "f0_error_hz": {
-      "frames": 623,
+      "frames": 617,
       "median": 1.069,
-      "mean": 1.009,
+      "mean": 1.011,
       "max": 3.401
     }
   },
@@ -412,20 +412,6 @@
       "last_byte_truncated": false,
       "alias_of": null,
       "changed_bytes": 108,
-      "stopped_cleanly": true,
-      "final_byte": "spare"
-    },
-    {
-      "index": 20,
-      "start": 14810,
-      "end": 15388,
-      "frames": 21,
-      "clamped": 0,
-      "approximated": 3,
-      "truncated": 0,
-      "last_byte_truncated": false,
-      "alias_of": null,
-      "changed_bytes": 12,
       "stopped_cleanly": true,
       "final_byte": "spare"
     }

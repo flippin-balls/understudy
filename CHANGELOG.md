@@ -7,6 +7,20 @@ features.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Embryon profile read one pointer too many.** The table's 21st entry is
+  an end bound, not a phrase: it points at six zero bytes followed by 6800
+  code. The zeros parsed as silence frames and the parser ran on until a byte
+  in the code carried a `0xF` nibble, so conversion rewrote instructions the
+  sound board executes — and a simulation of the board, loaded with the
+  converted ROMs, stopped booting. Profile bumped to v2: 20 phrases with an end
+  bound. Found by running the converted devices through an emulation of the
+  board rather than by inspecting them.
+- A phrase beginning with a long run of silence frames is now refused, which is
+  what a pointer aimed at padding looks like. Across Embryon's 20 real phrases
+  every one begins with none; the padding entry began with twelve.
+
 ## [0.3.0] — 2026-09-06
 
 The release that makes this usable at a bench rather than at a desk.

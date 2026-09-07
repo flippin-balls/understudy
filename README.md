@@ -71,7 +71,7 @@ them even if you ask it to.
 ====================================================================
   CHECK THIS BEFORE YOU BURN ANYTHING
 ====================================================================
-profile      Bally Embryon (1981)  (embryon v1, status emulator-verified)
+profile      Bally Embryon (1981)  (embryon v2, status emulator-verified)
 chips        tms5200  ->  tsp5220c
 tables       source b52952638192 / target f15418abad1b  (bundled)
 
@@ -80,20 +80,20 @@ input dumps
   U5   2532       4096 bytes  sha256 f24559ad001b4cbb1ef4442a
 
 conversion
-  phrases                21
-  frames                 871
-  frame kinds preserved  871 of 871
+  phrases                20
+  frames                 850
+  frame kinds preserved  850 of 850
   clamped to pitch floor 17 (2.0%)
   f0 error, unclamped    median 1.07 Hz, max 3.40 Hz
-  bytes changed          3520
+  bytes changed          3508
 
 output devices
   U4   2716       2048 bytes  1560 changed  (taken from the mirror half)
        burn into 2716: out/841-01_4_U4_2716_tsp5220c.716
-  U5   2532       4096 bytes  1960 changed
+  U5   2532       4096 bytes  1948 changed
        burn into 2532: out/841-02_5_U5_2532_tsp5220c.532
 
-  reconciliation         3520 changed across devices == 3520 in the image
+  reconciliation         3508 changed across devices == 3508 in the image
 
 warnings
   - 17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised
@@ -120,7 +120,7 @@ mid-run, check the hashes in the manifest against the files before burning.
 
 | game | status | notes |
 |---|---|---|
-| Bally **Embryon** (1981) | `emulator-verified` | 21 phrases, U4 (2716) + U5 (2532) |
+| Bally **Embryon** (1981) | `emulator-verified` | 20 phrases, U4 (2716) + U5 (2532) |
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
@@ -185,8 +185,14 @@ Be precise about what has been done, because the three are different things:
 | | |
 |---|---|
 | every conversion you run | re-parsed and checked frame by frame — **structural only** |
-| the Embryon reference conversion | additionally rendered through PinMAME during development |
+| the Embryon reference conversion | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them |
 | any conversion, on hardware | **never** |
+
+That middle row is worth reading twice. It means the board's own firmware runs
+against the converted ROMs in an emulator — which is how a real defect in the
+Embryon profile was found: an entry in the pointer table was an end bound
+rather than a 21st phrase, converting it rewrote 6800 instructions, and the
+simulated board stopped booting. It does not mean anyone has heard the result.
 
 If you fit a converted set to a real board, please tell us how it went:
 [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) is a template for
@@ -252,11 +258,12 @@ data from which appears in this repository:
 
 | | |
 |---|---|
-| phrases / frames | 21 / 871 |
-| frame kinds preserved | 871 of 871 |
+| phrases / frames | 20 / 850 |
+| frame kinds preserved | 850 of 850 |
 | frames at the TMS5220 pitch floor | 17 (2.0%) |
 | f0 error on the rest | median 1.07 Hz, max 3.40 Hz |
 | bytes changed outside the phrase extents | 0 |
+| simulated board boots on the converted ROMs | yes |
 
 Every figure is printed by the tool and recorded in its manifest, so the same
 table can be produced from any ROM. The manifest from that run is checked in at

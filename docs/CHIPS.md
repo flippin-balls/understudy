@@ -78,7 +78,7 @@ excitation period is 159 samples against the TMS5200's 211 — about 50.3 Hz
 against 37.9 Hz at the 8 kHz sample rate. Frames below the substitute's floor
 are raised, and will sound higher than the original.
 
-On Embryon that is 17 frames of 871, or 2.0%. `convert-set` reports the figure
+On Embryon that is 17 frames of 850, or 2.0%. `convert-set` reports the figure
 for your ROM before it writes anything.
 [PITCH_CEILING.md](PITCH_CEILING.md) covers what was tried and why none of it
 worked.

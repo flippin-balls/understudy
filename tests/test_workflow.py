@@ -354,6 +354,50 @@ class TestPhraseCoverage(WorkflowFixture):
         self.assertEqual(result.stats["phrases"], 4)
 
 
+class TestPaddingPointers(WorkflowFixture):
+    """A pointer aimed at padding must not become a phrase.
+
+    Zero bytes parse as silence frames, so such a pointer produces a phrase
+    that begins with a run of them and continues into whatever follows -- which
+    on the real Embryon set was 6800 code. It terminates, its frame kinds
+    survive conversion, and every other check passes it. Converting it stopped
+    the board booting in simulation.
+    """
+
+    def _with_padding_pointer(self):
+        """Aim one pointer at a run of zero bytes inside a speech device."""
+        dumps = dict(self.dumps)
+        u5 = bytearray(dumps["U5"])
+        pad_at = 0x0900                       # unused space, clear of the table
+        for i in range(pad_at, pad_at + 32):
+            u5[i] = 0x00
+        table_at = 0xFC00 - 0xF000
+        u5[table_at:table_at + 2] = (0xF000 + pad_at).to_bytes(2, "big")
+        dumps["U5"] = bytes(u5)
+        raw = copy.deepcopy(self.raw)
+        raw["devices"][0]["sha256"] = sha256(dumps["U4"])
+        raw["devices"][1]["sha256"] = sha256(dumps["U5"])
+        return dumps, raw
+
+    def test_a_pointer_into_padding_is_refused(self):
+        dumps, raw = self._with_padding_pointer()
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dumps, Profile(raw, "<pad>"), self.target)
+        self.assertIn("silence frames", str(caught.exception))
+
+    def test_the_message_suggests_the_end_bound_reading(self):
+        """That was the actual fix on the real set, so say so."""
+        dumps, raw = self._with_padding_pointer()
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dumps, Profile(raw, "<pad>"), self.target)
+        self.assertIn("end bound", str(caught.exception))
+
+    def test_real_phrases_are_not_affected(self):
+        """The threshold has margin: real phrases lead with no silence at all."""
+        result = self.convert()
+        self.assertEqual(result.stats["phrases"], 4)
+
+
 class TestPublishIsAllOrNothing(unittest.TestCase):
     """A converted set is only useful complete."""
 

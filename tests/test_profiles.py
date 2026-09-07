@@ -520,13 +520,16 @@ class TestBundledEmbryonProfile(unittest.TestCase):
     def test_it_parses_and_is_identifiable(self):
         self.assertEqual(self.profile.id, "embryon")
         self.assertTrue(self.profile.identifiable)
-        self.assertEqual(self.profile.phrases, 21)
+        self.assertEqual(self.profile.phrases, 20)
 
     def test_its_layout_matches_what_the_project_established(self):
         self.assertEqual(self.profile.table_offset, 0x3C1C)
         self.assertEqual(self.profile.base_address, 0xC000)
         self.assertFalse(self.profile.address_ordered)
-        self.assertFalse(self.profile.has_end_bound)
+        # 21 pointers: 20 phrases and a final END BOUND at $F9DA. Reading that
+        # last entry as a phrase made it run into 6800 code, and converting it
+        # stopped the board booting in simulation.
+        self.assertTrue(self.profile.has_end_bound)
 
     def test_the_mirrored_socket_is_recorded(self):
         u4 = self.profile.device_for("U4")

@@ -293,16 +293,30 @@ mirrored into `$E800` and U5 at `$F000` — and the layout is:
 |---|---|
 | pointer table | CPU `$FC1C` (file `0x3C1C` at base `$C000`) |
 | entries | 21, each a 16-bit big-endian CPU address |
+| phrases | **20** -- the 21st entry is an END BOUND, not a phrase |
 | order | command order, not address order |
-| end bound | none; the table is 21 entries for 21 phrases |
+| end bound | yes, the final entry at `$F9DA` |
 | speech | starts at CPU `$E800`, i.e. through U4's mirror |
 
 ```
 python -m tms52xx.cli inspect embryon_snt.bin \
-    --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
-    --no-end-bound --command-ordered \
-    --source-tables tables/tms5200.json
+    --table-offset 0x3C1C --phrases 20 --base-address 0xC000 \
+    --command-ordered
 ```
+
+**That last entry cost real time, so it is worth the warning.** Reading the
+table as 21 phrases looks right: the pointers are all plausible and ascending,
+and every "phrase" including the 21st parses and ends in a stop frame. But the
+21st points at six zero bytes followed by `8E 00 7F` (`LDS #$007F`) and
+`BD FA 5F` (`JSR $FA5F`) -- the board's own code. The zeros read as silence
+frames and the parser ran on until a byte in the code happened to carry a `0xF`
+nibble. Converting that stretch rewrote instructions, and the board stopped
+booting in simulation.
+
+A pointer aimed at padding gives itself away by a long run of leading silence
+frames: across Embryon's 20 real phrases every one begins with none, and that
+entry begins with twelve. Understudy refuses a phrase like that now and suggests
+trying one fewer with an end bound.
 
 Two features of this layout are worth noticing because they are easy to get
 wrong and neither is unusual:

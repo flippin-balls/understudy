@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 from . import __version__
 from .chips import Chip, bundled_provenance, resolve
 from .profiles import Profile, ProfileError, sha256
+from .bitstream import parse
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
 from .tables import ChipTables
 
@@ -272,6 +273,40 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "changed bytes do not reconcile: %d across the devices, %d in the "
             "image. Some change lies outside every device window."
             % (total_changed, result.stats["bytes_changed"]))
+
+    # A PHRASE THAT STARTS WITH A RUN OF SILENCE IS POINTING AT PADDING.
+    #
+    # Zero bytes parse as silence frames, so a pointer aimed at padding produces
+    # a phrase that begins with a long run of them and then continues into
+    # whatever follows -- which may be code. It terminates, because some later
+    # byte carries a 0xF nibble; its frame kinds survive conversion, because
+    # they are re-derived from the same bytes; and nothing else notices. On the
+    # real Embryon set this made a 21st "phrase" out of six zero bytes followed
+    # by 6800 instructions, and converting it stopped the board booting.
+    #
+    # The separation is clean rather than a judgement call: across the 20 real
+    # phrases of that set, every one begins with ZERO leading silence frames.
+    # The padding entry begins with twelve.
+    LEADING_SILENCE_LIMIT = 4
+    padded = []
+    for record in results:
+        frames, _ = parse(bytes(image[record.phrase.start:record.phrase.end]),
+                          src_tables.pitch_bits, list(src_tables.k_widths))
+        leading = 0
+        for frame in frames:
+            if frame.kind != "silence":
+                break
+            leading += 1
+        if leading >= LEADING_SILENCE_LIMIT:
+            padded.append((record.phrase.index, leading))
+    if padded:
+        raise ConversionRefused(
+            "phrase(s) %s begin with a long run of silence frames (%s), which "
+            "is what a pointer aimed at padding looks like rather than speech. "
+            "That entry may be an end bound rather than a phrase -- try one "
+            "fewer phrase with has_end_bound set."
+            % (", ".join(str(i) for i, _ in padded),
+               ", ".join("%d frames" % n for _, n in padded)))
 
     # A phrase whose every byte is the fill value is not speech either, even if
     # it does sit inside a device -- an erased region of a real EPROM reads the

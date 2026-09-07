@@ -1,19 +1,17 @@
 {
   "schema_version": 1,
   "profile_id": "embryon",
-  "profile_version": 1,
+  "profile_version": 2,
   "title": "Embryon",
   "manufacturer": "Bally",
   "year": 1981,
   "board": "Squawk & Talk AS-2518-61",
   "source_chip": "tms5200",
-
   "memory": {
     "window_base": 49152,
     "window_size": 16384,
     "fill": 255
   },
-
   "devices": [
     {
       "socket": "U4",
@@ -40,33 +38,32 @@
       "note": "Carries the pointer table at $FC1C as well as speech. A 2532 and a 2732 are not pin-compatible; the board has jumper options for both, so confirm which is fitted before reading or burning."
     }
   ],
-
   "layout": {
     "table_offset": 15388,
     "base_address": 49152,
-    "phrases": 21,
+    "phrases": 20,
     "address_ordered": false,
-    "has_end_bound": false,
+    "has_end_bound": true,
     "truncate_last_byte": []
   },
-
-  "chip_commands_observed": ["0x60"],
-
+  "chip_commands_observed": [
+    "0x60"
+  ],
   "status": "emulator-verified",
-
   "evidence": {
-    "layout": "Pointer table at CPU $FC1C (file 0x3C1C in the assembled window), 21 entries, command-ordered, no end bound. All 21 phrases parse and every one terminates in a stop frame, which a wrong offset does not produce 21 times over.",
+    "layout": "Pointer table at CPU $FC1C (file 0x3C1C in the assembled window), 21 entries: 20 phrases and a final END BOUND at $F9DA. Command-ordered. All 20 phrases parse and terminate in a stop frame.",
     "speech_addressing": "Phrase pointers resolve to $E800-$F9DA, i.e. U4 is reached through its mirror.",
-    "conversion": "871 frames converted; all 871 kept their frame kind when the output was re-parsed with the target tables; 17 frames (2.0%) sat below the TMS5220 pitch floor and were clamped; median f0 error on the rest 1.07 Hz, maximum 3.40 Hz; 3520 bytes changed, none outside the phrase extents; the pointer table was not modified.",
+    "conversion": "850 frames converted; all 850 kept their frame kind when the output was re-parsed with the target tables; 17 frames (2.0%) sat below the TMS5220 pitch floor and were clamped; median f0 error on the rest 1.07 Hz, maximum 3.40 Hz; 3508 bytes changed, none outside the phrase extents; the pointer table was not modified.",
     "chip_commands": "The board's own firmware was driven through all 64 commands its MPU can send. It issues exactly one TMS command byte, 0x60 SPEAK EXTERNAL, and never an opcode in the SET RATE range that a TMS5220C interprets differently from a TMS5220.",
-    "not_verified": "No converted ROM from this profile has been played on a real Squawk & Talk board. Everything above is static analysis and emulation."
+    "not_verified": "No converted ROM from this profile has been played on a real Squawk & Talk board. The strongest evidence here is that the board's firmware runs against the converted ROMs in simulation; nothing has been heard, and no physical chip has been fitted or measured.",
+    "end_bound": "Entry 20 ($F9DA) is a bound, not a phrase. The bytes there are six zeros followed by 8E 00 7F (LDS #$007F) and BD FA 5F (JSR $FA5F) -- 6800 code. Tracing the board's own firmware confirms it: 270 distinct addresses in $F9DA-$FC1C are executed, the first at $F9E1. Treating that entry as a 21st phrase made it run to the pointer table, and the parser read the zero padding as silence frames until it found a 0xF nibble inside the code -- so conversion rewrote executable instructions and the board no longer booted in simulation.",
+    "emulation": "The CONVERTED devices were loaded into a simulation of the Squawk & Talk board -- its own 6802, PIAs and firmware -- and it booted and issued the same SPEAK EXTERNAL commands as the original set. That exercises the board's firmware against the converted ROMs, which is what caught the end-bound error: the earlier 21-phrase reading did not boot at all."
   },
-
   "notes": [
     "Command order, not address order: entry N is the phrase command N plays, and consecutive entries are not consecutive in memory.",
-    "No end-bound entry, so the last phrase's end is implicit. It is taken to run to the pointer table, which sits above the speech in this set.",
-    "GAME_LAYOUTS in the research toolkit records 16 directly addressable phrases (internal commands 0x28-0x37); entries 16-20 are used by composite sequences."
+    "The research toolkit's GAME_LAYOUTS records 21 entries and 16 directly addressable phrases (internal commands 0x28-0x37). The 21st entry is the end bound; entries 16-19 are reached by the composite sequences at $FC46."
   ],
-
-  "contributors": ["Flashback Fleet LLC"]
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
 }
