@@ -6,6 +6,7 @@
 # from the canonical source artifact.
 
 include README.md CONTRIBUTING.md CHANGELOG.md CITATION.cff
+include RELEASE_READINESS.md
 include THIRD_PARTY_NOTICES.md ACKNOWLEDGEMENTS.md
 include LICENSE MANIFEST.in
 
