@@ -6,6 +6,7 @@ ROM that is subtly wrong. Each test here drives one of those situations.
 """
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,19 +17,26 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from synthetic_game import build                              # noqa: E402
+from synthetic_game import build, write_profile               # noqa: E402
 from tms52xx import chips                                     # noqa: E402
 from tms52xx.profiles import Profile, sha256                  # noqa: E402
 from tms52xx.workflow import (ConversionRefused,              # noqa: E402
                               MANIFEST_SCHEMA_VERSION, convert_set)
 
 
-def run(*args, cwd):
+def run(*args, cwd, extra_env=None):
+    """Invoke the CLI as a subprocess, portably.
+
+    The environment is inherited rather than replaced: setting PATH to a
+    POSIX-only value cannot work on Windows, and Windows is a first-class
+    target here because that is where most EPROM programmer software runs.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("UNDERSTUDY_PROFILE_DIR", None)
+    env.update(extra_env or {})
     return subprocess.run([sys.executable, "-m", "tms52xx.cli", *args],
-                          cwd=cwd, capture_output=True, text=True,
-                          env={"PYTHONPATH": str(ROOT / "src"),
-                               "PATH": "/usr/bin:/bin",
-                               "SYSTEMROOT": ""})
+                          cwd=str(cwd), capture_output=True, text=True, env=env)
 
 
 class WorkflowFixture(unittest.TestCase):
@@ -272,6 +280,142 @@ class TestCommandLine(unittest.TestCase):
                      cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("unknown chip", result.stderr)
+
+    def test_each_output_is_named_after_its_own_socket_s_input(self):
+        """Run the real command and check which input each output is named for.
+
+        Naming by "the first file supplied" still produces two distinct files,
+        because the socket is in the name -- so nothing is overwritten. What it
+        produces is a file called `u4_U5_...` holding U5's converted contents,
+        which is exactly the sort of thing that gets burned into the wrong chip.
+        """
+        write_profile(self.dir / "profiles", self.raw)
+        out = self.dir / "out"
+        result = run("convert-set", str(self.u4), str(self.u5),
+                     "--game", "synthgame", "--target", "tms5220",
+                     "-o", str(out), cwd=self.dir,
+                     extra_env={"UNDERSTUDY_PROFILE_DIR":
+                                str(self.dir / "profiles")})
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        written = sorted(p.name for p in out.iterdir() if p.suffix == ".bin")
+        self.assertEqual(len(written), 2, written)
+        # u4.bin went into socket U4, so its output must carry both.
+        self.assertTrue(any(n.startswith("u4_U4_") for n in written), written)
+        self.assertTrue(any(n.startswith("u5_U5_") for n in written), written)
+
+    def test_two_sockets_holding_identical_bytes_map_to_different_files(self):
+        """Naming outputs by content would give both the same filename.
+
+        Two devices in a set can legitimately hold identical bytes. If the
+        output name were looked up by comparing contents, both sockets would be
+        named after the same input file and one would silently overwrite the
+        other -- leaving the technician one converted device and one copy of it.
+        """
+        same = self.dumps["U4"]
+        raw = copy.deepcopy(self.raw)
+        raw["profile_id"] = "twins"
+        for device in raw["devices"]:
+            device["size"] = len(same)
+            device["sha256"] = sha256(same)
+            device["mirrored"] = False
+        raw["devices"][0]["cpu_address"] = 0xE000
+        raw["devices"][1]["cpu_address"] = 0xE800
+
+        profile_dir = self.dir / "profiles"
+        write_profile(profile_dir, raw)
+        a, b = self.dir / "a.bin", self.dir / "b.bin"
+        a.write_bytes(same)
+        b.write_bytes(same)
+
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = None
+            dumps = [str(a), str(b)]
+
+        profile = Profile(raw, "<twins>")
+        dumps, sources = _sockets_from_args(Args(), profile)
+        self.assertEqual(sorted(dumps), ["U4", "U5"])
+        self.assertNotEqual(sources["U4"], sources["U5"],
+                            "both sockets were mapped to the same file")
+
+    def test_the_same_file_given_twice_is_refused(self):
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = None
+            dumps = [str(self.u4), str(self.u4)]
+
+        with self.assertRaises(ValueError) as caught:
+            _sockets_from_args(Args(), Profile(self.raw, "<x>"))
+        self.assertIn("twice", str(caught.exception))
+
+    def test_an_ambiguous_size_match_is_refused_not_guessed(self):
+        """Two same-sized files and no hash to tell them apart: stop."""
+        raw = copy.deepcopy(self.raw)
+        for device in raw["devices"]:
+            device.pop("sha256", None)
+            device["size"] = 0x800
+            device["mirrored"] = False
+        raw["devices"][0]["cpu_address"] = 0xE000
+        raw["devices"][1]["cpu_address"] = 0xE800
+        a, b = self.dir / "a.bin", self.dir / "b.bin"
+        a.write_bytes(b"\x01" * 0x800)
+        b.write_bytes(b"\x02" * 0x800)
+
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = None
+            dumps = [str(a), str(b)]
+
+        with self.assertRaises(ValueError) as caught:
+            _sockets_from_args(Args(), Profile(raw, "<x>"))
+        self.assertIn("--socket", str(caught.exception))
+
+    def test_an_explicit_socket_can_resolve_that(self):
+        raw = copy.deepcopy(self.raw)
+        for device in raw["devices"]:
+            device.pop("sha256", None)
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = ["U4=%s" % self.u4, "U5=%s" % self.u5]
+            dumps = []
+
+        dumps, sources = _sockets_from_args(Args(), Profile(raw, "<x>"))
+        self.assertEqual(sorted(dumps), ["U4", "U5"])
+        self.assertEqual(Path(sources["U4"]).name, "u4.bin")
+
+    def test_a_socket_named_twice_is_refused(self):
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = ["U4=%s" % self.u4, "U4=%s" % self.u5]
+            dumps = []
+
+        with self.assertRaises(ValueError) as caught:
+            _sockets_from_args(Args(), Profile(self.raw, "<x>"))
+        self.assertIn("twice", str(caught.exception))
+
+    def test_output_paths_are_compared_case_insensitively_where_that_matters(self):
+        """On Windows `out.bin` and `OUT.BIN` are one file.
+
+        Comparing Path objects would call them different and let the input be
+        overwritten on the platform most EPROM software runs on.
+        """
+        from tms52xx.cli import _same_file
+        import os
+        # Case folding is only observable on a case-insensitive platform, so
+        # assert the normalisation that is observable everywhere: the same file
+        # reached by two different spellings of its path.
+        self.assertTrue(_same_file(Path("speech.bin"),
+                                   Path("sub/../speech.bin")))
+        self.assertTrue(_same_file(Path("./speech.bin"), Path("speech.bin")))
+        self.assertFalse(_same_file(Path("speech.bin"), Path("other.bin")))
+        # And where the platform IS case-insensitive, spelling must not matter.
+        self.assertEqual(_same_file(Path("speech.bin"), Path("SPEECH.BIN")),
+                         os.path.normcase("a") == os.path.normcase("A"))
 
     def test_an_unknown_game_names_the_known_ones(self):
         result = run("convert-set", str(self.u4), "--game", "nosuchgame",

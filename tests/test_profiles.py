@@ -332,7 +332,7 @@ class TestBundledEmbryonProfile(unittest.TestCase):
         A blunt size check: a profile that grew large enough to hold speech is
         doing something it should not.
         """
-        for path in (profiles.PROFILE_DIR).glob("*.json"):
+        for path in profiles.BUNDLED_PROFILE_DIR.glob("*.json"):
             raw = json.loads(path.read_text())
             text = json.dumps(raw)
             self.assertLess(len(text), 8000, path.name)

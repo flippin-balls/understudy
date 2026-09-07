@@ -175,10 +175,23 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 
 def _same_file(a: Path, b: Path) -> bool:
-    """Would writing `b` overwrite `a`? Resolves links, and handles b missing."""
+    """Would writing `b` overwrite `a`? Handles links, and `b` not existing yet.
+
+    `samefile` is the reliable test but needs both to exist, and the output
+    usually does not yet. The path comparison that backs it up goes through
+    `os.path.normcase`, because on Windows `speech.bin` and `SPEECH.BIN` are one
+    file and comparing `Path`s would call them different -- which would let the
+    input ROM be destroyed on exactly the platform most EPROM software runs on.
+    """
     try:
-        return a.resolve() == b.resolve() or (b.exists() and a.samefile(b))
+        if b.exists() and a.exists() and a.samefile(b):
+            return True
     except OSError:
+        pass
+    try:
+        return (os.path.normcase(os.path.abspath(str(a)))
+                == os.path.normcase(os.path.abspath(str(b))))
+    except (OSError, ValueError):
         return False
 
 
@@ -379,15 +392,20 @@ def _read_dump(path: Path) -> bytes:
     return data
 
 
-def _sockets_from_args(args, profile) -> dict:
+def _sockets_from_args(args, profile):
     """Map the files the user gave us onto the profile's sockets.
 
-    Either `--socket U4=file` explicitly, or by matching each file's size and
-    hash against the profile. Size alone is never enough when two sockets hold
-    the same size device, so an ambiguous set is refused rather than guessed.
+    Returns (dumps, sources): socket -> bytes, and socket -> the path it came
+    from, so outputs can be named after their input.
+
+    Either `--socket U4=file` explicitly, or by matching each file against the
+    profile: by hash first, and only then by size. Size alone is not enough when
+    two sockets take the same size device, so an ambiguous set is refused rather
+    than guessed -- putting a dump in the wrong socket converts the wrong bytes.
     """
     from .profiles import sha256 as _sha
-    dumps = {}
+
+    dumps, sources = {}, {}
     if args.socket:
         for item in args.socket:
             if "=" not in item:
@@ -396,36 +414,57 @@ def _sockets_from_args(args, profile) -> dict:
             if profile.device_for(socket) is None:
                 raise ValueError("socket %r is not in the %s profile"
                                  % (socket, profile.id))
+            if socket in dumps:
+                raise ValueError("socket %r given twice" % socket)
             dumps[socket] = _read_dump(Path(path))
-        return dumps
+            sources[socket] = path
+        return dumps, sources
 
-    files = {Path(f): _read_dump(Path(f)) for f in args.dumps}
-    digests = {p: _sha(d) for p, d in files.items()}
+    if not args.dumps:
+        raise ValueError("no dumps given")
+
+    files = {}
+    for name in args.dumps:
+        path = Path(name)
+        if any(_same_file(path, Path(other)) for other in files):
+            raise ValueError("%s was given twice" % path)
+        files[str(path)] = _read_dump(path)
+    digests = {name: _sha(data) for name, data in files.items()}
+    taken = set()
+
+    # Hash matches first, across all devices, so a size guess can never take a
+    # file that some other socket can identify exactly.
     for device in profile.devices:
-        if device.sha256:
-            hit = [p for p, d in digests.items() if d == device.sha256]
-            if len(hit) == 1:
-                dumps[device.socket] = files[hit[0]]
-                continue
-        candidates = [p for p, d in files.items()
-                      if len(d) == device.size and p not in
-                      [Path(x) for x in []]]
-        candidates = [p for p in candidates
-                      if files[p] not in [dumps.get(s) for s in dumps]]
+        if not device.sha256:
+            continue
+        hit = [n for n, d in digests.items()
+               if d == device.sha256 and n not in taken]
+        if hit:
+            dumps[device.socket] = files[hit[0]]
+            sources[device.socket] = hit[0]
+            taken.add(hit[0])
+
+    for device in profile.devices:
+        if device.socket in dumps:
+            continue
+        candidates = [n for n, data in files.items()
+                      if len(data) == device.size and n not in taken]
         if len(candidates) == 1:
             dumps[device.socket] = files[candidates[0]]
+            sources[device.socket] = candidates[0]
+            taken.add(candidates[0])
         elif not candidates:
             raise ValueError(
-                "nothing supplied matches socket %s (%s, %d bytes) of the %s "
+                "nothing supplied fits socket %s (%s, %d bytes) of the %s "
                 "profile" % (device.socket, device.device_type, device.size,
                              profile.id))
         else:
             raise ValueError(
                 "cannot tell which file belongs in socket %s: %d files are %d "
-                "bytes and none matches the profile's hash. Name them "
-                "explicitly with --socket %s=PATH."
+                "bytes and none matches the profile's hash. Name it explicitly "
+                "with --socket %s=PATH."
                 % (device.socket, len(candidates), device.size, device.socket))
-    return dumps
+    return dumps, sources
 
 
 def cmd_chips(args) -> int:
@@ -540,7 +579,7 @@ def cmd_convert_set(args) -> int:
         print("error: %s is not a replacement part" % target.id, file=sys.stderr)
         return 2
 
-    dumps = _sockets_from_args(args, profile)
+    dumps, sources = _sockets_from_args(args, profile)
     try:
         result = convert_set(
             dumps, profile, target,
@@ -557,17 +596,20 @@ def cmd_convert_set(args) -> int:
         outdir.mkdir(parents=True, exist_ok=True)
         for entry in result.outputs:
             device = profile.device_for(entry["socket"])
-            source_name = next(
-                (Path(f).name for f in (args.dumps or [])
-                 if _read_dump(Path(f)) == dumps[entry["socket"]]),
-                "%s_%s" % (profile.id, entry["socket"]))
+            # Name each output after the file it came from. Looked up by SOCKET,
+            # not by comparing contents: two sockets can legitimately hold
+            # identical bytes, and matching on contents would give them both the
+            # same output name so one would overwrite the other.
+            origin = sources.get(entry["socket"])
+            source_name = (Path(origin).name if origin
+                           else "%s_%s" % (profile.id, entry["socket"]))
             name = output_name(source_name, device, target)
             path = outdir / name
             if path.exists() and not args.force:
                 print("refusing to overwrite %s (pass --force)" % path,
                       file=sys.stderr)
                 return 2
-            if _same_file(Path(source_name), path):
+            if origin and _same_file(Path(origin), path):
                 print("refusing to write over an input dump (%s)" % path,
                       file=sys.stderr)
                 return 2

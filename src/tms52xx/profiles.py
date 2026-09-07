@@ -20,10 +20,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-PROFILE_DIR = Path(__file__).resolve().parent / "data" / "profiles"
+BUNDLED_PROFILE_DIR = Path(__file__).resolve().parent / "data" / "profiles"
+
+#: Set UNDERSTUDY_PROFILE_DIR to work on a profile before submitting it. The
+#: contributing guide relies on this; so does the test suite.
+PROFILE_ENV = "UNDERSTUDY_PROFILE_DIR"
+
+
+def profile_dir() -> Path:
+    override = os.environ.get(PROFILE_ENV)
+    return Path(override) if override else BUNDLED_PROFILE_DIR
 
 #: Bumped when the on-disk shape changes in a way older readers cannot handle.
 SCHEMA_VERSION = 1
@@ -266,7 +276,7 @@ def available(directory=None) -> List[Profile]:
     """Every bundled profile that parses. A broken one raises rather than
     being skipped -- a profile silently missing is how the wrong one gets
     picked."""
-    directory = Path(directory) if directory else PROFILE_DIR
+    directory = Path(directory) if directory else profile_dir()
     if not directory.exists():
         return []
     return [load_file(p) for p in sorted(directory.glob("*.json"))]

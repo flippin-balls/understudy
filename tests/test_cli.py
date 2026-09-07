@@ -1,6 +1,7 @@
 """End-to-end CLI behaviour, including the refusals."""
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,9 +17,17 @@ from test_rom import RomFixture                 # noqa: E402
 
 
 def run(*args, cwd):
+    """Invoke the CLI as a subprocess, portably.
+
+    The environment is inherited rather than replaced. An earlier version set
+    PATH to a POSIX-only value, which cannot work on Windows -- and Windows is
+    a first-class target here, because that is where most EPROM programmer
+    software runs.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
     return subprocess.run([sys.executable, "-m", "tms52xx.cli", *args],
-                          cwd=cwd, capture_output=True, text=True,
-                          env={"PYTHONPATH": str(ROOT / "src"), "PATH": "/usr/bin:/bin"})
+                          cwd=str(cwd), capture_output=True, text=True, env=env)
 
 
 class TestCli(RomFixture):

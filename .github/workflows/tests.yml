@@ -1,7 +1,8 @@
 name: tests
 # The suite is pure standard library and needs no fixtures, network or ROM data,
-# so it runs as-is on every supported interpreter. The version matrix is not
-# decoration: README.md claims Python 3.9 or newer, and this is what checks it.
+# so it runs as-is everywhere. Windows is a first-class target: a lot of EPROM
+# programmer software is Windows-only, so that is where this tool will often be
+# run. It is also where path handling breaks first.
 on:
   pull_request:
   push:
@@ -13,22 +14,90 @@ concurrency:
   cancel-in-progress: true
 jobs:
   unittest:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.13"]      # the oldest supported, and a current one
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: unittest
+
+      - name: unittest (POSIX)
+        if: runner.os != 'Windows'
         run: PYTHONPATH=src python -m unittest discover -s tests -v
-      - name: the package imports and the CLI runs
+
+      - name: unittest (Windows)
+        if: runner.os == 'Windows'
+        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+
+      - name: install from a built wheel and convert with no setup
+        shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH=src python -c "import tms52xx; print(tms52xx.__version__)"
-          PYTHONPATH=src python -m tms52xx.cli --help > /dev/null
-          PYTHONPATH=src python -m tms52xx.cli inspect --help > /dev/null
-          PYTHONPATH=src python -m tms52xx.cli convert --help > /dev/null
+          python -m pip install --quiet build
+          python -m build --wheel --outdir dist
+          python -m pip install --quiet dist/*.whl
+          # The bundled data must survive packaging: without it an installed
+          # copy cannot convert anything, which is the whole point of bundling.
+          python - <<'PY'
+          from tms52xx import chips, profiles
+          assert abs(chips.resolve("tms5200").tables().lowest_f0_hz - 37.91) < 0.1
+          assert abs(chips.resolve("tsp5220c").tables().lowest_f0_hz - 50.31) < 0.1
+          ids = [p.id for p in profiles.available()]
+          assert "embryon" in ids, ids
+          print("bundled data present after install:", ids)
+          PY
+          understudy --help > /dev/null
+          understudy chips > /dev/null
+          understudy profiles > /dev/null
+          understudy identify --help > /dev/null
+          understudy convert-set --help > /dev/null
+          echo "console script works"
+
+  self-check:
+    # Guards claims the documentation makes, so they cannot rot silently.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: bundled tables match their recorded provenance
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          import json, pathlib
+          for name in ("tms5200", "tms5220"):
+              raw = json.loads(pathlib.Path(
+                  "src/tms52xx/data/%s.json" % name).read_text())
+              prov = raw["_provenance"]
+              assert prov["license"] == "BSD-3-Clause", prov
+              assert "mamedev/mame" in prov["repository"], prov
+              assert len(prov["source_sha256"]) == 64, prov
+              notices = pathlib.Path("THIRD_PARTY_NOTICES.md").read_text()
+              assert prov["source_sha256"] in notices, (
+                  "%s: source hash is not recorded in THIRD_PARTY_NOTICES.md"
+                  % name)
+              assert prov["struct"] in notices, prov["struct"]
+          print("bundled data provenance is consistent with the notices")
+          PY
+      - name: no ROM data anywhere in the repository
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          bad = []
+          for path in pathlib.Path(".").rglob("*"):
+              if not path.is_file() or ".git/" in str(path):
+                  continue
+              if path.suffix.lower() in {".bin", ".rom", ".wav", ".snd",
+                                         ".716", ".532", ".732"}:
+                  bad.append(str(path))
+          if bad:
+              sys.exit("ROM-like files present: %s" % bad)
+          print("no ROM-like files")
+          PY
