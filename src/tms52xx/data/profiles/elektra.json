@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "profile_id": "elektra",
+  "profile_version": 1,
+  "title": "Elektra",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "elektra",
+    "elektraa"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "857-01_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "54dd0492b9406ce3fd1a0bee1cefa9b19ebbd251e5ed7b7cdbd106a9fc91b34c",
+      "crc32": "031548cc"
+    },
+    {
+      "socket": "U4",
+      "label": "857-02_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "dad0b017e30a7bec90e2a7666f3e653dfd72465d07cea98393b80c7767f2fb47",
+      "crc32": "efc870d9"
+    },
+    {
+      "socket": "U5",
+      "label": "857-03_5",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 61440,
+      "mirrored": true,
+      "holds_speech": false,
+      "sha256": "52ecd153bc7746b793a77bbdc2a0a29cacd06c4e9769589f8de0ede7971c1ac3",
+      "crc32": "eae2c6a6"
+    }
+  ],
+  "layout": {
+    "table_offset": 12427,
+    "base_address": 49152,
+    "phrases": 16,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F08B, 16 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv: 1148 frames.",
+    "conversion": "1148 frames converted, all keeping their frame kind when the output was re-parsed with the target tables; 109 frames below the TMS5220 pitch floor were clamped.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 4 SPEAK EXTERNAL commands, 2624 writes to the TMS, and 4370 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$D000",
+      "$D28F",
+      "$D335",
+      "$D5C1",
+      "$D98F",
+      "$DAC8",
+      "$DBFF",
+      "$DD0A",
+      "$DDB6",
+      "$DE73",
+      "$E02A",
+      "$E27C",
+      "$E4B5",
+      "$E5C6",
+      "$E681",
+      "$E735"
+    ],
+    "traced_streams": 16,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 16 streams from 16 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 16 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone."
+  },
+  "notes": [
+    "This sound ROM set is shared by 2 game revisions: elektra, elektraa.",
+    "Command order, not address order."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

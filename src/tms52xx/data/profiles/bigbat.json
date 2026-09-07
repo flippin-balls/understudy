@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "profile_id": "bigbat",
+  "profile_version": 1,
+  "title": "Big Bat",
+  "manufacturer": "Bally",
+  "year": 1984,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "bigbat"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "u3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "d8120187ca19641d938595e648219da328f7b23fb31198c5b03e9ae8b1fb0ef7",
+      "crc32": "b87a9335"
+    },
+    {
+      "socket": "U4",
+      "label": "u4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "e72c31d34b64e1e7feaf5442b2691bf7d1c1bb37c727994422493d2a265bac99",
+      "crc32": "4ab75b31"
+    },
+    {
+      "socket": "U5",
+      "label": "u5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "ebf8abfc7221b21a754128a2e31414b8bfbba90899d6405436dc25784abfb48f",
+      "crc32": "0aec8204"
+    }
+  ],
+  "layout": {
+    "table_offset": 13759,
+    "base_address": 49152,
+    "phrases": 24,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "unterminated_phrases": [],
+    "address_ordered": true,
+    "has_end_bound": true
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F5BF, 24 phrases, address-ordered, with a final end bound.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 24 streams from 24 distinct addresses spanning $D000-$E1E1. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1012 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 8 SPEAK EXTERNAL commands, 3976 writes to the TMS, and 0 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "provenance": "This set's ROMs were not in the archive tree the other fifteen came from. They were found in a sibling `files/` tree under descriptive names (\"Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN\"), so a search using the driver's filenames would not have found them either. Each matches the PinMAME driver's SHA-1 exactly: U3 8a21bcbcbe91da1bab0af06b71604bb8f247d0d4, U4 46acd1c9250a635b51bffccd77ea4e67a0c5edf5, U5 f44216cccc3652399549345d8c74bcae54662aa3. Those SHA-1s are recorded here beside the SHA-256s below so the two digests of the same bytes can be checked against each other.",
+    "traced_phrase_starts": [
+      "$D000",
+      "$D099",
+      "$D11B",
+      "$D16F",
+      "$D1E3",
+      "$D2A6",
+      "$D3AD",
+      "$D4BF",
+      "$D5E5",
+      "$D666",
+      "$D6EC",
+      "$D76B",
+      "$D85C",
+      "$D927",
+      "$DA0F",
+      "$DAE5",
+      "$DBB9",
+      "$DD17",
+      "$DE23",
+      "$DF21",
+      "$DFA5",
+      "$E046",
+      "$E0F0",
+      "$E1E1"
+    ],
+    "traced_streams": 24,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 24 streams from 24 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 24 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone.",
+    "low_u4_coverage": "U4 reads 29%, below the 33-70% that correct layouts in the corpus sweep measured. That is explained rather than excused. The speech ends at $E4AF -- the table's final end bound, and independently the exact end of the last traced stream, which the firmware plays as $E1E1-$E4AF. So the bound does not rest on the pointer table alone. Above it, the remaining 2,896 bytes of U4 ($E4B0-$EFFF) show 61 distinct byte values across the whole span, dominated by a repeating 00/08/FE pattern, and not one of those addresses is executed when the board is driven through all 256 commands. That is consistent with sequencer data and inconsistent with LPC speech, which is dense and high-entropy. It is not a proof that no unplayed speech is there; what it establishes is that nothing the firmware plays lies above $E4AF, and that a layout reaching further into U4 would be converting bytes with none of the properties of speech."
+  },
+  "notes": [
+    "This sound ROM set is shared by 1 game revisions: bigbat."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

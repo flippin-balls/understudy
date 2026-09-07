@@ -654,10 +654,17 @@ def cmd_profiles(args) -> int:
     if not found:
         print("no profiles bundled")
         return 0
-    print("%-12s %-28s %-18s %s" % ("id", "title", "status", "phrases"))
+    print("%-12s %-26s %-17s %7s  %s"
+          % ("id", "title", "status", "phrases", "game revisions covered"))
     for profile in found:
-        print("%-12s %-28s %-18s %d"
-              % (profile.id, profile.label, profile.status, profile.phrases))
+        print("%-12s %-26s %-17s %7d  %s"
+              % (profile.id, profile.label, profile.status, profile.phrases,
+                 len(profile.revisions)))
+    total = sum(len(p.revisions) for p in found)
+    print("\n%d profile(s), covering %d game revision(s). Coverage is counted in"
+          % (len(found), total))
+    print("distinct SOUND ROM sets: revisions of one game usually share their")
+    print("sound ROMs, so one profile serves all of them.")
     print("\nA profile is chosen only on an exact hash match of every "
           "speech-bearing\ndevice. Anything less is reported and refused -- see "
           "`understudy identify`.")
@@ -708,6 +715,9 @@ def cmd_identify(args) -> int:
     if len(complete) == 1:
         profile = complete[0].profile
         print("Identified: %s" % profile.label)
+        if len(profile.revisions) > 1:
+            print("  (this sound ROM set is shared by %d game revisions: %s)"
+                  % (len(profile.revisions), ", ".join(profile.revisions)))
         print()
         print("Convert it with:")
         print("  understudy convert-set %s --game %s --target tsp5220c -o out/"

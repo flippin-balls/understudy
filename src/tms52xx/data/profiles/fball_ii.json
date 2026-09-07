@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "profile_id": "fball_ii",
+  "profile_version": 1,
+  "title": "Fireball II",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "fball_ia",
+    "fball_ii"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "839-01_2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "4b0108c8f3661ddef6aeb23023e5c425bad89c4ea2671201f5cae62621318525",
+      "crc32": "4aa473bd"
+    },
+    {
+      "socket": "U5",
+      "label": "839-02_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "d9b5e5b0f326c33c29e43c746c4242eb829fa4ae247c80f30a94fcae513427eb",
+      "crc32": "8bf904ff"
+    }
+  ],
+  "layout": {
+    "table_offset": 13088,
+    "base_address": 49152,
+    "phrases": 16,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F320, 16 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 13 streams from 12 distinct addresses spanning $C000-$CCF5. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "721 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 4 SPEAK EXTERNAL commands, 1956 writes to the TMS, and 16192 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$C000",
+      "$C1C7",
+      "$C24C",
+      "$C2BD",
+      "$C340",
+      "$C38D",
+      "$C4F0",
+      "$C6AE",
+      "$C7C6",
+      "$C973",
+      "$CB0D",
+      "$CCF5"
+    ],
+    "traced_streams": 13,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 13 streams from 12 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 13 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "This layout declares 1 distinct phrase the firmware never played ($C176). Nothing here confirms those independently: the evidence for them is the pointer table itself, which is the same kind of evidence that was wrong in Fathom v1. They are converted on the basis that they are entries in a table whose every other entry the trace confirms."
+  },
+  "notes": [
+    "This sound ROM set is shared by 2 game revisions: fball_ia, fball_ii.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

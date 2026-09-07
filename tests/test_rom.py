@@ -514,6 +514,73 @@ class TestTableAbovePhrases(unittest.TestCase):
         self.assertIn("overlaps the pointer table", str(caught.exception))
 
 
+class TestTableBetweenPhrases(unittest.TestCase):
+    """A pointer table can sit BETWEEN the speech, not only above or below it.
+
+    Fathom does exactly that: entries 0-26 point below the table at $FA6F and
+    entry 27 points above it at $FAD3. Without clamping every phrase at the
+    table, the phrase below runs through the table to reach the one above --
+    which is refused as an overlap, so the whole layout is unusable and the
+    speech above the table is never converted.
+    """
+
+    def setUp(self):
+        self.src, self.dst = original(), understudy()
+        a = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        b = stream(self.src, [(9, 0, 12, list(range(10))), (0xF, 0, 0, [])])
+        # speech, gap, TABLE, gap, more speech
+        self.low = 4
+        self.table_at = 0x100
+        self.high = 0x180
+        rom = bytearray(b"\x00" * 0x200)
+        rom[self.low:self.low + len(a)] = a
+        rom[self.high:self.high + len(b)] = b
+        for i, value in enumerate([self.low, self.high]):
+            rom[self.table_at + 2 * i:self.table_at + 2 * i + 2] = \
+                value.to_bytes(2, "big")
+        self.rom = bytes(rom)
+
+    def test_a_phrase_below_the_table_stops_at_it(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        low = next(p for p in table.phrases if p.start == self.low)
+        self.assertEqual(low.end, self.table_at,
+                         "the phrase below ran through the pointer table")
+
+    def test_the_phrase_above_the_table_is_still_reachable(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        high = next(p for p in table.phrases if p.start == self.high)
+        self.assertEqual(high.end, len(self.rom))
+
+    def test_the_table_survives_patching(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        out, _results = patch_rom(self.rom, table, self.src, self.dst)
+        self.assertEqual(out[self.table_at:self.table_at + 4],
+                         self.rom[self.table_at:self.table_at + 4])
+
+    def test_both_phrases_actually_convert(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        out, results = patch_rom(self.rom, table, self.src, self.dst)
+        self.assertEqual(len(results), 2)
+        for r in results:
+            self.assertGreater(r.changed_bytes, 0,
+                               "phrase %d converted nothing" % r.phrase.index)
+
+    def test_address_ordered_layouts_are_clamped_too(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=True,
+                                          has_end_bound=False)
+        low = next(p for p in table.phrases if p.start == self.low)
+        self.assertEqual(low.end, self.table_at)
+
+
 class TestLastByteConvention(RomFixture):
     """The final-byte convention is per phrase, and is read off the data."""
 
@@ -585,6 +652,194 @@ class TestLastByteConvention(RomFixture):
             table = PhraseTable(phrases=[Phrase(0, 4, 4 + len(data))])
             got.add(diagnose_last_byte(rom, table, self.src)[0])
         self.assertEqual(got, {"required", "spare"})
+
+
+class PointerPairTable(unittest.TestCase):
+    """Tables that store both bounds of every phrase, as Centaur's does.
+
+    Reading such a table as a list of starts is the failure this form exists to
+    prevent: every other pointer IS a real phrase start, so the wrong reading
+    produces phrases that all parse and terminate while describing half the ROM.
+    """
+
+    def setUp(self):
+        self.src = original()
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        self.body = body
+        # Three phrases with a gap between them, then the table after them.
+        # The gaps matter: with the phrases laid end to end, every end pointer
+        # equals the next start pointer and the two readings coincide. Real
+        # sets are not all contiguous -- Medusa's are not -- and the gap is what
+        # makes a misread visible.
+        step = len(body) + 4
+        self.starts = [0x10, 0x10 + step, 0x10 + 2 * step]
+        self.table_at = 0x10 + 3 * step
+        rom = bytearray(self.table_at + 3 * 4 + 8)
+        for start in self.starts:
+            rom[start:start + len(body)] = body
+        for i, start in enumerate(self.starts):
+            at = self.table_at + 4 * i
+            rom[at:at + 2] = start.to_bytes(2, "big")
+            rom[at + 2:at + 4] = (start + len(body)).to_bytes(2, "big")
+        self.rom = bytes(rom)
+
+    def table(self, count=3, rom=None):
+        return PhraseTable.from_pointer_pairs(rom or self.rom, self.table_at,
+                                              count)
+
+    def test_each_record_gives_one_phrase_with_both_its_bounds(self):
+        phrases = self.table().phrases
+        self.assertEqual([p.start for p in phrases], self.starts)
+        self.assertEqual([p.end for p in phrases],
+                         [s + len(self.body) for s in self.starts])
+
+    def test_reading_a_pair_table_as_starts_invents_phrases_and_does_not_raise(self):
+        """The motivating failure, demonstrated rather than asserted.
+
+        Read as starts, every END pointer becomes a phrase too, so the table
+        describes twice as many phrases as exist and the invented ones cover
+        whatever lies between the real ones -- fill, padding, or code. Nothing
+        raises: that is what makes this form worth supporting rather than
+        detecting.
+        """
+        as_starts = PhraseTable.from_pointers(
+            self.rom, self.table_at, 6, address_ordered=False,
+            has_end_bound=False)
+        self.assertEqual(len(as_starts.phrases), 6)
+        self.assertNotEqual([p.start for p in as_starts.phrases], self.starts)
+        real = {(p.start, p.end) for p in self.table().phrases}
+        read = {(p.start, p.end) for p in as_starts.phrases}
+        # Twice the phrases, and the extra ones are not speech at all.
+        self.assertEqual(len(as_starts.phrases), 2 * len(self.starts))
+        self.assertTrue(read - real, "the misreading must invent phrases")
+        for start, end in read - real:
+            self.assertNotIn(start, self.starts)
+
+    def test_a_record_whose_end_precedes_its_start_is_refused(self):
+        rom = bytearray(self.rom)
+        at = self.table_at
+        rom[at:at + 2] = (self.starts[1]).to_bytes(2, "big")
+        rom[at + 2:at + 4] = (self.starts[0]).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("(start, end) pairs", str(caught.exception))
+
+    def test_a_record_pointing_outside_the_rom_is_refused(self):
+        rom = bytearray(self.rom)
+        rom[self.table_at:self.table_at + 2] = (0xFFFF).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("outside", str(caught.exception))
+
+    def test_a_phrase_overlapping_the_table_is_refused(self):
+        """Patching it would rewrite the table that describes it."""
+        rom = bytearray(self.rom)
+        rom[self.table_at + 2:self.table_at + 4] = (
+            self.table_at + 4).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("overlaps the pointer table", str(caught.exception))
+
+    def test_a_table_running_past_the_end_of_the_rom_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.table(count=64)
+        self.assertIn("runs past the end", str(caught.exception))
+
+    def test_records_are_four_bytes_not_two(self):
+        """A pair table of N phrases occupies 4N bytes.
+
+        Off-by-a-factor-of-two here would read the second half of the table as
+        phrases, which is exactly what a plain-starts reading does.
+        """
+        with self.assertRaises(ValueError):
+            PhraseTable.from_pointer_pairs(self.rom[:self.table_at + 4 * 3 - 1],
+                                           self.table_at, 3)
+        self.assertEqual(len(self.table().phrases), 3)
+
+    def test_conversion_through_a_pair_table_stays_in_place(self):
+        patched, results = patch_rom(self.rom, self.table(), self.src,
+                                     understudy())
+        self.assertEqual(len(patched), len(self.rom))
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(r.stopped_cleanly for r in results))
+        changed = [i for i, (a, b) in enumerate(zip(self.rom, patched))
+                   if a != b]
+        self.assertTrue(changed)
+        self.assertTrue(all(any(p.start <= i < p.end
+                                for p in self.table().phrases)
+                            for i in changed))
+
+
+class AllowUnterminatedByName(unittest.TestCase):
+    """`allow_unterminated` takes a list, so one phrase can be excused alone.
+
+    A blanket `True` excuses every phrase in the set, which is the wrong shape
+    for a ROM with exactly one phrase the player has to terminate: it would
+    also excuse a second, unnoticed one -- and an unterminated phrase is what a
+    layout aimed at code looks like.
+    """
+
+    def setUp(self):
+        self.src = original()
+        # Two phrases, neither carrying a stop frame.
+        body = stream(self.src, [(7, 0, 40, list(range(10)))])
+        self.span = len(body)
+        rom = bytearray(4 + 2 * self.span)
+        rom[4:4 + self.span] = body
+        rom[4 + self.span:4 + 2 * self.span] = body
+        self.rom = bytes(rom)
+        self.table = PhraseTable(phrases=[
+            Phrase(0, 4, 4 + self.span),
+            Phrase(1, 4 + self.span, 4 + 2 * self.span)])
+
+    def patch(self, allow):
+        return patch_rom(self.rom, self.table, self.src, understudy(),
+                         allow_unterminated=allow)
+
+    def test_neither_phrase_terminates(self):
+        with self.assertRaises(ValueError) as caught:
+            self.patch(False)
+        message = str(caught.exception)
+        self.assertIn("2 of 2", message)
+        self.assertIn("phrase 0", message)
+
+    def test_naming_one_still_refuses_the_other(self):
+        with self.assertRaises(ValueError) as caught:
+            self.patch([0])
+        message = str(caught.exception)
+        self.assertIn("1 of 2", message)
+        self.assertIn("phrase 1", message)
+
+    def test_naming_both_converts(self):
+        _patched, results = self.patch([0, 1])
+        self.assertEqual(len(results), 2)
+        self.assertFalse(any(r.stopped_cleanly for r in results))
+
+    def test_true_still_excuses_everything(self):
+        _patched, results = self.patch(True)
+        self.assertEqual(len(results), 2)
+
+    def test_an_empty_list_excuses_nothing(self):
+        with self.assertRaises(ValueError):
+            self.patch([])
+
+    def test_naming_a_phrase_that_terminates_is_refused(self):
+        """The argument is a statement about these bytes, not an override."""
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        rom = bytes(4) + body
+        table = PhraseTable(phrases=[Phrase(0, 4, 4 + len(body))])
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(rom, table, self.src, understudy(),
+                      allow_unterminated=[0])
+        self.assertIn("DO end in a stop frame", str(caught.exception))
+
+    def test_naming_something_that_is_not_a_phrase_is_refused(self):
+        """Distinguished from "it terminates": index 7 is not a phrase at all."""
+        with self.assertRaises(ValueError) as caught:
+            self.patch([0, 1, 7])
+        message = str(caught.exception)
+        self.assertIn("not phrase index", message)
+        self.assertIn("7", message)
 
 
 if __name__ == "__main__":

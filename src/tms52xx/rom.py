@@ -49,6 +49,61 @@ class PhraseTable:
     phrases: List[Phrase]
 
     @classmethod
+    def from_pointer_pairs(cls, rom: bytes, table_offset: int, count: int,
+                           base_address: int = 0) -> "PhraseTable":
+        """Read a table of 4-byte (start, end) records into phrase extents.
+
+        Some sets do not store a list of starts and derive each end from the
+        next entry. They store both ends of every phrase, one 4-byte record per
+        phrase: start high, start low, end high, end low. Centaur and Medusa are
+        both built this way, and reading such a table as a list of starts
+        produces phrases that are individually plausible -- every other pointer
+        is a real phrase start -- while silently describing half the ROM.
+
+        The record form carries its own bounds, so there is nothing to derive
+        and no ordering to know: `address_ordered` and `has_end_bound` have no
+        meaning here. Ends are used exactly as stored rather than being clamped
+        at the table, because an end that runs into the table is a misread
+        table, not a phrase to be trimmed -- and is refused below.
+        """
+        if table_offset < 0 or count < 0 or base_address < 0:
+            raise ValueError("table_offset, count and base_address must be "
+                             "non-negative (got %d, %d, %d)"
+                             % (table_offset, count, base_address))
+        if count == 0:
+            raise ValueError("count must be at least 1")
+
+        end_of_table = table_offset + count * 4
+        if end_of_table > len(rom):
+            raise ValueError(
+                "pointer-pair table of %d records at 0x%X runs past the end of "
+                "a %d-byte ROM" % (count, table_offset, len(rom)))
+
+        phrases = []
+        for i in range(count):
+            at = table_offset + 4 * i
+            start = int.from_bytes(rom[at:at + 2], "big") - base_address
+            end = int.from_bytes(rom[at + 2:at + 4], "big") - base_address
+            for name, value in (("start", start), ("end", end)):
+                if not 0 <= value <= len(rom):
+                    raise ValueError(
+                        "record %d has %s 0x%X, outside a %d-byte ROM -- check "
+                        "table_offset and base_address"
+                        % (i, name, value, len(rom)))
+            if end <= start:
+                raise ValueError(
+                    "record %d has end 0x%X <= start 0x%X. These are (start, "
+                    "end) pairs; a table of plain start pointers read this way "
+                    "produces exactly this." % (i, end, start))
+            if start < end_of_table and table_offset < end:
+                raise ValueError(
+                    "phrase %d (0x%X-0x%X) overlaps the pointer table at "
+                    "0x%X-0x%X; patching it would corrupt the table"
+                    % (i, start, end, table_offset, end_of_table))
+            phrases.append(Phrase(i, start, end))
+        return cls(phrases)
+
+    @classmethod
     def from_pointers(cls, rom: bytes, table_offset: int, count: int,
                       address_ordered: bool = True,
                       has_end_bound: bool = True,
@@ -89,13 +144,28 @@ class PhraseTable:
                     "check table_offset and base_address"
                     % (i, value, len(rom)))
 
-        # Where the last phrase ends when nothing bounds it. Not simply the
-        # end of the image: the pointer table often sits above the speech, and
-        # its bytes are not speech, so they bound the phrase too.
+        # THE POINTER TABLE BOUNDS EVERY PHRASE, not just the last one.
+        #
+        # Its bytes are never speech, so a phrase can never span it. That
+        # matters in two arrangements, and both occur in real sets:
+        #
+        #   table ABOVE the speech -- the last phrase has no following pointer,
+        #     and running it to the end of the image would swallow the table;
+        #   table BETWEEN phrases -- Fathom's sits at $FA6F with speech both
+        #     below it and above it at $FAD3, so the phrase below would
+        #     otherwise run through the table to reach it.
+        #
+        # Clamping every end at the table start handles both, and leaves a
+        # phrase that ends before the table untouched.
         def implicit_end(start: int) -> int:
             if start < table_offset:
                 return table_offset
             return len(rom)
+
+        def bounded(start: int, end: int) -> int:
+            if start < table_offset < end:
+                return table_offset
+            return end
 
         # Extents need address order; reporting keeps the caller's order. In a
         # command-ordered table entry N is what command N plays, and sorting the
@@ -103,15 +173,17 @@ class PhraseTable:
         if address_ordered:
             bounds = list(pointers)
             phrases = [Phrase(i, bounds[i],
-                              bounds[i + 1] if i + 1 < len(bounds)
-                              else implicit_end(bounds[i]))
+                              bounded(bounds[i],
+                                      bounds[i + 1] if i + 1 < len(bounds)
+                                      else implicit_end(bounds[i])))
                        for i in range(count)]
         else:
             ordered = sorted(set(pointers))
             successor = {value: (ordered[j + 1] if j + 1 < len(ordered)
                                  else implicit_end(value))
                          for j, value in enumerate(ordered)}
-            phrases = [Phrase(i, pointers[i], successor[pointers[i]])
+            phrases = [Phrase(i, pointers[i],
+                              bounded(pointers[i], successor[pointers[i]]))
                        for i in range(count)]
 
         seen = {}
@@ -242,7 +314,8 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     than returning, because the usual cause is a wrong layout aimed at code or
     data and the result would be a plausible-looking corrupt ROM. Pass
     `allow_unterminated=True` if you have checked and the phrases really are
-    unterminated. This lives here rather than in the command line so that a
+    unterminated, or an iterable of the phrase indexes that are known not to
+    terminate -- which keeps the refusal in force for every other phrase. This lives here rather than in the command line so that a
     library caller gets the same protection as a CLI user.
 
     The ROM is the same length as the input and differs only inside phrase
@@ -336,11 +409,38 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     # each get their own entry, marked with `alias_of`, so no command loses its
     # identity and no total is counted twice.
     unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
+    if allow_unterminated is not True and allow_unterminated:
+        # An iterable of indexes: those phrases are known not to terminate and
+        # every other one must still be refused. The claim is checked in both
+        # directions -- a named phrase that DOES terminate, or that is not a
+        # phrase at all, means the caller is describing a different layout from
+        # the one being converted, and quietly ignoring it would let the list
+        # act as a blanket override instead of a statement about these bytes.
+        expected = set(allow_unterminated)
+        known = {r.phrase.index for r in results}
+        unknown = sorted(expected - known)
+        if unknown:
+            raise ValueError(
+                "allow_unterminated names %s, which %s not phrase index(es) in "
+                "0..%d"
+                % (", ".join(str(i) for i in unknown),
+                   "is" if len(unknown) == 1 else "are", len(results) - 1))
+        wrong = sorted(expected - set(unterminated))
+        if wrong:
+            raise ValueError(
+                "allow_unterminated names phrase(s) %s, but they DO end in a "
+                "stop frame. That argument states which phrases the ROM leaves "
+                "the player to terminate; naming one that terminates means the "
+                "layout is not the one you think it is."
+                % ", ".join(str(i) for i in wrong))
+        unterminated = [i for i in unterminated if i not in expected]
+        allow_unterminated = False
     if unterminated and not allow_unterminated:
         raise ValueError(
             "%d of %d phrase(s) do not end in a stop frame (first is phrase "
             "%d); the declared layout is probably wrong. Pass "
-            "allow_unterminated=True to convert them anyway."
+            "allow_unterminated=True to convert them anyway, or a list of "
+            "the phrase indexes that are known not to terminate."
             % (len(unterminated), len(results), unterminated[0]))
 
     return bytes(out), results

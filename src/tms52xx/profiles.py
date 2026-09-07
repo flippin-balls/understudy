@@ -51,6 +51,9 @@ SCHEMA_VERSION = 1
 #:                     rewrote code: nothing static will.
 #:   silicon-verified  a converted set has been fitted to a real board and
 #:                     listened to, with a report
+#: What one pointer-table entry is. See `Profile` for why this is explicit.
+ENTRY_FORMS = ("starts", "start_end_pairs")
+
 STATUS_VALUES = ("draft", "layout-verified", "board-simulated",
                  "silicon-verified")
 
@@ -150,6 +153,16 @@ class Profile:
         self.source_chip = raw["source_chip"]
         self.status = raw["status"]
         self.notes = list(raw.get("notes", []))
+        # Every emulator driver / game revision this soundset serves. The 49
+        # Squawk & Talk drivers collapse to 19 distinct sound ROM sets, so one
+        # profile normally covers several revisions -- Embryon's covers six.
+        # Recorded so coverage can be stated honestly in both units.
+        self.applies_to = list(raw.get("applies_to", []))
+        for entry in self.applies_to:
+            if not isinstance(entry, str) or not entry.strip():
+                raise ProfileError(
+                    "%s: applies_to must be a list of driver names, got %r"
+                    % (where, entry))
         self.evidence = dict(raw.get("evidence", {}))
         self.chip_commands_observed = list(raw.get("chip_commands_observed", []))
 
@@ -184,10 +197,34 @@ class Profile:
             raise ProfileError("%s: memory.fill must be a byte" % where)
 
         layout = raw["layout"]
-        for key in ("table_offset", "phrases", "base_address",
-                    "address_ordered", "has_end_bound"):
+        # `entry_form` says what one table entry IS. "starts" is a list of
+        # phrase starts, each phrase ending where the next begins;
+        # "start_end_pairs" is a 4-byte (start, end) record per phrase. It
+        # defaults to "starts" so profiles written before the pair form was
+        # supported keep their meaning.
+        entry_form = layout.get("entry_form", "starts")
+        if entry_form not in ENTRY_FORMS:
+            raise ProfileError(
+                "%s: layout.entry_form must be one of %s, got %r"
+                % (where, ", ".join(sorted(ENTRY_FORMS)), entry_form))
+        required = ["table_offset", "phrases", "base_address"]
+        if entry_form == "starts":
+            required += ["address_ordered", "has_end_bound"]
+        for key in required:
             if key not in layout:
                 raise ProfileError("%s: layout is missing %r" % (where, key))
+        # A pair record carries both of its own bounds, so there is no ordering
+        # to know and no end bound to append. Silently ignoring these would let
+        # a profile state something about its layout that has no effect --
+        # exactly the kind of claim that is later read as verified.
+        if entry_form == "start_end_pairs":
+            for key in ("address_ordered", "has_end_bound"):
+                if key in layout:
+                    raise ProfileError(
+                        "%s: layout.%s has no meaning with "
+                        "entry_form=start_end_pairs -- a (start, end) record "
+                        "carries both of its own bounds. Remove it."
+                        % (where, key))
         # Types before values. JSON hands over whatever was written, and a
         # string where an int belongs, or a truthy string where a bool belongs,
         # would silently change the layout rather than fail.
@@ -200,28 +237,51 @@ class Profile:
                 raise ProfileError("%s: layout.%s must not be negative"
                                    % (where, key))
         for key in ("address_ordered", "has_end_bound"):
+            if key not in layout:
+                continue
             if not isinstance(layout[key], bool):
                 raise ProfileError(
                     "%s: layout.%s must be true or false, got %r -- a string "
                     "here would silently change the layout"
                     % (where, key, layout[key]))
-        if not isinstance(layout.get("truncate_last_byte", []), list):
-            raise ProfileError("%s: layout.truncate_last_byte must be a list"
-                               % where)
+        for key in ("truncate_last_byte", "silent_phrases",
+                    "unterminated_phrases"):
+            if not isinstance(layout.get(key, []), list):
+                raise ProfileError("%s: layout.%s must be a list" % (where, key))
 
         self.table_offset = layout["table_offset"]
         self.phrases = layout["phrases"]
         self.base_address = layout["base_address"]
-        self.address_ordered = bool(layout["address_ordered"])
-        self.has_end_bound = bool(layout["has_end_bound"])
+        self.entry_form = entry_form
+        self.address_ordered = bool(layout.get("address_ordered", False))
+        self.has_end_bound = bool(layout.get("has_end_bound", False))
         self.truncate_last_byte = list(layout.get("truncate_last_byte", []))
+        #: Phrases that are deliberately SILENT -- a run of silence frames and
+        #: nothing else. A pointer aimed at padding looks exactly like this, so
+        #: silence is refused by default and a profile has to name the phrases
+        #: it claims are intentional. The claim is then checked: a named phrase
+        #: that turns out to carry speech is refused, so this cannot be used to
+        #: wave a bad layout through.
+        self.silent_phrases = list(layout.get("silent_phrases", []))
+        #: Phrases that do not carry a stop frame, because the player supplies
+        #: the terminator rather than the ROM. Refused by default -- an
+        #: unterminated phrase is usually a layout aimed at code or data -- so
+        #: a profile has to name them, and the claim is checked: a named phrase
+        #: that does terminate is refused.
+        self.unterminated_phrases = list(
+            layout.get("unterminated_phrases", []))
         if not isinstance(self.phrases, int) or self.phrases < 1:
             raise ProfileError("%s: layout.phrases must be at least 1" % where)
-        for index in self.truncate_last_byte:
-            if not isinstance(index, int) or not 0 <= index < self.phrases:
-                raise ProfileError(
-                    "%s: truncate_last_byte lists %r, which is not a phrase "
-                    "index in 0..%d" % (where, index, self.phrases - 1))
+        for key, indexes in (("truncate_last_byte", self.truncate_last_byte),
+                             ("silent_phrases", self.silent_phrases),
+                             ("unterminated_phrases",
+                              self.unterminated_phrases)):
+            for index in indexes:
+                if (isinstance(index, bool) or not isinstance(index, int)
+                        or not 0 <= index < self.phrases):
+                    raise ProfileError(
+                        "%s: %s lists %r, which is not a phrase index in 0..%d"
+                        % (where, key, index, self.phrases - 1))
 
         self.devices = [Device(d, where) for d in raw["devices"]]
         if not self.devices:
@@ -294,6 +354,14 @@ class Profile:
             return None
 
     @property
+    def revisions(self) -> List[str]:
+        """Driver names this profile serves, the profile's own id included."""
+        names = list(self.applies_to)
+        if self.id not in names:
+            names.insert(0, self.id)
+        return names
+
+    @property
     def identity(self) -> str:
         """A stable, portable name for where this profile came from.
 
@@ -363,23 +431,42 @@ class Profile:
             windows.append((at + device.size, at + 2 * device.size))
 
         changed = [w for w in windows if image[w[0]:w[1]] != original[w[0]:w[1]]]
-        if len(changed) > 1:
-            # Both halves changed. That is only a problem if they now DIFFER:
-            # one device cannot hold two contents. If they came out identical,
-            # the device can represent the result and there is nothing wrong --
-            # which is what happens when a layout addresses phrases through
-            # both the real and mirrored windows.
-            contents = {bytes(image[lo:hi]) for lo, hi in changed}
-            if len(contents) > 1:
+        if len(changed) < 2:
+            lo, hi = changed[0] if changed else windows[0]
+            return DeviceResult(
+                device=device, data=bytes(image[lo:hi]), window=(lo, hi),
+                changed=bool(changed),
+                from_mirror=bool(changed) and changed[0] is windows[-1]
+                and device.mirrored)
+
+        # BOTH HALVES CHANGED. One device, two windows onto it.
+        #
+        # This is not by itself wrong. A 2 KB part answers at two addresses, so
+        # a set is free to reach some phrases through the lower window and
+        # others through the upper one -- Eight Ball Deluxe does, and the two
+        # groups land on different offsets of the same physical device. Merging
+        # them byte by byte reconstructs what that device holds.
+        #
+        # What one device cannot represent is the same offset converted two
+        # different ways, so that is what is refused, naming the offset rather
+        # than the whole window.
+        lower, upper = windows
+        base = bytes(original[lower[0]:lower[1]])
+        low = bytes(image[lower[0]:lower[1]])
+        high = bytes(image[upper[0]:upper[1]])
+        merged = bytearray(base)
+        for i, (was, a, b) in enumerate(zip(base, low, high)):
+            if a != was and b != was and a != b:
                 raise ProfileError(
-                    "socket %s: the two mirror halves changed to different "
-                    "contents, which one device cannot represent -- the layout "
-                    "is wrong" % device.socket)
-        lo, hi = changed[0] if changed else windows[0]
-        return DeviceResult(device=device, data=bytes(image[lo:hi]),
-                            window=(lo, hi), changed=bool(changed),
-                            from_mirror=bool(changed) and changed[0] is windows[-1]
-                            and device.mirrored)
+                    "socket %s: offset 0x%X was converted two different ways "
+                    "through the device's two mirror windows (0x%02X at "
+                    "0x%04X, 0x%02X at 0x%04X). One device cannot hold both -- "
+                    "the layout is wrong."
+                    % (device.socket, i, a, self.window_base + lower[0] + i,
+                       b, self.window_base + upper[0] + i))
+            merged[i] = a if a != was else b
+        return DeviceResult(device=device, data=bytes(merged),
+                            window=lower, changed=True, from_mirror=True)
 
 
 class DeviceResult:

@@ -32,6 +32,21 @@ Copy `src/tms52xx/data/profiles/embryon.json` and edit it. The fields are
 documented in `src/tms52xx/profiles.py`; the loader validates every one and will
 tell you exactly what is wrong.
 
+### Layout fields that are claims, not switches
+
+Four `layout` fields let a profile state something unusual about its table.
+Each is *checked*, so none of them can be used to wave a bad layout through:
+
+| field | states | checked how |
+|---|---|---|
+| `entry_form` | `starts` (default) or `start_end_pairs` — whether an entry is a phrase start or a 4-byte (start, end) record | a pair record whose end precedes its start, or which overlaps the table, is refused; with `start_end_pairs`, stating `address_ordered` or `has_end_bound` is refused because neither has meaning |
+| `silent_phrases` | phrases that are a run of silence and nothing else | a named phrase that carries speech is refused |
+| `unterminated_phrases` | phrases the ROM leaves the player to terminate | a named phrase that *does* end in a stop frame is refused, and any phrase you did **not** name still has to terminate |
+| `truncate_last_byte` | phrases whose final ROM byte is never transmitted | `inspect --source-tables` reports where truncation is safe |
+
+Name only what you have checked. The value of each list is that everything not
+on it is still held to the default rule.
+
 **Every device needs a `sha256`, not only the speech-bearing ones.** A device
 carrying no speech is still copied out as a burn image, so it has to be
 authenticated too; `convert-set` refuses a profile that cannot verify every
@@ -53,19 +68,27 @@ profile.
 | status | means, exactly |
 |---|---|
 | `draft` | written, not yet checked against a real dump |
-| `layout-verified` | every phrase is found and terminates in a stop frame |
+| `layout-verified` | every phrase is found, and terminates in a stop frame or is named in `unterminated_phrases` and checked |
 | `board-simulated` | the board's own firmware, in emulation, boots and drives the **converted** ROMs |
 | `silicon-verified` | a converted set has been fitted to a real board and listened to |
 
 **No rung below `silicon-verified` means anyone has heard the speech.** Not
 even `board-simulated`: that checks structure and control flow, not sound.
 
-`board-simulated` is nonetheless the rung that matters most, because it is the
-only one that catches a layout which converted something that was not speech.
-Embryon's own profile shipped briefly with a pointer-table end bound read as a
-21st phrase; it parsed, it terminated, it changed nothing outside its extent,
-and it rewrote 6800 instructions. Every static check passed it. Booting the
-board against the converted ROMs did not.
+`board-simulated` catches a layout that converted something which was not
+speech — Embryon's own profile shipped briefly with a pointer-table end bound
+read as a 21st phrase; it parsed, it terminated, it changed nothing outside its
+extent, and it rewrote 6800 instructions. Every static check passed it. Booting
+the board against the converted ROMs did not.
+
+**But booting is not sufficient either.** Fathom shipped a profile that booted
+identically to the original while rewriting 31 bytes of firmware, because the
+commands the simulation issues never reach that code. A profile now also has to
+agree with a phrase list captured from the **running** board — see step 6 of
+"Working out the layout for your ROM" in
+[SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md). If you cannot run that check, say so
+in the evidence block and mark the profile `draft`; it is better to contribute a
+layout labelled as unconfirmed than one labelled as more than it is.
 
 **Only a real-machine test earns `silicon-verified`**, and it needs a report —
 see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
@@ -125,7 +148,12 @@ found layouts that convert cleanly, boot the board's firmware, and are still
 wrong — one converted 1.5% of its speech and behaved normally. Before a profile
 ships:
 
-1. **every phrase found and terminating** — `inspect --source-tables` shows it;
+1. **every phrase found and terminating** — `inspect --source-tables` shows it.
+   If one does not, that is normally a wrong layout. It can also be a ROM whose
+   player supplies the terminator: one phrase of Mr. and Mrs. Pac-Man is, and
+   nothing else in the sixteen sets. Establish which before naming it in
+   `unterminated_phrases`, and expect to be held to it — a named phrase that
+   does terminate is refused;
 2. **speech coverage that looks like a whole ROM.** `convert-set` prints the
    percentage of each speech device the layout reached. Correct layouts in that
    sweep ran 33–70%; the wrong one ran 1.5%. There is no safe threshold, so look

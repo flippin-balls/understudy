@@ -4,10 +4,18 @@
   "understudy_version": "0.3.0",
   "profile": {
     "id": "embryon",
-    "version": 3,
+    "version": 4,
     "title": "Bally Embryon (1981)",
     "status": "board-simulated",
-    "sha256": "de95d5439ff0c9d5b15bb622a9410b6162a2460aea1a3094a72c7c25db48c31d",
+    "sha256": "9f7bd98c0e1ac311388ad8874fc51b9eb29a3f19860b3ad8ff66456d8dbc72c6",
+    "applies_to": [
+      "embryon",
+      "embryona",
+      "embryonb",
+      "embryonc",
+      "embryond",
+      "embryone"
+    ],
     "source": "data/profiles/embryon.json"
   },
   "chips": {

@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "profile_id": "eballchp",
+  "profile_version": 1,
+  "title": "Eight Ball Champ",
+  "manufacturer": "Bally",
+  "year": 1985,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "eballchp"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "u3_snd",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "610189ff9afc7b0764e60e1cac21a38551008e8678b7ce0f322fe5160469ed52",
+      "crc32": "4836d70d"
+    },
+    {
+      "socket": "U4",
+      "label": "u4_snd",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "5452c5e4c0eee9e7dd8a96ca15756c5108bacbaabc9b6edb48f4ebf6603a7a74",
+      "crc32": "4b49d94d"
+    },
+    {
+      "socket": "U5",
+      "label": "u5_snd",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "f24f87906e1a5768768959f47ba83376e81e159286e41c68238682ef1997dece",
+      "crc32": "655441df"
+    }
+  ],
+  "layout": {
+    "table_offset": 11824,
+    "base_address": 49152,
+    "phrases": 62,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "address_ordered": false,
+    "has_end_bound": true
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $EE30, 62 phrases, command-ordered, with a final end bound.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 34 streams from 33 distinct addresses spanning $D000-$EDB5. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1485 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 24 SPEAK EXTERNAL commands, 3390 writes to the TMS, and 34368 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$D000",
+      "$D09B",
+      "$D10F",
+      "$D2D4",
+      "$D390",
+      "$D421",
+      "$D4CC",
+      "$D57F",
+      "$D666",
+      "$D705",
+      "$D7CA",
+      "$D8C4",
+      "$D9AB",
+      "$DA78",
+      "$DB42",
+      "$DC4C",
+      "$DD5C",
+      "$DE4D",
+      "$DF48",
+      "$E1DE",
+      "$E234",
+      "$E344",
+      "$E3D7",
+      "$E451",
+      "$E4A6",
+      "$E627",
+      "$E776",
+      "$E823",
+      "$E8D6",
+      "$EAAB",
+      "$EC85",
+      "$ED2B",
+      "$EDB5"
+    ],
+    "traced_streams": 34,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 34 streams from 33 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 34 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "This layout declares 5 distinct phrases the firmware never played ($DFBD, $E04E, $E0C8, $E13E, $E2A1). Nothing here confirms those independently: the evidence for them is the pointer table itself, which is the same kind of evidence that was wrong in Fathom v1. They are converted on the basis that they are entries in a table whose every other entry the trace confirms."
+  },
+  "notes": [
+    "This sound ROM set is shared by 1 game revisions: eballchp."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}
