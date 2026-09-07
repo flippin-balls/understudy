@@ -122,6 +122,12 @@ Understudy stops rather than write a ROM that might be wrong. It refuses when:
   devices;
 - **the output path is one of your input dumps.**
 
+It also catches **double conversion**. A converted ROM carries no marker saying
+so — there is nowhere in a TMS52xx stream to put one — but it no longer matches
+the profile's hashes, so `convert-set` refuses it whether you let it identify
+the set or force `--game`. The manual `convert` path has no such protection, so
+keep your originals.
+
 ## Things that will bite you at the bench
 
 - **2532 and 2732 are not pin-compatible**, and a Squawk & Talk socket takes

@@ -147,6 +147,36 @@ class TestRefusals(WorkflowFixture):
         self.assertIn("allow_unterminated", result.overrides)
 
 
+class TestDoubleConversion(WorkflowFixture):
+    """Converting an already-converted set is caught, on both paths.
+
+    A TMS52xx stream has nowhere to record that it has been converted, so the
+    file itself cannot say. The profile hash does: converted output no longer
+    matches the profile it came from, so both identification and an explicit
+    --game are refused. This is protection the manual `convert` path does not
+    have, and it is a reason to prefer `convert-set` where a profile exists.
+    """
+
+    def test_converted_output_no_longer_identifies_as_the_profile(self):
+        result = self.convert()
+        converted = {e["socket"]: e["data"] for e in result.outputs}
+        files = {"a.bin": converted["U4"], "b.bin": converted["U5"]}
+        import tempfile
+        from tms52xx import profiles as profile_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            from synthetic_game import write_profile
+            write_profile(tmp, self.raw)
+            self.assertEqual(
+                [m for m in profile_mod.identify(files, tmp) if m.complete], [])
+
+    def test_forcing_the_profile_onto_converted_output_is_refused(self):
+        result = self.convert()
+        converted = {e["socket"]: e["data"] for e in result.outputs}
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(converted, self.profile, self.target)
+        self.assertIn("does not match", str(caught.exception))
+
+
 class TestBackstops(WorkflowFixture):
     """Two checks that cannot fire today, and the properties that keep it so.
 
