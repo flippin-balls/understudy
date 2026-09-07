@@ -1753,10 +1753,29 @@ class TestRunningFromAClone(unittest.TestCase):
         self.assertIn("embryon", result.stdout)
 
     def test_it_names_the_invocation_the_reader_actually_used(self):
-        """Telling a clone user to run `understudy` sends them hunting."""
-        result = self.run_launcher("identify", "nosuchfile.bin")
+        """Telling a clone user to run `understudy` sends them hunting.
+
+        Driven through the unrecognised-set path, which prints a command for
+        the reader to run next -- the place where naming the wrong entry point
+        actually costs them something.
+        """
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            here = Path(directory)
+            (here / "u4.bin").write_bytes(bytes(2048))
+            (here / "u5.bin").write_bytes(bytes(4096))
+            result = self.run_launcher("identify", str(here / "u4.bin"),
+                                       str(here / "u5.bin"), cwd=here)
         combined = result.stdout + result.stderr
-        self.assertNotIn("  understudy ", combined)
+        self.assertIn("understudy.py", combined,
+                      "the printed command must name the launcher actually "
+                      "used, not a command that is not on the reader's PATH")
+        for line in combined.splitlines():
+            if "inspect <image>" in line:
+                self.assertNotIn("  understudy inspect", line)
+                break
+        else:
+            self.fail("expected the manual path to be suggested")
 
 
 class TestSuggestedCommandIsCopyPasteable(WorkflowFixture):
