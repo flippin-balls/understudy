@@ -109,7 +109,7 @@ revisiting if technicians report install friction.
 
 ## 7. Test coverage
 
-**276 tests.** Standard library only, no fixtures, no network, no ROM data.
+**278 tests.** Standard library only, no fixtures, no network, no ROM data.
 
 Coverage spans the bit codec (including a frame transcribed by hand from the
 field spec, independent of the parser's own assumptions), conversion arithmetic
