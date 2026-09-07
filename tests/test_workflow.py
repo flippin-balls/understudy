@@ -1500,5 +1500,227 @@ class TestSpeechRunningOffTheEndOfAListedDevice(unittest.TestCase):
         at = device.cpu_address - profile.window_base
         self.assertTrue(at <= (self.SPEECH - self.WINDOW) < at + device.size)
 
+class TestRateControlNeedsFirmwareEvidence(WorkflowFixture):
+    """A C-family target is a claim about the BOARD, not about the data.
+
+    The TMS5220C and TSP5220C carry LPC tables identical to the TMS5220's, so
+    the converted bytes are the same whichever is named. What differs is that
+    they read the 0x00/0x20 opcode as SET RATE where a TMS5200 ignores it. No
+    amount of looking at speech data says whether a board sends one, so the
+    profile has to carry the measurement.
+    """
+
+    def profile_with(self, commands):
+        raw = copy.deepcopy(self.raw)
+        if commands is None:
+            raw.pop("chip_commands_observed", None)
+        else:
+            raw["chip_commands_observed"] = commands
+        return Profile(raw, "<x>")
+
+    def test_no_evidence_refuses_a_C_family_target(self):
+        for target in ("tms5220c", "tsp5220c"):
+            with self.assertRaises(ConversionRefused) as caught:
+                convert_set(dict(self.dumps), self.profile_with(None),
+                            chips.resolve(target))
+            message = str(caught.exception)
+            self.assertIn("SET RATE", message)
+            self.assertIn("chip_commands_observed", message)
+
+    def test_no_evidence_still_allows_the_plain_5220(self):
+        """The gate is about the C family only."""
+        result = convert_set(dict(self.dumps), self.profile_with(None),
+                             chips.resolve("tms5220"))
+        self.assertGreater(result.stats["frames"], 0)
+
+    def test_evidence_without_a_rate_opcode_allows_it(self):
+        result = convert_set(dict(self.dumps), self.profile_with(["0x60"]),
+                             chips.resolve("tsp5220c"))
+        self.assertGreater(result.stats["frames"], 0)
+
+    def test_evidence_containing_a_rate_opcode_refuses_it(self):
+        for opcode in ("0x00", "0x20", "0x2F"):
+            with self.assertRaises(ConversionRefused) as caught:
+                convert_set(dict(self.dumps),
+                            self.profile_with(["0x60", opcode]),
+                            chips.resolve("tms5220c"))
+            self.assertIn("SET RATE", str(caught.exception))
+
+    def test_the_override_is_explicit_and_works(self):
+        result = convert_set(dict(self.dumps), self.profile_with(None),
+                             chips.resolve("tsp5220c"),
+                             allow_unverified_rate_control=True)
+        self.assertGreater(result.stats["frames"], 0)
+
+    def test_every_bundled_profile_carries_the_evidence(self):
+        """Otherwise a C-family conversion of a shipped set would be refused."""
+        from tms52xx.profiles import available
+        for profile in available():
+            self.assertTrue(profile.chip_commands_observed,
+                            "%s records no command evidence" % profile.id)
+            risky = [c for c in profile.chip_commands_observed
+                     if (c & 0x70) in chips.Chip.SET_RATE_OPCODES]
+            self.assertEqual(risky, [], profile.id)
+
+
+class TestMirroredReconciliationIsHonest(WorkflowFixture):
+    """Physical-device bytes and CPU-image bytes are different counts."""
+
+    def aliased_set(self):
+        """One phrase named through BOTH windows of the mirrored device."""
+        raw = copy.deepcopy(self.raw)
+        u5 = self.profile.device_for("U5")
+        u4 = self.profile.device_for("U4")
+        at = self.profile.table_offset - (u5.cpu_address
+                                          - self.profile.window_base)
+        dumps = dict(self.dumps)
+        data = bytearray(dumps["U5"])
+        entry = int.from_bytes(data[at + 2:at + 4], "big")
+        data[at + 6:at + 8] = (entry - u4.size).to_bytes(2, "big")
+        dumps["U5"] = bytes(data)
+        for device in raw["devices"]:
+            device["sha256"] = sha256(dumps[device["socket"]])
+        return dumps, Profile(raw, "<x>")
+
+    def test_the_two_counts_differ_and_both_are_reported(self):
+        dumps, profile = self.aliased_set()
+        result = convert_set(dumps, profile, self.target)
+        physical = sum(e["changed_bytes"] for e in result.outputs)
+        windows = sum(e["window_changed_bytes"] for e in result.outputs)
+        self.assertNotEqual(physical, windows,
+                            "the fixture must exercise the mirror")
+        # The image total reconciles with the WINDOW total, never the physical.
+        self.assertEqual(windows, result.stats["bytes_changed"])
+
+    def test_a_device_merged_from_both_windows_says_so(self):
+        dumps, profile = self.aliased_set()
+        result = convert_set(dumps, profile, self.target)
+        u4 = next(e for e in result.outputs if e["socket"] == "U4")
+        self.assertEqual(u4["source_window"], "merged")
+
+    def test_a_device_taken_only_from_its_mirror_says_that_instead(self):
+        result = self.convert()
+        u4 = next(e for e in result.outputs if e["socket"] == "U4")
+        self.assertEqual(u4["source_window"], "mirror")
+        self.assertTrue(u4["taken_from_mirror"])
+
+
+class TestCoverageMeasuresConsumedBytes(WorkflowFixture):
+    """The percentage must describe the ROM, not the pointer table."""
+
+    def test_a_huge_declared_extent_does_not_inflate_it(self):
+        """A phrase bounded far past its speech must not read as full coverage.
+
+        Point the last phrase's bound at the table instead of at the next
+        phrase: its declared extent grows enormously while the speech inside it
+        is unchanged, so a declared-extent metric would jump and a consumed-byte
+        metric must not.
+        """
+        before = self.convert()
+        u5_before = next(e for e in before.outputs
+                         if e["socket"] == "U5")["speech_coverage_percent"]
+
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["has_end_bound"] = False
+        raw["layout"]["phrases"] = raw["layout"]["phrases"]
+        after = convert_set(dict(self.dumps), Profile(raw, "<x>"), self.target)
+        u5_after = next(e for e in after.outputs
+                        if e["socket"] == "U5")["speech_coverage_percent"]
+        self.assertAlmostEqual(u5_before, u5_after, places=1)
+
+    def test_it_is_a_share_of_the_physical_device_not_the_window(self):
+        """The divisor is the part's own size, not the window it answers in.
+
+        A 2 KB device mirrored into a 4 KB window used to be divided by 4096,
+        so a fully converted part could not read above 50% however complete the
+        layout was. Asserted as the arithmetic rather than as a magnitude, so
+        the fixture's own size cannot make it vacuous.
+        """
+        from tms52xx.bitstream import parse
+        from tms52xx.rom import PhraseTable
+        from tms52xx.workflow import _load_tables
+        result = self.convert()
+        device = self.profile.device_for("U4")
+        self.assertTrue(device.mirrored)
+        at = device.cpu_address - self.profile.window_base
+        span = device.size * 2
+        table = PhraseTable.from_pointers(
+            result.before, self.profile.table_offset, self.profile.phrases,
+            address_ordered=self.profile.address_ordered,
+            has_end_bound=self.profile.has_end_bound,
+            base_address=self.profile.base_address)
+        src = _load_tables(chips.resolve(self.profile.source_chip), None)[0]
+        physical = set()
+        for phrase in table.phrases:
+            frames, stopped = parse(
+                bytes(result.before[phrase.start:phrase.end]),
+                src.pitch_bits, list(src.k_widths))
+            used = ((frames[-1].end_bit + 7) // 8) if frames else 0
+            if not stopped:
+                used = phrase.end - phrase.start
+            for off in range(phrase.start, min(phrase.start + used, phrase.end)):
+                if at <= off < at + span:
+                    physical.add((off - at) % device.size)
+        u4 = next(e for e in result.outputs if e["socket"] == "U4")
+        self.assertAlmostEqual(u4["speech_coverage_percent"],
+                               round(100.0 * len(physical) / device.size, 1),
+                               places=1)
+        self.assertTrue(physical, "the fixture must convert something in U4")
+
+    def test_it_never_exceeds_one_hundred(self):
+        for entry in self.convert().outputs:
+            coverage = entry.get("speech_coverage_percent")
+            if coverage is not None:
+                self.assertLessEqual(coverage, 100.0)
+
+class TestOutputContainmentIsIndependent(WorkflowFixture):
+    """The second layer of the path defence, tested with the first removed.
+
+    The profile loader restricts socket and type to safe identifiers, so in
+    normal use no dangerous name reaches the writer. That makes the containment
+    check unreachable through the front door -- and an untested guard is one
+    nobody knows still works. This drives it directly by making `output_name`
+    return a name the loader would never have allowed.
+    """
+
+    def test_a_name_with_a_separator_is_refused_before_anything_is_written(self):
+        import tempfile
+        from tms52xx import cli as cli_mod
+        from tms52xx import workflow as workflow_mod
+        real = workflow_mod.output_name
+
+        def escaping(source_name, device, target, custom_tables=False):
+            return ".." + os.sep + real(source_name, device, target,
+                                        custom_tables)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("in", "out", "profiles"):
+                (root / name).mkdir()
+            u4 = root / "in" / "841-01_4.716"
+            u5 = root / "in" / "841-02_5.532"
+            u4.write_bytes(self.dumps["U4"])
+            u5.write_bytes(self.dumps["U5"])
+            write_profile(root / "profiles", self.raw)
+
+            workflow_mod.output_name = escaping
+            os.environ["UNDERSTUDY_PROFILE_DIR"] = str(root / "profiles")
+            try:
+                with self.assertRaises(SystemExit) as caught:
+                    cli_mod.main(["convert-set", str(u4), str(u5),
+                                  "--target", "tms5220",
+                                  "-o", str(root / "out")])
+            finally:
+                workflow_mod.output_name = real
+                os.environ.pop("UNDERSTUDY_PROFILE_DIR", None)
+
+            self.assertIn("leaves the output directory", str(caught.exception))
+            # And nothing was written anywhere, inside or outside.
+            self.assertEqual(list((root / "out").iterdir()), [])
+            self.assertEqual(sorted(p.name for p in root.iterdir()),
+                             ["in", "out", "profiles"])
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

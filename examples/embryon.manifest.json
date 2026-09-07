@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "tool": "understudy",
   "understudy_version": "0.3.0",
   "profile": {
@@ -7,7 +7,7 @@
     "version": 4,
     "title": "Bally Embryon (1981)",
     "status": "board-simulated",
-    "sha256": "9f7bd98c0e1ac311388ad8874fc51b9eb29a3f19860b3ad8ff66456d8dbc72c6",
+    "sha256": "1e8574bcf6170b76c0502923b2ae386fef656ef516a75adc9ea0c036d1f5b65e",
     "applies_to": [
       "embryon",
       "embryona",
@@ -89,7 +89,7 @@
   "outputs": [
     {
       "socket": "U4",
-      "speech_coverage_percent": 50.0,
+      "speech_coverage_percent": 99.6,
       "device_type": "2716",
       "bytes": 2048,
       "sha256": "c75dc8cbafcff408d4496ee89c23111d27733289019c55eba81c96c01a0df304",
@@ -97,6 +97,7 @@
       "window_changed_bytes": 1560,
       "changed": true,
       "taken_from_mirror": true,
+      "source_window": "mirror",
       "window": [
         10240,
         12288
@@ -105,7 +106,7 @@
     },
     {
       "socket": "U5",
-      "speech_coverage_percent": 61.6,
+      "speech_coverage_percent": 61.3,
       "device_type": "2532",
       "bytes": 4096,
       "sha256": "977ac758d65d1be2e6b7c38397a756a400b6589c5fda368f8a2b3838f024a81e",
@@ -113,6 +114,7 @@
       "window_changed_bytes": 1948,
       "changed": true,
       "taken_from_mirror": false,
+      "source_window": "lower",
       "window": [
         12288,
         16384

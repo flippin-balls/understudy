@@ -230,6 +230,15 @@ class PublishRollbackError(OSError):
                          for b, d in self.lost))
 
 
+def _within(path: Path, directory: Path) -> bool:
+    """Is `path` inside `directory` once both are resolved?"""
+    try:
+        path.relative_to(directory)
+        return True
+    except ValueError:
+        return False
+
+
 def _publish(payloads) -> None:
     """Write a whole set of files, or none of them.
 
@@ -710,14 +719,37 @@ def cmd_identify(args) -> int:
             device = profile.device_for(socket)
             print("           %-4s -- no supplied file matches (%s, %d bytes)"
                   % (socket, device.device_type, device.size))
+        for socket in match.unsupplied:
+            if socket in match.missing:
+                continue
+            device = profile.device_for(socket)
+            print("           %-4s -- not supplied; holds no speech, but is "
+                  "burned too (%s, %d bytes)"
+                  % (socket, device.device_type, device.size))
 
     print()
     if len(complete) == 1:
-        profile = complete[0].profile
+        match = complete[0]
+        profile = match.profile
         print("Identified: %s" % profile.label)
         if len(profile.revisions) > 1:
             print("  (this sound ROM set is shared by %d game revisions: %s)"
                   % (len(profile.revisions), ", ".join(profile.revisions)))
+        if not match.burnable:
+            # The speech ROMs identify the set; they are not the whole set.
+            # Printing a convert-set command here would hand over something
+            # that fails on the next line.
+            print()
+            print("This identifies the SPEECH ROMs, but the set is not complete:")
+            for socket in match.unsupplied:
+                device = profile.device_for(socket)
+                print("  %-4s is missing (%s, %d bytes). It holds no speech, but"
+                      % (socket, device.device_type, device.size))
+                print("       convert-set authenticates and emits every device,")
+                print("       so it needs that dump too.")
+            print()
+            print("Dump the remaining device(s) and run identify again.")
+            return 1
         print()
         print("Convert it with:")
         print("  understudy convert-set %s --game %s --target tsp5220c -o out/"
@@ -770,7 +802,9 @@ def cmd_convert_set(args) -> int:
             dumps, profile, target,
             source_tables=Path(args.source_tables) if args.source_tables else None,
             target_tables=Path(args.target_tables) if args.target_tables else None,
-            allow_unterminated=args.allow_unterminated)
+            allow_unterminated=args.allow_unterminated,
+            allow_unverified_rate_control=getattr(
+                args, "allow_unverified_rate_control", False))
     except ConversionRefused as error:
         print("refusing to convert: %s" % error, file=sys.stderr)
         return 2
@@ -799,8 +833,21 @@ def cmd_convert_set(args) -> int:
         origin = sources.get(entry["socket"])
         source_name = (Path(origin).name if origin
                        else "%s_%s" % (profile.id, entry["socket"]))
-        plan.append((outdir / output_name(source_name, device, target,
-                                          result.custom_tables), entry))
+        name = output_name(source_name, device, target, result.custom_tables)
+        destination = outdir / name
+        # DEFENCE IN DEPTH. The profile loader restricts socket and type to safe
+        # identifiers, so a name should never contain a separator -- but this is
+        # the step that decides where bytes land, and it is cheap to make the
+        # containment a fact rather than a consequence of validation elsewhere.
+        # `..` inside a single component is harmless; a component that IS `..`,
+        # or any separator, is not.
+        resolved = (outdir / name).resolve()
+        if Path(name).name != name or not _within(resolved, outdir.resolve()):
+            raise SystemExit(
+                "refusing to write %r: the %s profile builds an output name "
+                "that leaves the output directory. Its socket or device type "
+                "contains a path separator." % (name, profile.id))
+        plan.append((destination, entry))
 
     destinations = [path for path, _ in plan] + [manifest_path]
 
@@ -903,13 +950,17 @@ def _print_set_summary(result, profile, target, written, args) -> None:
     print()
     print("output devices")
     for entry in result.outputs:
-        note = ""
-        if entry["taken_from_mirror"]:
-            note = "  (taken from the mirror half)"
+        note = {"mirror": "  (taken from the mirror half)",
+                "merged": "  (merged from both mirror windows)",
+                "lower": ""}.get(entry.get("source_window", "lower"), "")
         if not entry["changed"]:
             note = "  (unchanged - holds no speech)"
         coverage = entry.get("speech_coverage_percent")
-        share = ("  %.0f%% of it is speech" % coverage
+        # Says what is measured. It is the share of the PHYSICAL device that the
+        # phrases actually consume, counted to each one's stop frame -- not the
+        # share their declared extents span, which on one real set called a
+        # device 100% speech when a quarter of it is something else.
+        share = ("  %.0f%% converted" % coverage
                  if coverage is not None else "")
         print("  %-4s %-8s %6d bytes  %d changed%s%s"
               % (entry["socket"], entry["device_type"], entry["bytes"],
@@ -917,15 +968,32 @@ def _print_set_summary(result, profile, target, written, args) -> None:
         if entry.get("path"):
             print("       burn into %s: %s"
                   % (entry["device_type"], entry["path"]))
+    # TWO DIFFERENT COUNTS, AND THEY NEED NOT BE EQUAL.
+    #
+    # `changed_bytes` is per PHYSICAL device. `stats["bytes_changed"]` counts
+    # the assembled CPU image, where a mirrored device appears twice -- so a
+    # layout that reaches the same physical byte through both windows changes
+    # two image bytes and one device byte. Printing "A == B" asserted an
+    # equality that is false exactly when mirrors are in play, in a summary
+    # whose whole purpose is that the numbers reconcile.
     device_total = sum(e["changed_bytes"] for e in result.outputs)
+    window_total = sum(e.get("window_changed_bytes", e["changed_bytes"])
+                       for e in result.outputs)
     print()
-    print("  reconciliation         %d changed across devices == %d in the image"
-          % (device_total, stats["bytes_changed"]))
+    print("  bytes changed          %d across the physical devices"
+          % device_total)
+    print("  reconciliation         %d in the CPU image == %d across the "
+          "device windows" % (stats["bytes_changed"], window_total))
+    if window_total != device_total:
+        print("                         (a mirrored device answers at two "
+              "addresses, so the")
+        print("                          image counts %d byte(s) the device "
+              "holds once)" % (window_total - device_total))
     low = [e for e in result.outputs
            if (e.get("speech_coverage_percent") or 100) < 20]
     if low:
         print()
-        print("  NOTE: only %s of %s is covered by the declared phrases."
+        print("  NOTE: only %s of %s is speech this layout converts."
               % (", ".join("%.0f%%" % e["speech_coverage_percent"] for e in low),
                  ", ".join(e["socket"] for e in low)))
         print("  A correct layout usually reaches most of a speech device. A"
@@ -1018,6 +1086,13 @@ def main(argv=None) -> int:
                                help="override the bundled target tables")
     convert_set_p.add_argument("--allow-unterminated", action="store_true",
                                help="convert phrases with no stop frame")
+    convert_set_p.add_argument(
+        "--i-have-checked-this-firmware-never-sets-the-rate",
+        dest="allow_unverified_rate_control", action="store_true",
+        help="convert for a TMS5220C/TSP5220C even though the profile does not "
+             "record which commands its firmware sends. Those parts read the "
+             "0x00/0x20 opcode as SET RATE where a TMS5200 ignores it, so this "
+             "asserts something about the BOARD that this tool has not checked.")
     convert_set_p.add_argument("--dry-run", action="store_true")
     convert_set_p.add_argument("--force", action="store_true",
                                help="allow overwriting existing output files")

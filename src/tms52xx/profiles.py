@@ -62,6 +62,16 @@ class ProfileError(ValueError):
     """A profile file is malformed, or does not describe what it claims to."""
 
 
+#: What a socket designator or device type may look like. Deliberately narrow:
+#: these end up in filenames, and every real one is something like "U4", "U5",
+#: "2532" or "2716". Anything with a separator, a drive letter, a leading dot or
+#: a trailing dot (which Windows strips, turning "U4." into "U4") is refused.
+#: `\Z`, not `$`: in Python `$` also matches just before a trailing newline, so
+#: "U4\n" would pass and go straight into a filename.
+_SAFE_IDENTIFIER = re.compile(
+    r"\A[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]\Z|\A[A-Za-z0-9]\Z")
+
+
 class Device:
     """One ROM device in one socket."""
 
@@ -98,11 +108,26 @@ class Device:
                     "%s: device %s has a malformed sha256 (%r): it must be 64 "
                     "hex characters" % (where, self.socket, self.sha256))
             self.sha256 = self.sha256.lower()
+        # SOCKET AND TYPE BECOME PART OF AN OUTPUT FILENAME.
+        #
+        # `output_name` builds "<stem>_<socket>_<type>_<target><suffix>", and a
+        # profile can come from anywhere -- UNDERSTUDY_PROFILE_DIR exists so a
+        # contributor can try one before sending it. A socket of "U4/../../x"
+        # puts a burn image outside the directory the user named. Restricting
+        # these to what a socket designator actually looks like removes the
+        # question rather than answering it; the CLI checks containment as well,
+        # because one guard on a path is never enough.
         for key, value in (("socket", self.socket),
                            ("type", self.device_type)):
             if not value.strip():
                 raise ProfileError("%s: device %s must not be empty"
                                    % (where, key))
+            if not _SAFE_IDENTIFIER.match(value):
+                raise ProfileError(
+                    "%s: device %s %r may contain only letters, digits, dot, "
+                    "dash and underscore, and must start and end with a letter "
+                    "or digit. It becomes part of an output filename."
+                    % (where, key, value))
         if self.label is not None and not isinstance(self.label, str):
             raise ProfileError("%s: device %s label must be a string"
                                % (where, self.socket))
@@ -164,7 +189,38 @@ class Profile:
                     "%s: applies_to must be a list of driver names, got %r"
                     % (where, entry))
         self.evidence = dict(raw.get("evidence", {}))
-        self.chip_commands_observed = list(raw.get("chip_commands_observed", []))
+        #: Every command byte the board's firmware was seen to send the TMS.
+        #:
+        #: Validated rather than coerced. `list("0x60")` is `["0","x","6","0"]`,
+        #: so a JSON string here would silently become four bogus commands and
+        #: the rate-control gate would read them as evidence.
+        commands = raw.get("chip_commands_observed")
+        self.chip_commands_observed: Optional[List[int]] = None
+        if commands is not None:
+            if isinstance(commands, str) or not isinstance(commands, list):
+                raise ProfileError(
+                    "%s: chip_commands_observed must be a list of byte values "
+                    "such as [\"0x60\"], not %s -- a bare string here would be "
+                    "read one character at a time"
+                    % (where, type(commands).__name__))
+            parsed = []
+            for value in commands:
+                if isinstance(value, bool) or not isinstance(value, (str, int)):
+                    raise ProfileError(
+                        "%s: chip_commands_observed entry %r must be a byte "
+                        "value" % (where, value))
+                try:
+                    number = int(value, 16) if isinstance(value, str) else value
+                except ValueError:
+                    raise ProfileError(
+                        "%s: chip_commands_observed entry %r is not a byte "
+                        "value" % (where, value))
+                if not 0 <= number <= 0xFF:
+                    raise ProfileError(
+                        "%s: chip_commands_observed entry %r is not in 0..255"
+                        % (where, value))
+                parsed.append(number)
+            self.chip_commands_observed = parsed
 
         if self.status not in STATUS_VALUES:
             raise ProfileError("%s: status %r is not one of %s"
@@ -433,11 +489,17 @@ class Profile:
         changed = [w for w in windows if image[w[0]:w[1]] != original[w[0]:w[1]]]
         if len(changed) < 2:
             lo, hi = changed[0] if changed else windows[0]
+            from_mirror = (bool(changed) and changed[0] is windows[-1]
+                           and device.mirrored)
+            if not changed:
+                source = "unchanged"
+            elif from_mirror:
+                source = "mirror"
+            else:
+                source = "lower"
             return DeviceResult(
                 device=device, data=bytes(image[lo:hi]), window=(lo, hi),
-                changed=bool(changed),
-                from_mirror=bool(changed) and changed[0] is windows[-1]
-                and device.mirrored)
+                changed=bool(changed), from_mirror=from_mirror, source=source)
 
         # BOTH HALVES CHANGED. One device, two windows onto it.
         #
@@ -465,20 +527,27 @@ class Profile:
                     % (device.socket, i, a, self.window_base + lower[0] + i,
                        b, self.window_base + upper[0] + i))
             merged[i] = a if a != was else b
-        return DeviceResult(device=device, data=bytes(merged),
-                            window=lower, changed=True, from_mirror=True)
+        # Both windows contributed, so this is neither "the lower copy" nor
+        # "the mirror half" -- calling it either would misdescribe what was
+        # burned. `from_mirror` stays true for callers that only ask whether the
+        # lower copy was insufficient; `source` says what actually happened.
+        return DeviceResult(device=device, data=bytes(merged), window=lower,
+                            changed=True, from_mirror=True, source="merged")
 
 
 class DeviceResult:
     """One device's converted contents, and where they came from."""
 
     def __init__(self, device: Device, data: bytes, window, changed: bool,
-                 from_mirror: bool) -> None:
+                 from_mirror: bool, source: str = "lower") -> None:
         self.device = device
         self.data = data
         self.window = window
         self.changed = changed
         self.from_mirror = from_mirror
+        #: Where this device's contents came from: "lower", "mirror", "merged"
+        #: (both windows contributed at different offsets) or "unchanged".
+        self.source = source
 
 
 # -- loading --------------------------------------------------------------
@@ -544,7 +613,34 @@ class Match:
 
     @property
     def complete(self) -> bool:
+        """Every SPEECH device accounted for. Not the same as burnable.
+
+        Kept under its original name because that is what it has always meant
+        and callers depend on it, but it answers the narrower question: is this
+        the right profile for the speech ROMs in hand? `convert_set` needs more
+        -- see `burnable`.
+        """
         return not self.missing and bool(self.matched)
+
+    @property
+    def unsupplied(self) -> List[str]:
+        """Devices the profile will emit that nothing supplied matched.
+
+        `convert_set` authenticates and emits EVERY device, speech-bearing or
+        not: a device carrying no speech is still copied out as a burn image, so
+        it has to be hashed too. A set whose speech ROMs all match can therefore
+        still be short of what conversion needs, and saying "complete" then --
+        and printing a command that fails on the next line -- is the mismatch
+        this distinguishes.
+        """
+        supplied = set(self.matched) | set(self.incidental)
+        return [d.socket for d in self.profile.devices
+                if d.socket not in supplied]
+
+    @property
+    def burnable(self) -> bool:
+        """Every device the conversion would emit is present and matched."""
+        return self.complete and not self.unsupplied
 
     def __repr__(self) -> str:
         return "Match(%s, %d matched, %d missing)" % (

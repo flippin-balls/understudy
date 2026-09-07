@@ -7,8 +7,8 @@ generalise.
 ### Where this comes from, and how far to trust it
 
 This is our own analysis, not a citation of a datasheet, and no ROM data is
-reproduced. The sample is the **49 Squawk & Talk drivers PinMAME ships** — the
-count `snt_common.discover_games()` returns — which collapse to **19 distinct
+reproduced. The sample is the **49 Squawk & Talk drivers PinMAME ships**, taken
+from its own driver list, which collapse to **19 distinct
 sound ROM sets**, since revisions of one game usually share their sound ROMs.
 They were examined with a private toolkit that is not part of this repository.
 So "most tables", "at least one set" and "everywhere we have looked" all mean

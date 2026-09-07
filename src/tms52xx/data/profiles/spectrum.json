@@ -64,7 +64,7 @@
   "status": "board-simulated",
   "evidence": {
     "layout": "Pointer table at CPU $F07A, 31 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
-    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv: 1478 frames; platform_trace_summary.json: 31 phrase starts.",
+    "independent_check": "Counts derived separately from this layout agree: 1478 frames, and 31 phrase starts observed by running the board. The harness that produces these is a private research toolkit and is not part of this repository; what it measured is recorded here, and evidence.traced_phrase_starts lists the addresses so a reader with the same dumps can re-derive them.",
     "conversion": "1478 frames converted, all keeping their frame kind when the output was re-parsed with the target tables; 23 frames below the TMS5220 pitch floor were clamped.",
     "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 16 SPEAK EXTERNAL commands, 2288 writes to the TMS, and 9792 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
@@ -103,7 +103,8 @@
     ],
     "traced_streams": 31,
     "traced_check": "The firmware was driven through every command its MPU can send and played 31 streams from 31 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 31 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
-    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone."
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone.",
+    "chip_commands": "The board's own firmware was driven through every command byte its MPU can send (all 256) and the bytes it wrote to the TMS were captured. It issues exactly 0x60 SPEAK EXTERNAL, and never an opcode in the 0x00/0x20 SET RATE range that a TMS5220C or TSP5220C interprets differently from a TMS5200. That is what makes the C-family targets available for this set; it is a statement about this firmware, not about electrical compatibility, which nobody here has tested."
   },
   "notes": [
     "This sound ROM set is shared by 4 game revisions: spectr4a, spectru4, spectrua, spectrum.",
@@ -111,5 +112,8 @@
   ],
   "contributors": [
     "Flashback Fleet LLC"
+  ],
+  "chip_commands_observed": [
+    "0x60"
   ]
 }

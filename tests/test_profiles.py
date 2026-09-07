@@ -735,6 +735,41 @@ class SilentPhraseSchema(unittest.TestCase):
             Profile(raw, "<t>")
         self.assertIn("not a phrase index", str(caught.exception))
 
+    def test_a_bare_string_is_refused_not_read_character_by_character(self):
+        """`list("0x60")` is `["0","x","6","0"]`.
+
+        Coercing instead of validating would turn one command into four bogus
+        ones, and the rate-control gate would then read them as evidence.
+        """
+        raw = copy.deepcopy(self.raw)
+        raw["chip_commands_observed"] = "0x60"
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<t>")
+        message = str(caught.exception)
+        self.assertIn("chip_commands_observed", message)
+        self.assertIn("list", message)
+
+    def test_command_evidence_must_be_byte_values(self):
+        for bad in (["0xZZ"], [256], [-1], [None], [["0x60"]], [True]):
+            raw = copy.deepcopy(self.raw)
+            raw["chip_commands_observed"] = bad
+            with self.assertRaises(ProfileError, msg="%r accepted" % bad):
+                Profile(raw, "<t>")
+
+    def test_command_evidence_accepts_hex_strings_and_ints(self):
+        for good, expected in ((["0x60"], [0x60]), ([0x60], [0x60]),
+                               (["0x60", "0x10"], [0x60, 0x10])):
+            raw = copy.deepcopy(self.raw)
+            raw["chip_commands_observed"] = good
+            self.assertEqual(Profile(raw, "<t>").chip_commands_observed,
+                             expected)
+
+    def test_absent_evidence_is_None_not_an_empty_list(self):
+        """None means "nobody measured"; [] would mean "measured, saw none"."""
+        raw = copy.deepcopy(self.raw)
+        raw.pop("chip_commands_observed", None)
+        self.assertIsNone(Profile(raw, "<t>").chip_commands_observed)
+
     def test_a_bool_is_not_an_index(self):
         """`true` is an int in Python, and would silently mean phrase 1."""
         raw = copy.deepcopy(self.raw)
@@ -763,6 +798,169 @@ class UnterminatedPhraseSchema(unittest.TestCase):
         with self.assertRaises(ProfileError) as caught:
             Profile(raw, "<t>")
         self.assertIn("not a phrase index", str(caught.exception))
+
+class SafeDeviceIdentifiers(unittest.TestCase):
+    """Socket and type end up in an output filename, so they are restricted.
+
+    A profile can come from anywhere -- UNDERSTUDY_PROFILE_DIR exists so a
+    contributor can try one before sending it -- and `output_name` builds
+    "<stem>_<socket>_<type>_<target><suffix>". A socket containing a separator
+    puts a burn image somewhere the user did not ask for.
+    """
+
+    ATTACKS = ["../../escaped", "..\\..\\escaped", "/etc/passwd", "U4/../../x",
+               "U4/x", "U4\\x", "a:b", ".", "..", ".hidden", "U4.",
+               "", "   ", "U4\x00x", "U4\n"]
+
+    def setUp(self):
+        _dumps, self.raw = build()
+
+    def test_dangerous_sockets_are_refused(self):
+        for attack in self.ATTACKS:
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0]["socket"] = attack
+            with self.assertRaises(ProfileError, msg="socket %r accepted" % attack):
+                Profile(raw, "<t>")
+
+    def test_dangerous_device_types_are_refused(self):
+        for attack in self.ATTACKS:
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0]["type"] = attack
+            with self.assertRaises(ProfileError, msg="type %r accepted" % attack):
+                Profile(raw, "<t>")
+
+    def test_ordinary_designators_still_load(self):
+        for good in ("U4", "U9", "2532", "2716", "U-4", "U_4", "27C64", "A1"):
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0]["socket"] = good          # never collides with U5
+            raw["devices"][0]["type"] = good
+            device = Profile(raw, "<t>").devices[0]
+            self.assertEqual(device.socket, good)
+            self.assertEqual(device.device_type, good)
+
+    def test_no_accepted_identifier_can_build_an_escaping_name(self):
+        """The property, not a list of blocked strings.
+
+        Whatever the loader accepts must produce a single path component whose
+        resolved location is inside the output directory -- checked on both
+        posix and Windows path semantics, since the tool is used on Windows.
+        """
+        import ntpath
+        import posixpath
+        from tms52xx.workflow import output_name
+        from tms52xx import chips
+        candidates = ["U4", "U9", "2532", "A-1", "a_b", "x.y", "1", "Z9",
+                      "27C64", "u4"]          # never "U5": the other device
+        for value in candidates:
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0]["socket"] = value
+            raw["devices"][0]["type"] = value
+            device = Profile(raw, "<t>").devices[0]
+            name = output_name("841-01_4.716", device,
+                               chips.resolve("tms5220"))
+            for mod in (posixpath, ntpath):
+                self.assertEqual(mod.basename(name), name,
+                                 "%r produced a multi-component name" % value)
+                joined = mod.normpath(mod.join("/out", name))
+                self.assertTrue(joined.replace("\\", "/").startswith("/out/"),
+                                "%r escaped: %r" % (value, joined))
+
+
+class MatchDistinguishesSpeechSetFromBurnableSet(unittest.TestCase):
+    """`identify` must not call a set ready when `convert_set` will refuse it.
+
+    `convert_set` authenticates and emits EVERY device -- one holding no speech
+    is still copied out as a burn image, so it has to be hashed too. A set whose
+    speech ROMs all match can therefore still be short of what conversion needs,
+    and saying "complete" then, with a convert-set command printed underneath,
+    is the mismatch this separates.
+
+    Built with a device that really does hold no speech -- the one carrying the
+    pointer table -- rather than by relabelling a speech device, which the
+    workflow refuses for its own good reasons.
+    """
+
+    WINDOW, SPEECH, TABLE = 0xC000, 0xC000, 0xF000
+
+    def setUp(self):
+        from synthetic import original
+        from synthetic_game import _phrase
+        body = _phrase(original(), 7, 40, True)
+        speech = bytearray(b"\xFF" * 0x800)
+        speech[0:len(body)] = body
+        table = bytearray(b"\xFF" * 0x1000)
+        table[0:2] = self.SPEECH.to_bytes(2, "big")
+        table[2:4] = (self.SPEECH + len(body)).to_bytes(2, "big")
+        self.dumps = {"U2": bytes(speech), "U5": bytes(table)}
+        self.raw = {
+            "schema_version": 1, "profile_id": "twodev", "profile_version": 1,
+            "title": "Two Device", "manufacturer": "Bally", "year": 1981,
+            "board": "Squawk & Talk AS-2518-61", "source_chip": "tms5200",
+            "status": "draft", "chip_commands_observed": ["0x60"],
+            "memory": {"window_base": self.WINDOW, "window_size": 0x4000,
+                       "fill": 255},
+            "devices": [
+                {"socket": "U2", "label": "speech", "type": "2716",
+                 "size": 0x800, "cpu_address": self.SPEECH, "mirrored": False,
+                 "holds_speech": True, "sha256": sha256(self.dumps["U2"])},
+                {"socket": "U5", "label": "table", "type": "2532",
+                 "size": 0x1000, "cpu_address": self.TABLE, "mirrored": False,
+                 "holds_speech": False, "sha256": sha256(self.dumps["U5"])},
+            ],
+            "layout": {"table_offset": self.TABLE - self.WINDOW,
+                       "base_address": self.WINDOW, "phrases": 1,
+                       "address_ordered": True, "has_end_bound": True,
+                       "truncate_last_byte": []},
+            "evidence": {"layout": "constructed for this test"},
+        }
+
+    def matches(self, files):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "twodev.json"
+            path.write_text(json.dumps(self.raw), encoding="utf-8")
+            return profiles.identify(files, directory=directory)
+
+    def test_speech_only_is_identified_but_not_burnable(self):
+        found = self.matches({"speech.bin": self.dumps["U2"]})
+        self.assertEqual(len(found), 1)
+        match = found[0]
+        self.assertTrue(match.complete, "the speech ROM does identify the set")
+        self.assertFalse(match.burnable, "but the set is not complete")
+        self.assertEqual(match.unsupplied, ["U5"])
+
+    def test_the_full_set_is_both(self):
+        found = self.matches({"speech.bin": self.dumps["U2"],
+                              "table.bin": self.dumps["U5"]})
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].complete)
+        self.assertTrue(found[0].burnable)
+        self.assertEqual(found[0].unsupplied, [])
+
+    def test_burnable_predicts_exactly_what_convert_set_accepts(self):
+        """The invariant behind the fix, checked both ways."""
+        from tms52xx import chips
+        from tms52xx.workflow import ConversionRefused, convert_set
+        cases = [({"U2": self.dumps["U2"]}, {"speech.bin": self.dumps["U2"]}),
+                 ({"U2": self.dumps["U2"], "U5": self.dumps["U5"]},
+                  {"speech.bin": self.dumps["U2"],
+                   "table.bin": self.dumps["U5"]})]
+        seen = set()
+        for supplied, files in cases:
+            match = self.matches(files)[0]
+            try:
+                convert_set(dict(supplied), Profile(copy.deepcopy(self.raw),
+                                                    "<t>"),
+                            chips.resolve("tms5220"))
+                worked = True
+            except ConversionRefused:
+                worked = False
+            seen.add(worked)
+            self.assertEqual(match.burnable, worked,
+                             "burnable=%s but convert_set worked=%s"
+                             % (match.burnable, worked))
+        self.assertEqual(seen, {True, False}, "both outcomes must be exercised")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -7,6 +7,67 @@ features.
 
 ## [Unreleased]
 
+### Security
+
+- **A custom profile can no longer write outside `--output`.** `socket` and
+  `type` become part of an output filename, and were only checked for being
+  non-empty — so a profile with a socket of `U4/../../x` put a burn image
+  wherever it liked, and `UNDERSTUDY_PROFILE_DIR` exists precisely so profiles
+  from elsewhere can be tried. They are now restricted to safe identifiers, and
+  the writer separately refuses any name that is not a single path component
+  resolving inside the output directory. Two layers, because one guard on a path
+  is never enough.
+
+### Fixed
+
+- **Partially overlapping phrases are refused.** A `start_end_pairs` table could
+  declare extents that share only part of a range. `patch_rom` converts each
+  phrase from the original bytes, so the second write landed on the first
+  phrase's tail with data converted at a different bit alignment — and the
+  result still re-parsed as a clean terminated phrase, because the per-phrase
+  check runs before the second write. Extents must now be identical aliases or
+  disjoint, checked both where the layout is read and in `patch_rom` itself. No
+  bundled profile was affected.
+- **A TMS5220C/TSP5220C target now requires evidence about the firmware.** Those
+  parts read the `0x00`/`0x20` opcode as SET RATE where a TMS5200 ignores it,
+  which is a property of the board, not of the speech data. Only one profile
+  recorded what its firmware sends, and nothing consulted it. All sixteen now
+  carry the measurement — every one issues only `0x60` SPEAK EXTERNAL — and a
+  C-family conversion without it is refused. `chip_commands_observed` is also
+  validated rather than coerced: `list("0x60")` is `["0","x","6","0"]`, so a
+  bare string would have become four bogus commands. This says nothing about
+  electrical substitution, which remains unverified.
+- **`identify` no longer calls a set ready that `convert-set` will refuse.** It
+  reported "complete" when every SPEECH device matched, but conversion
+  authenticates and emits every device — including one holding no speech, which
+  is still burned. A set could be identified, be handed a convert-set command,
+  and have it fail on the next line. `Match.complete` keeps its meaning (the
+  speech ROMs identify the set); `Match.burnable` and `Match.unsupplied` are new
+  and are what the command line now reports.
+- **The reconciliation line stated an equality that could be false.** It printed
+  physical-device changed bytes as equal to the CPU-image total. A mirrored
+  device answers at two addresses, so a layout reaching one physical byte
+  through both windows changes two image bytes and one device byte. Both counts
+  are now reported, and the image is reconciled against the window total, which
+  is the pair that genuinely matches.
+- **A device merged from both mirror windows is no longer described as "taken
+  from the mirror half".** `source_window` distinguishes lower, mirror, merged
+  and unchanged.
+
+### Changed
+
+- **`speech_coverage_percent` measures something different, and the manifest
+  schema is now 3.** It unioned DECLARED phrase extents against the CPU window
+  and the summary printed it as "X% of it is speech". A declared extent runs to
+  the next pointer or to the pointer table, which can be far past where the
+  speech stops: one set declares a 10 KB extent for a phrase whose speech ends
+  after 207 bytes, and its device read as 100% speech when a quarter of it is
+  something else. It now counts the bytes each phrase actually consumes through
+  its stop frame, mapped through the mirror to physical device offsets, and the
+  summary says "X% converted". A fully converted 2 KB part in a 4 KB window
+  reads ~100% where it used to read ~50%.
+
+
 ### Added
 
 - **Twelve more sound ROM sets**, taking coverage from 4 to **16 of the 19
