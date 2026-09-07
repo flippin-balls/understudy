@@ -14,9 +14,17 @@ features.
   code. The zeros parsed as silence frames and the parser ran on until a byte
   in the code carried a `0xF` nibble, so conversion rewrote instructions the
   sound board executes — and a simulation of the board, loaded with the
-  converted ROMs, stopped booting. Profile bumped to v2: 20 phrases with an end
-  bound. Found by running the converted devices through an emulation of the
-  board rather than by inspecting them.
+  converted ROMs, stopped booting. Profile v2 corrected the layout: 20 phrases
+  with an end bound. Found by running the converted devices through an
+  emulation of the board rather than by inspecting them.
+
+### Changed
+
+- The profile status rung `emulator-verified` is now **`board-simulated`**, and
+  its definition says what was actually done: the board's own firmware, in
+  emulation, boots and drives the converted ROMs — structure and control flow,
+  not sound. The old name read as "rendered and sounded right", which nobody
+  has established. Embryon is v3 at that status.
 - A phrase beginning with a long run of silence frames is now refused, which is
   what a pointer aimed at padding looks like. Across Embryon's 20 real phrases
   every one begins with none; the padding entry began with twelve.

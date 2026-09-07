@@ -4,10 +4,10 @@
   "understudy_version": "0.3.0",
   "profile": {
     "id": "embryon",
-    "version": 2,
+    "version": 3,
     "title": "Bally Embryon (1981)",
     "status": "board-simulated",
-    "sha256": "8f9b0a74593c6193bd0cdbffedaa3875b555aa2a40c55252814eee400825d397",
+    "sha256": "de95d5439ff0c9d5b15bb622a9410b6162a2460aea1a3094a72c7c25db48c31d",
     "source": "data/profiles/embryon.json"
   },
   "chips": {
@@ -418,8 +418,8 @@
   ],
   "warnings": [
     "17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised; those will sound higher than the original.",
-    "profile status is 'emulator-verified': no converted ROM from this profile has been played on a real board."
+    "profile status is 'board-simulated': no converted ROM from this profile has been played on a real board."
   ],
   "overrides": [],
-  "note": "Produced by  from a Squawk & Talk ROM set assembled from an original Bally Embryon set. Output paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the input hashes let you confirm you have the same devices before comparing results."
+  "note": "Produced by `understudy convert-set` from a Squawk & Talk ROM set assembled from an original Bally Embryon set. Output paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the input hashes let you confirm you have the same devices before comparing results."
 }

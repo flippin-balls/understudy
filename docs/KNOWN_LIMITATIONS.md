@@ -35,9 +35,15 @@ assumption.
 So an output of this tool is **structurally checked**: the converter re-parses
 what it wrote and confirms every frame kept its kind and the stream its length.
 That is not an acoustic check, and it is not an emulator run — the tool does not
-invoke one. The Embryon experiment in the README was rendered through PinMAME;
-your conversion has not been. Calling any of it a "working ROM" would require
-hardware testing we have not done.
+invoke one.
+
+For the Embryon reference conversion only, the converted devices were
+additionally loaded into a simulation of the Squawk & Talk board, which booted
+and drove them. That exercises the board's firmware and control flow against the
+converted data, and it is what the `board-simulated` profile status means. **It
+renders no audio and nobody has heard the result.** Your conversion has not had
+even that. Calling any of it a "working ROM" would require hardware testing we
+have not done.
 
 ## Nearest-value conversion is a baseline, not an optimum
 

@@ -15,12 +15,12 @@ An open-source preservation project from
 on location and would rather they kept talking.
 
 > **Status: pre-1.0.** The reference Embryon conversion was checked against
-> real ROM data and rendered through an emulator during development. Each
-> conversion you run is **structurally checked** — the output is re-parsed and
-> every frame's kind compared — but no emulator runs, and
-> **no converted ROM from this tool has ever been played on a real Squawk &
-> Talk board.** Until that happens this is a research preview: see
-> [Silicon validation](#silicon-validation).
+> real ROM data, and the board's own firmware boots and drives the converted
+> ROMs in emulation — a structural result, not an acoustic one. Each conversion
+> you run is **structurally checked**: the output is re-parsed and every frame's
+> kind compared. **Nobody has heard this speech, and no converted ROM from this
+> tool has ever been played on a real Squawk & Talk board.** Until that happens
+> this is a research preview: see [Silicon validation](#silicon-validation).
 
 ---
 
@@ -71,7 +71,7 @@ them even if you ask it to.
 ====================================================================
   CHECK THIS BEFORE YOU BURN ANYTHING
 ====================================================================
-profile      Bally Embryon (1981)  (embryon v2, status emulator-verified)
+profile      Bally Embryon (1981)  (embryon v3, status board-simulated)
 chips        tms5200  ->  tsp5220c
 tables       source b52952638192 / target f15418abad1b  (bundled)
 
@@ -96,10 +96,8 @@ output devices
   reconciliation         3508 changed across devices == 3508 in the image
 
 warnings
-  - 17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised
-  - profile status is 'emulator-verified': no converted ROM from this profile
-    has been played on a real board
-====================================================================
+  - 17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised; those will sound higher than the original.
+  - profile status is 'board-simulated': no converted ROM from this profile has been played on a real board.
 ```
 
 Read the reconciliation line. It is the arithmetic check that the bytes changed
@@ -161,9 +159,12 @@ the other forty-nine, and it does not guess: an unrecognised set is reported and
 refused, not converted on a hunch.
 
 That is the honest answer to "is it safe for all Squawk & Talk ROMs". It is not
-validated for all of them and does not claim to be. What it is built to
-guarantee is narrower and more useful: **it will not silently hand you a wrong
-ROM.** Where it cannot be sure, it stops.
+validated for all of them and does not claim to be. What it is designed around
+is narrower: **where it cannot be sure, it stops.** An unrecognised set is
+refused rather than converted, and a supported one has to pass every check
+listed below. That is a design stance and a set of enumerated checks, not a
+proof that no wrong output is possible — the Embryon defect below is exactly a
+case that passed every check there was at the time.
 
 We take that seriously because our own only profile was wrong. Embryon shipped
 briefly reading one pointer too many — an end bound treated as a 21st phrase.
