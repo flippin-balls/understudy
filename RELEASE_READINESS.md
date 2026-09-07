@@ -145,7 +145,7 @@ These are accounted for, not merely absent:
 
 | set | drivers | why |
 |---|---|---|
-| `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Across all 256 commands the MPU can send it makes **zero** writes to the TMS while writing the DAC 128,144 times. Its ROM does carry the standard TMS byte-write routine at `$F365` — this was checked rather than assumed — but nothing reaches it: no `JSR`, no `JMP`, and its address is nowhere in the ROM as a 16-bit value, so the computed dispatch cannot either. Dead code in the shared firmware. The trace yields no streams, so criterion 3 has nothing to be satisfied against, and the layout the auto-detector proposes is executed code (§8b). |
+| `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Across all 256 commands the MPU can send it makes **zero** writes to the TMS while writing the DAC 128,144 times. Its ROM does carry the standard TMS byte-write routine at `$F365` — checked rather than assumed — and no direct call to it appears anywhere: no `JSR`, no `JMP`, no literal occurrence of its address. That is an observation, **not** a proof of unreachability; the firmware dispatches through a computed jump, and a target can be constructed without its address appearing literally. The exclusion does not rest on it. It rests on criterion 3: the trace yields no streams, so there is nothing for a phrase list to be checked against, and the layout the auto-detector proposes is executed code (§8b). |
 | `cosflash` | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
 | `bigbat` | 1 | No dump obtainable. |
 | `blackbl2` | 1 | The PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
@@ -154,14 +154,22 @@ These are accounted for, not merely absent:
 be convertible and is not.
 
 Be exact about the strength of that. What is established: no speech ROM is
-fitted, no command makes the firmware write to the TMS, the routine that could
-is unreachable, no traced stream exists, and the only candidate layout is
-executed code. What is **not** established is the universal negative that no
-LPC data could be embedded in that 4 KB firmware ROM and reached by some path
-the model does not exercise. The reason no profile ships is the narrower and
-sufficient one: criterion 3 requires an independent phrase list, and there is
-no stream to build one from. A profile here could only ever rest on
-self-consistency, which this project does not ship.
+fitted; across every command the MPU can send, the firmware never writes to the
+TMS; no traced stream exists; and the only layout automatic detection proposes
+is executed code.
+
+What is **not** established, and is not claimed: that the set can contain no
+speech. Its firmware does carry the standard TMS byte-write routine, no direct
+call to it appears in the ROM, and that is as far as the analysis goes — the
+firmware dispatches through a computed jump, so a target can be reached without
+its address appearing literally, and proving otherwise would need the complete
+target set of that jump. Nor is it established that no LPC data could be
+embedded in the 4 KB firmware ROM.
+
+The exclusion does not need any of that. Criterion 3 requires an independent
+phrase list; there is no stream to build one from; so a profile here could only
+ever rest on self-consistency, which this project does not ship. That is the
+whole reason, and it is sufficient.
 
 An unrecognised set is reported and refused, never converted on a guess.
 
