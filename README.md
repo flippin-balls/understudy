@@ -268,8 +268,8 @@ None of that is a claim that anyone has heard the output. Nobody has.
 ### The one that proves the point
 
 Rapid Fire is the set that was expected to be the sixteenth and turned out to
-have no speech that anything plays. It is worth reading, because it is the
-cleanest example of why a boot is not a check.
+play no speech under any command its MPU can send. It is worth reading, because
+it is the cleanest example of why a boot is not a check.
 
 Point automatic layout detection at it and it returns a table at `$F82D` with a
 confident score and every phrase terminating in a stop frame. Convert on that
