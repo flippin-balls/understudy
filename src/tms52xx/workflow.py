@@ -314,8 +314,8 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         # of a table usually finds. Fathom shipped exactly this.
         #
         # There is no threshold to pick: a real phrase says something, so its
-        # first frame is never the one that ends it. Across the sets here, none
-        # of 481 phrases begins with a stop frame.
+        # first frame is never the one that ends it. None of the 499 phrases
+        # the bundled profiles declare begins with a stop frame.
         if frames and frames[0].kind == "stop":
             hollow.append((record.phrase.index, record.phrase.start,
                            record.phrase.end))

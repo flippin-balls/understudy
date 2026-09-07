@@ -47,17 +47,19 @@ features.
   this is what a pointer into a gap — or one entry past the end of a table —
   looks like, and it is the shape of the Fathom defect. No threshold is
   involved: a real phrase says something, so its first frame is never the one
-  that ends it, and none of the 481 phrases across the bundled sets begins with
-  one. This guard runs before `silent_phrases` is consulted, so no claim in a
+  that ends it, and none of the 499 phrases the bundled profiles declare begins
+  with one. This guard runs before `silent_phrases` is consulted, so no claim in a
   profile can excuse it.
-- **A mirrored device may not be converted through both windows at the same
-  offset.** Reaching some phrases through the lower window and others through
-  the mirror is legitimate and is merged. One physical byte declared by a phrase
-  in *each* window is not: two phrases would describe the same bytes at
-  different bit alignments, only one conversion could survive into the burned
-  device, and the other phrase would read as corrupt. This is tested on phrase
-  *coverage* rather than on which bytes changed, because a conversion may
-  legitimately leave a byte unchanged.
+- **A mirrored device's two windows must agree where they overlap.** Reaching
+  some phrases through the lower window and others through the mirror is
+  legitimate and is merged. Where a physical offset is reached through *both*,
+  the two conversions must want the same byte — two entries naming one phrase
+  through each window are harmless, but two phrases at different alignments are
+  not: only one conversion could survive into the burned device and the other
+  phrase would read as corrupt. The test is on the value each window requires,
+  not on which bytes changed, because a conversion may legitimately leave a byte
+  unchanged: one side rewriting it while the other leaves it alone is a
+  disagreement in which only one side looks like a change.
 - **`allow_unterminated` checks its list in both directions.** Naming a phrase
   that does end in a stop frame, or an index that is not a phrase, is refused
   rather than ignored — otherwise the argument would act as a blanket override

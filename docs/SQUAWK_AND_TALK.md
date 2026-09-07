@@ -453,7 +453,10 @@ A layout is probably right when:
 
 - every extent is positive, and they tile the speech region without gaps;
 - **every phrase ends in a stop frame** — with `--source-tables`, any phrase
-  reported as `no stop` has not terminated;
+  reported as `no stop` has not terminated. Treat one that does not as a wrong
+  layout until you have evidence otherwise; the rare alternative, a ROM whose
+  player supplies the terminator, is covered under "Phrases that never
+  terminate" above;
 - phrase lengths are plausible: a word or short sentence is typically a few
   dozen to a few hundred bytes.
 
@@ -467,7 +470,8 @@ the count is wrong; if all of them do but the lengths are wildly uneven, suspect
 the ordering or the base address.
 
 A layout is wrong when extents overlap, when a phrase runs into the pointer
-table, or when phrases decode without reaching a stop frame. `convert` refuses
+table, or when phrases decode without reaching a stop frame and you cannot show
+the player supplies one. `convert` refuses
 all three rather than writing a file, and `--dry-run` is there to be used before
 anything is written.
 

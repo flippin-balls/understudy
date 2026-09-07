@@ -37,13 +37,19 @@ what it wrote and confirms every frame kept its kind and the stream its length.
 That is not an acoustic check, and it is not an emulator run — the tool does not
 invoke one.
 
-For the Embryon reference conversion only, the converted devices were
+For each of the fifteen bundled profiles, the converted devices were
 additionally loaded into a simulation of the Squawk & Talk board, which booted
-and drove them. That exercises the board's firmware and control flow against the
-converted data, and it is what the `board-simulated` profile status means. **It
-renders no audio and nobody has heard the result.** Your conversion has not had
-even that. Calling any of it a "working ROM" would require hardware testing we
-have not done.
+and drove them, issuing the same speech commands as the originals. That
+exercises the board's firmware and control flow against the converted data, and
+it is what the `board-simulated` profile status means. **It renders no audio and
+nobody has heard the result.**
+
+If you converted a supported set through `convert-set`, your output is
+byte-identical to the one that was simulated — identification is by SHA-256 of
+every device, so it cannot be anything else. If you used the manual `convert`
+path, on an unsupported revision or a layout of your own, it has not had even
+that. Either way, calling the result a "working ROM" would require hardware
+testing nobody has done.
 
 ## Nearest-value conversion is a baseline, not an optimum
 

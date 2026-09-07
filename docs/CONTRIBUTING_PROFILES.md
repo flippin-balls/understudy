@@ -68,7 +68,7 @@ profile.
 | status | means, exactly |
 |---|---|
 | `draft` | written, not yet checked against a real dump |
-| `layout-verified` | every phrase is found and terminates in a stop frame |
+| `layout-verified` | every phrase is found, and terminates in a stop frame or is named in `unterminated_phrases` and checked |
 | `board-simulated` | the board's own firmware, in emulation, boots and drives the **converted** ROMs |
 | `silicon-verified` | a converted set has been fitted to a real board and listened to |
 
@@ -148,7 +148,12 @@ found layouts that convert cleanly, boot the board's firmware, and are still
 wrong — one converted 1.5% of its speech and behaved normally. Before a profile
 ships:
 
-1. **every phrase found and terminating** — `inspect --source-tables` shows it;
+1. **every phrase found and terminating** — `inspect --source-tables` shows it.
+   If one does not, that is normally a wrong layout. It can also be a ROM whose
+   player supplies the terminator: one phrase of Mr. and Mrs. Pac-Man is, and
+   nothing else in the fifteen sets. Establish which before naming it in
+   `unterminated_phrases`, and expect to be held to it — a named phrase that
+   does terminate is refused;
 2. **speech coverage that looks like a whole ROM.** `convert-set` prints the
    percentage of each speech device the layout reached. Correct layouts in that
    sweep ran 33–70%; the wrong one ran 1.5%. There is no safe threshold, so look
