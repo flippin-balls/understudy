@@ -823,6 +823,24 @@ class AllowUnterminatedByName(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.patch([])
 
+    def test_naming_a_phrase_that_terminates_is_refused(self):
+        """The argument is a statement about these bytes, not an override."""
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        rom = bytes(4) + body
+        table = PhraseTable(phrases=[Phrase(0, 4, 4 + len(body))])
+        with self.assertRaises(ValueError) as caught:
+            patch_rom(rom, table, self.src, understudy(),
+                      allow_unterminated=[0])
+        self.assertIn("DO end in a stop frame", str(caught.exception))
+
+    def test_naming_something_that_is_not_a_phrase_is_refused(self):
+        """Distinguished from "it terminates": index 7 is not a phrase at all."""
+        with self.assertRaises(ValueError) as caught:
+            self.patch([0, 1, 7])
+        message = str(caught.exception)
+        self.assertIn("not phrase index", message)
+        self.assertIn("7", message)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=0)

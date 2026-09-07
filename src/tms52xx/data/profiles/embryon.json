@@ -58,7 +58,32 @@
     "not_verified": "No converted ROM from this profile has been played on a real Squawk & Talk board. The strongest evidence here is that the board's firmware runs against the converted ROMs in simulation; nothing has been heard, and no physical chip has been fitted or measured.",
     "end_bound": "Entry 20 ($F9DA) is a bound, not a phrase. The bytes there are six zeros followed by 8E 00 7F (LDS #$007F) and BD FA 5F (JSR $FA5F) -- 6800 code. Tracing the board's own firmware confirms it: 270 distinct addresses in $F9DA-$FC1C are executed, the first at $F9E1. Treating that entry as a 21st phrase made it run to the pointer table, and the parser read the zero padding as silence frames until it found a 0xF nibble inside the code -- so conversion rewrote executable instructions and the board no longer booted in simulation.",
     "emulation": "The CONVERTED devices were loaded into a simulation of the Squawk & Talk board -- its own 6802, PIAs and firmware -- and it booted and issued the same SPEAK EXTERNAL commands as the original set. That exercises the board's firmware against the converted ROMs, which is what caught the end-bound error: the earlier 21-phrase reading did not boot at all.",
-    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv records 850 frames for embryon, and platform_trace_summary.json records 20 distinct phrase starts -- both matching this layout's 20 phrases and 850 frames."
+    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv records 850 frames for embryon, and platform_trace_summary.json records 20 distinct phrase starts -- both matching this layout's 20 phrases and 850 frames.",
+    "traced_phrase_starts": [
+      "$E000",
+      "$E0A1",
+      "$E15C",
+      "$E237",
+      "$E2DB",
+      "$E3B3",
+      "$E5B3",
+      "$E6FC",
+      "$EFCA",
+      "$F07B",
+      "$F148",
+      "$F2E9",
+      "$F380",
+      "$F472",
+      "$F52D",
+      "$F63C",
+      "$F704",
+      "$F7AF",
+      "$F896",
+      "$F949"
+    ],
+    "traced_streams": 20,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 20 streams from 20 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 20 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone."
   },
   "notes": [
     "This sound ROM set is shared by 6 game revisions: embryon, embryona, embryonb, embryonc, embryond, embryone.",

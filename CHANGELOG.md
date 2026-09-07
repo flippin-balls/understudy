@@ -11,7 +11,11 @@ features.
 
 - **Eleven more sound ROM sets**, taking coverage from 4 to **15 of the 19
   distinct Squawk & Talk sound ROM sets**, and from 17 to **44 of the 49 game
-  revisions**: Beat the Clock, Centaur, Eight Ball Champ, Eight Ball Deluxe,
+  revisions**, each carrying the addresses the firmware was seen to play
+  (`evidence.traced_phrase_starts`) and an explicit statement of which of its
+  declared phrases the trace did **not** confirm
+  (`evidence.not_established_by_the_trace`): Beat the Clock, Centaur, Eight
+  Ball Champ, Eight Ball Deluxe,
   Fireball II, Flash Gordon (French), Medusa, Mr. and Mrs. Pac-Man, Mysterian
   and Vector, alongside the corrected Fathom and Flash Gordon.
 - **`entry_form: "start_end_pairs"`** — some tables store both bounds of every
@@ -26,13 +30,38 @@ features.
   frames, which is exactly what a pointer aimed at padding looks like. Silence
   therefore stays refused, and a profile must name the phrases it claims are
   silent. The claim is then checked: a named phrase that carries speech is
-  refused, so the field cannot be used to switch the guard off.
+  refused, so the field cannot be used to switch the guard off. A phrase that
+  parses to a lone stop frame is not silence — it is a phrase that was never
+  found — and is refused before this field is consulted.
 - **`unterminated_phrases`** — in at least one set the player, not the ROM,
   supplies a phrase's terminator. Same treatment: named, and checked both ways.
   A named phrase that *does* terminate is refused, and any phrase not named
   must still terminate. `patch_rom`'s `allow_unterminated` now accepts a list of
   indexes as well as `True`, so one phrase can be excused without excusing the
   set.
+
+- **A phrase that converts nothing is now refused.** If a phrase's first frame
+  is a stop frame it changes not one byte, yet reports as clean and terminated:
+  the frame kinds are trivially preserved and the reconciliation only counts
+  bytes that changed. Erased space reads as `0xFF`, which *is* a stop frame, so
+  this is what a pointer into a gap — or one entry past the end of a table —
+  looks like, and it is the shape of the Fathom defect. No threshold is
+  involved: a real phrase says something, so its first frame is never the one
+  that ends it, and none of the 481 phrases across the bundled sets begins with
+  one. This guard runs before `silent_phrases` is consulted, so no claim in a
+  profile can excuse it.
+- **A mirrored device may not be converted through both windows at the same
+  offset.** Reaching some phrases through the lower window and others through
+  the mirror is legitimate and is merged. One physical byte declared by a phrase
+  in *each* window is not: two phrases would describe the same bytes at
+  different bit alignments, only one conversion could survive into the burned
+  device, and the other phrase would read as corrupt. This is tested on phrase
+  *coverage* rather than on which bytes changed, because a conversion may
+  legitimately leave a byte unchanged.
+- **`allow_unterminated` checks its list in both directions.** Naming a phrase
+  that does end in a stop frame, or an index that is not a phrase, is refused
+  rather than ignored — otherwise the argument would act as a blanket override
+  instead of a statement about the bytes in front of it.
 
 ### Fixed
 

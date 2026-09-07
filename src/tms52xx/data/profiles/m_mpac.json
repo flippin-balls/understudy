@@ -61,7 +61,36 @@
     "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 4 SPEAK EXTERNAL commands as the original set.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
     "unterminated_phrases": "Phrase(s) 24 carry no stop frame; the player terminates them rather than the ROM. Understudy refuses an unterminated phrase by default -- it is what a layout aimed at code looks like -- so they are named in the layout, and every other phrase must still stop.",
-    "phrases_not_observed": "The layout declares 1 phrase(s) the trace never saw played ($E14E). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues."
+    "traced_phrase_starts": [
+      "$E000",
+      "$E05B",
+      "$E0A6",
+      "$E0F5",
+      "$E199",
+      "$E1E9",
+      "$E270",
+      "$E2EA",
+      "$E349",
+      "$E3B9",
+      "$E41A",
+      "$E4FA",
+      "$E556",
+      "$E5E3",
+      "$E648",
+      "$E6B9",
+      "$E7B1",
+      "$E81C",
+      "$E8F6",
+      "$EA08",
+      "$EB56",
+      "$EC03",
+      "$EC9B",
+      "$ECFA",
+      "$ED75"
+    ],
+    "traced_streams": 27,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 27 streams from 25 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 27 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "This layout declares 1 distinct phrase the firmware never played ($E14E). Nothing here confirms those independently: the evidence for them is the pointer table itself, which is the same kind of evidence that was wrong in Fathom v1. They are converted on the basis that they are entries in a table whose every other entry the trace confirms."
   },
   "notes": [
     "This sound ROM set is shared by 3 game revisions: m_mpac, m_mpaca, m_mpacb."

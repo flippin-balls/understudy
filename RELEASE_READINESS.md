@@ -75,6 +75,41 @@ per-device speech coverage, agreement with an **independent** phrase list, and
 the board's own firmware booting and driving the converted ROMs identically to
 the originals.
 
+### What the third criterion does and does not establish
+
+Precisely: **every stream the firmware played is inside a phrase the profile
+converts.** The firmware is driven through every command its MPU can send, the
+byte stream it feeds the TMS is captured, each stream is located back in the
+ROM and trimmed at its own stop frame, and the result must fall inside a
+converted phrase. That is what rules out a layout which misses speech, and it
+is what caught both defects below.
+
+It does **not** confirm every phrase a profile declares. Nine of the fifteen
+sets have table entries no command reached in that sweep:
+
+| profile | distinct phrases declared | confirmed by the trace | resting on the table alone |
+|---|---|---|---|
+| `beatclck` | 60 | 48 | 12 |
+| `eballdlx` | 42 | 36 | 6 |
+| `eballchp` | 38 | 33 | 5 |
+| `flashgdf` | 10 | 8 | 2 |
+| `fball_ii` | 13 | 12 | 1 |
+| `flashgdn` | 9 | 8 | 1 |
+| `m_mpac` | 26 | 25 | 1 |
+| `medusa` | 27 | 26 | 1 |
+| the other six | — | all | 0 |
+
+For those entries the evidence is the pointer table — the same kind of evidence
+that was wrong in Fathom v1. They are converted because they are entries in a
+table whose every other entry the trace confirms, and each profile says so in
+`evidence.not_established_by_the_trace`. Nothing here should be read as those
+phrases having been independently verified.
+
+Each profile also carries `evidence.traced_phrase_starts`, the addresses the
+firmware actually played, so a reader holding the same dumps can re-derive the
+list and check it rather than taking this document's word for it. Compare in
+device offsets, not CPU addresses: a 2 KB part answers at two.
+
 The third criterion changed during this work, and that is the substantive
 result. It used to be a frame count from a separately built corpus. That corpus
 was produced by static extraction — the same kind of read a profile does — so
@@ -91,7 +126,8 @@ Re-checking the already-shipped profiles that way found two of the five wrong:
 | `fathom` v1 | 28 phrases | Two entries past the end of the table. One aimed at erased 0xFF (parses as an immediate stop frame); one aimed at 6802 code, and conversion rewrote 31 bytes of firmware in the region reached from the reset vector. The board simulation booted and issued identical speech commands, because the commands it issues never reach that code. Its frame count matched the static corpus, which had made the same misread. |
 | `flashgdn` v1 | table `$F326`, 5 phrases | `$F326` is entry 14 of a table that starts at `$F30A`. Reading from the middle of a table still yields plausible pointers: it found 5 of 8 phrases and converted 372 of 677 frames, leaving the rest to be read with the wrong tables. |
 
-Both are corrected. No other profile disagreed with its traced phrase list.
+Both are corrected. Every other profile accounts for every stream its firmware
+played — subject to the limits stated above.
 
 ### The four sets not covered
 
@@ -321,10 +357,7 @@ lose an input, use the wrong profile or table, or misrepresent evidence.
 | 8 | **BLOCKER** — rename half-propagated; two claims stronger than the evidence. |
 | 9 | **Ready.** No blocker; no claim stronger than its evidence. |
 
-Round 10 is pending on the traced-layout work in §3: eleven new profiles, two
-corrected ones, three new layout facts in the schema, a per-byte merge for
-mirrored devices, and the replacement of the static frame corpus with an
-execution-derived phrase list as criterion 3.
+| 10 | **No blocker.** Three HIGH findings on the traced-layout work, all fixed and mutation-tested: the relaxed phrase-coverage guard needed a replacement for the case it stopped catching (a phrase that converts nothing is now refused outright); `silent_phrases` could be claimed for a phrase that was merely never found; and the mirrored-device merge tested changed bytes when the invariant is about phrase *coverage*, since a conversion may legitimately leave a byte unchanged. Two MEDIUM findings on evidence wording were fixed by stating what the trace does and does not establish, per profile and in §3. |
 
 Every material finding was independently reproduced before being fixed, and
 carries a regression test. Review does not prove correctness — round 2's

@@ -60,8 +60,20 @@
     "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 4 SPEAK EXTERNAL commands as the original set.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
     "silent_phrases": "Phrase(s) 11, 19 are a run of silence frames and nothing else -- a deliberate 'say nothing' entry, played by real commands. Understudy refuses unexplained silence, so they are named in the layout and checked to be silence-only.",
-    "phrases_not_observed": "The layout declares 1 phrase(s) the trace never saw played ($CBAD). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues.",
-    "corrected_in_v2": "Version 1 put the pointer table at $F326. That address is real but it is entry 14 of the table, which starts at $F30A -- reading from the middle of a table still yields pointers that look like phrases. It found 5 of the 8 phrases the firmware plays and converted 372 of 677 frames, leaving the rest to be read with the wrong tables. The traced phrase list is what caught it."
+    "corrected_in_v2": "Version 1 put the pointer table at $F326. That address is real but it is entry 14 of the table, which starts at $F30A -- reading from the middle of a table still yields pointers that look like phrases. It found 5 of the 8 phrases the firmware plays and converted 372 of 677 frames, leaving the rest to be read with the wrong tables. The traced phrase list is what caught it.",
+    "traced_phrase_starts": [
+      "$C000",
+      "$C156",
+      "$C29F",
+      "$C44E",
+      "$C5BC",
+      "$C758",
+      "$C933",
+      "$CACF"
+    ],
+    "traced_streams": 9,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 9 streams from 8 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 9 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "This layout declares 1 distinct phrase the firmware never played ($CBAD). Nothing here confirms those independently: the evidence for them is the pointer table itself, which is the same kind of evidence that was wrong in Fathom v1. They are converted on the basis that they are entries in a table whose every other entry the trace confirms."
   },
   "notes": [
     "This sound ROM set is shared by 2 game revisions: flashgda, flashgdn."

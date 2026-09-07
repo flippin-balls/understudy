@@ -274,6 +274,46 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
          "final_byte": verdicts.get(r.phrase.index)}
         for r in results]
 
+    # A MIRRORED DEVICE MUST NOT BE CONVERTED THROUGH BOTH OF ITS WINDOWS AT
+    # THE SAME OFFSET.
+    #
+    # A 2 KB part answers at two addresses, and a set is free to reach some
+    # phrases through the lower window and others through the mirror -- Eight
+    # Ball Deluxe does, and the two groups land on different offsets of the same
+    # physical ROM. `extract` merges the halves for exactly that reason.
+    #
+    # What must not happen is one physical byte being declared by a phrase in
+    # each window. Then two phrases describe the same bytes at different bit
+    # alignments, only one of the two conversions can survive into the burned
+    # device, and the other phrase would be read as corrupt. The merge cannot
+    # detect this from the bytes alone: a conversion may legitimately leave a
+    # byte unchanged, so "changed in one window only" does not mean "covered by
+    # one window only". Coverage is the thing to test, so it is tested here,
+    # where the phrase extents are known.
+    for device in profile.devices:
+        if not device.mirrored:
+            continue
+        at = device.cpu_address - profile.window_base
+        halves = []
+        for base in (at, at + device.size):
+            reached = set()
+            for phrase in table.phrases:
+                lo = max(phrase.start, base)
+                hi = min(phrase.end, base + device.size)
+                reached.update(range(lo - base, hi - base))
+            halves.append(reached)
+        both = halves[0] & halves[1]
+        if both:
+            first = min(both)
+            raise ConversionRefused(
+                "socket %s is a mirrored device and offset 0x%X is inside a "
+                "phrase in BOTH of its windows (0x%04X and 0x%04X); %d offset(s) "
+                "are. Those are the same physical byte, so the two phrases "
+                "describe one region twice and only one conversion could "
+                "survive into the burned device. The layout is wrong."
+                % (device.socket, first, profile.window_base + at + first,
+                   profile.window_base + at + device.size + first, len(both)))
+
     # Split back out, and cross-check each device against what the profile says
     # it should be.
     total_changed = 0
@@ -348,6 +388,17 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "image. Some change lies outside every device window."
             % (total_changed, result.stats["bytes_changed"]))
 
+    # A phrase whose every byte is the fill value is not speech either, even if
+    # it does sit inside a device -- an erased region of a real EPROM reads the
+    # same as an unpopulated window.
+    empty = [r.phrase.index for r in results
+             if set(image[r.phrase.start:r.phrase.end]) == {profile.fill}]
+    if empty:
+        raise ConversionRefused(
+            "phrase(s) %s contain nothing but 0x%02X fill bytes, which parse as "
+            "a stop frame. Either the layout is wrong or those devices are "
+            "erased." % (", ".join(str(i) for i in empty), profile.fill))
+
     # A PHRASE THAT STARTS WITH A RUN OF SILENCE IS POINTING AT PADDING.
     #
     # Zero bytes parse as silence frames, so a pointer aimed at padding produces
@@ -363,29 +414,63 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     # The padding entry begins with twelve.
     LEADING_SILENCE_LIMIT = 4
     padded = []
+    hollow = []
     for record in results:
         frames, _ = parse(bytes(image[record.phrase.start:record.phrase.end]),
                           src_tables.pitch_bits, list(src_tables.k_widths))
+        # A PHRASE WHOSE FIRST FRAME IS A STOP FRAME CONVERTS NOTHING.
+        #
+        # It reports as a clean, terminated phrase and changes not one byte, so
+        # every check downstream passes it: the frame kinds are trivially
+        # preserved and the reconciliation only counts bytes that changed. It is
+        # what a pointer aimed at erased space looks like -- 0xFF is the stop
+        # frame's energy code -- and it is what a pointer one entry past the end
+        # of a table usually finds. Fathom shipped exactly this.
+        #
+        # There is no threshold to pick: a real phrase says something, so its
+        # first frame is never the one that ends it. Across the sets here, none
+        # of 481 phrases begins with a stop frame.
+        if frames and frames[0].kind == "stop":
+            hollow.append((record.phrase.index, record.phrase.start,
+                           record.phrase.end))
+            continue
         leading = 0
         for frame in frames:
             if frame.kind != "silence":
                 break
             leading += 1
-        silent = all(f.kind in ("silence", "stop") for f in frames)
+        silence = sum(1 for f in frames if f.kind == "silence")
+        # `bool(silence)` cannot fire today: a phrase of stop-and-nothing-else
+        # would have to begin with its stop frame, and the guard above already
+        # refused that. It stays because the two conditions answer different
+        # questions -- "was anything found here" and "is what was found only
+        # silence" -- and a later change to either could separate them.
+        silent = bool(silence) and all(f.kind in ("silence", "stop")
+                                       for f in frames)
         if record.phrase.index in profile.silent_phrases:
             # The profile claims this one is intentional silence. Hold it to
             # that: an exemption that also covers speech would be a way to
             # switch the guard off, which is the opposite of what it is for.
+            # It must be silence AND actually contain some -- a lone stop frame
+            # is not a silent phrase, it is a phrase that was never found.
             if not silent:
                 raise ConversionRefused(
-                    "phrase %d is listed in silent_phrases but carries speech "
-                    "(%d frames, %d of them silence). That list is for phrases "
-                    "that are silence and nothing else."
-                    % (record.phrase.index, len(frames),
-                       sum(1 for f in frames if f.kind == "silence")))
+                    "phrase %d is listed in silent_phrases but is not silence "
+                    "and nothing else (%d frames, %d of them silence). That "
+                    "list is for phrases that say nothing on purpose."
+                    % (record.phrase.index, len(frames), silence))
             continue
         if leading >= LEADING_SILENCE_LIMIT:
             padded.append((record.phrase.index, leading))
+    if hollow:
+        raise ConversionRefused(
+            "phrase(s) %s begin with a stop frame, so they convert nothing at "
+            "all -- %d of %d phrases. Erased space reads as 0xFF, which IS a "
+            "stop frame, so this is what a pointer into a gap or one entry past "
+            "the end of the table looks like. The layout is finding something "
+            "that is not speech."
+            % (", ".join("%d (0x%X-0x%X)" % h for h in hollow[:4]),
+               len(hollow), len(results)))
     if padded:
         raise ConversionRefused(
             "phrase(s) %s begin with a long run of silence frames (%s), which "
@@ -395,17 +480,6 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "meant to be silent, name it in layout.silent_phrases."
             % (", ".join(str(i) for i, _ in padded),
                ", ".join("%d frames" % n for _, n in padded)))
-
-    # A phrase whose every byte is the fill value is not speech either, even if
-    # it does sit inside a device -- an erased region of a real EPROM reads the
-    # same as an unpopulated window.
-    empty = [r.phrase.index for r in results
-             if set(image[r.phrase.start:r.phrase.end]) == {profile.fill}]
-    if empty:
-        raise ConversionRefused(
-            "phrase(s) %s contain nothing but 0x%02X fill bytes, which parse as "
-            "a stop frame. Either the layout is wrong or those devices are "
-            "erased." % (", ".join(str(i) for i in empty), profile.fill))
 
     if result.stats["frames_clamped"]:
         result.warnings.append(

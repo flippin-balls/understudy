@@ -71,7 +71,7 @@ them even if you ask it to.
 ====================================================================
   CHECK THIS BEFORE YOU BURN ANYTHING
 ====================================================================
-profile      Bally Embryon (1981)  (embryon v3, status board-simulated)
+profile      Bally Embryon (1981)  (embryon v4, status board-simulated)
 chips        tms5200  ->  tsp5220c
 tables       source b52952638192 / target f15418abad1b  (bundled)
 
@@ -243,6 +243,13 @@ rather than from parsing the pointer table — the one kind of evidence a wrong
 layout cannot agree with. Every phrase the firmware actually plays must fall
 inside a phrase the profile converts.
 
+Be clear about the limit of that. It establishes that nothing the game plays was
+missed. It does not confirm table entries no command reached: nine of the
+fifteen sets have some, and each profile lists them in
+`evidence.not_established_by_the_trace` rather than leaving you to assume
+otherwise. Every profile also carries the traced addresses, so you can re-derive
+the list yourself from your own dumps.
+
 So the assurance for a supported game is: an exact hash match on every device, a
 layout whose every phrase is found and terminates, a conversion checked frame by
 frame and reconciled byte for byte, every byte the firmware plays accounted for,
@@ -284,7 +291,8 @@ Be precise about what has been done, because the three are different things:
 | | |
 |---|---|
 | every conversion you run | re-parsed and checked frame by frame — **structural only** |
-| the Embryon reference conversion | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them — **structure and control flow, not sound** |
+| all 15 bundled profiles | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them, issuing the same speech commands as the originals — **structure and control flow, not sound** |
+| all 15 bundled profiles | every stream the firmware plays was captured and shown to fall inside a converted phrase — **coverage, still not sound** |
 | any conversion, listened to | **never** |
 | any conversion, on hardware | **never** |
 

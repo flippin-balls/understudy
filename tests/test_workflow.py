@@ -1201,7 +1201,8 @@ class TestSilentPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
         raw["layout"]["silent_phrases"] = [self.SILENT]
         with self.assertRaises(ConversionRefused) as caught:
             self.convert(profile=Profile(raw, "<x>"))
-        self.assertIn("carries speech", str(caught.exception))
+        self.assertIn("not silence and nothing else",
+                      str(caught.exception))
 
 class TestUnterminatedPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
     """A phrase with no stop frame is refused unless the profile names it.
@@ -1270,6 +1271,98 @@ class TestUnterminatedPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
         with self.assertRaises(ConversionRefused) as caught:
             self.convert(profile=Profile(raw, "<x>"))
         self.assertIn("do end in a stop frame", str(caught.exception))
+
+class TestPhrasesThatConvertNothing(WorkflowFixture):
+    """A phrase whose FIRST frame is a stop frame is refused.
+
+    It reports as clean and terminated and changes not one byte, so every check
+    downstream passes it: frame kinds are trivially preserved and the
+    reconciliation only counts bytes that changed. Erased space reads as 0xFF,
+    which IS a stop frame, so this is what a pointer one entry past the end of
+    a table finds -- the shape of the Fathom defect.
+
+    There is no threshold involved: a real phrase says something, so its first
+    frame is never the one that ends it.
+    """
+
+    def hollow_set(self):
+        """Phrase 1's bytes replaced by a stop frame, then unrelated data.
+
+        Not all-fill: that case has its own, clearer refusal, and this test
+        would otherwise be checking that one instead.
+        """
+        from synthetic import original
+        from synthetic_game import _phrase
+        dumps, raw = build()
+        span = len(_phrase(original(), 7, 40, True))
+        data = bytearray(dumps["U4"])
+        data[0] = 0xFF                                   # an immediate stop
+        for i in range(1, span):
+            data[i] = (i * 7) & 0xFF                     # arbitrary, not fill
+        dumps["U4"] = bytes(data)
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        return dumps, raw
+
+    def test_it_is_refused(self):
+        dumps, raw = self.hollow_set()
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        message = str(caught.exception)
+        self.assertIn("convert nothing", message)
+        self.assertNotIn("fill bytes", message)
+
+    def test_naming_it_silent_does_not_get_round_it(self):
+        """`silent_phrases` cannot excuse it: this guard runs first.
+
+        A lone stop frame is not silence. It is a phrase that was never found,
+        and no claim in a profile should be able to say otherwise.
+        """
+        dumps, raw = self.hollow_set()
+        raw["layout"]["silent_phrases"] = [1]
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        self.assertIn("convert nothing", str(caught.exception))
+
+    def test_a_real_phrase_is_not_caught_by_it(self):
+        self.assertGreater(self.convert().stats["frames"], 0)
+
+
+class TestMirrorDoubleCoverage(WorkflowFixture):
+    """One physical byte may not be declared by a phrase in both windows.
+
+    A 2 KB part answers at two addresses; converting some phrases through the
+    lower window and others through the mirror is legitimate and is merged. But
+    if one offset is inside a phrase in EACH window, two phrases describe the
+    same bytes at different alignments, only one conversion can survive into the
+    burned device, and the other phrase would read as corrupt.
+
+    Changed-bytes cannot detect this -- a conversion may leave a byte
+    unchanged -- so coverage is what is tested.
+    """
+
+    def test_the_same_offset_reached_through_both_windows_is_refused(self):
+        # The fixture's U4 phrases are addressed through the mirror at 0xE800.
+        # Point one table entry at the SAME offset in the lower window.
+        raw = copy.deepcopy(self.raw)
+        device = self.profile.device_for("U5")
+        at = self.profile.table_offset - (device.cpu_address
+                                          - self.profile.window_base)
+        dumps = dict(self.dumps)
+        data = bytearray(dumps["U5"])
+        # Table order is c, a, d, b -- entry 1 is the U4 phrase at 0xE800.
+        data[at + 2:at + 4] = (0xE000).to_bytes(2, "big")
+        dumps["U5"] = bytes(data)
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        message = str(caught.exception)
+        self.assertIn("mirrored device", message)
+        self.assertIn("BOTH of its windows", message)
+
+    def test_the_ordinary_mirrored_set_still_converts(self):
+        self.assertGreater(self.convert().stats["frames"], 0)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

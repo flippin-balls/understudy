@@ -411,8 +411,28 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
     if allow_unterminated is not True and allow_unterminated:
         # An iterable of indexes: those phrases are known not to terminate and
-        # every other one must still be refused.
+        # every other one must still be refused. The claim is checked in both
+        # directions -- a named phrase that DOES terminate, or that is not a
+        # phrase at all, means the caller is describing a different layout from
+        # the one being converted, and quietly ignoring it would let the list
+        # act as a blanket override instead of a statement about these bytes.
         expected = set(allow_unterminated)
+        known = {r.phrase.index for r in results}
+        unknown = sorted(expected - known)
+        if unknown:
+            raise ValueError(
+                "allow_unterminated names %s, which %s not phrase index(es) in "
+                "0..%d"
+                % (", ".join(str(i) for i in unknown),
+                   "is" if len(unknown) == 1 else "are", len(results) - 1))
+        wrong = sorted(expected - set(unterminated))
+        if wrong:
+            raise ValueError(
+                "allow_unterminated names phrase(s) %s, but they DO end in a "
+                "stop frame. That argument states which phrases the ROM leaves "
+                "the player to terminate; naming one that terminates means the "
+                "layout is not the one you think it is."
+                % ", ".join(str(i) for i in wrong))
         unterminated = [i for i in unterminated if i not in expected]
         allow_unterminated = False
     if unterminated and not allow_unterminated:
