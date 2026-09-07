@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "profile_id": "fball_ii",
+  "profile_version": 1,
+  "title": "Fireball II",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "fball_ia",
+    "fball_ii"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "839-01_2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "4b0108c8f3661ddef6aeb23023e5c425bad89c4ea2671201f5cae62621318525",
+      "crc32": "4aa473bd"
+    },
+    {
+      "socket": "U5",
+      "label": "839-02_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "d9b5e5b0f326c33c29e43c746c4242eb829fa4ae247c80f30a94fcae513427eb",
+      "crc32": "8bf904ff"
+    }
+  ],
+  "layout": {
+    "table_offset": 13088,
+    "base_address": 49152,
+    "phrases": 16,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F320, 16 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 13 streams from 12 distinct addresses spanning $C000-$CCF5. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "721 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 4 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "phrases_not_observed": "The layout declares 1 phrase(s) the trace never saw played ($C176). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues."
+  },
+  "notes": [
+    "This sound ROM set is shared by 2 game revisions: fball_ia, fball_ii.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

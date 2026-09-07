@@ -1014,5 +1014,194 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn("embryon", result.stderr)
 
 
+class TestPhraseStartMustBeInSpeech(WorkflowFixture):
+    """A phrase pointing into a gap converts to nothing and reports success.
+
+    Unmapped space assembles as 0xFF, and 0xF is the stop frame's energy code,
+    so such a pointer parses as a clean one-frame phrase. The test is the
+    phrase's START rather than its whole extent: an extent is the DECLARED
+    bound -- the next pointer, or the table -- and legitimately runs past where
+    the speech stops.
+    """
+
+    def _table_entry(self, dumps, index, value):
+        """Point table entry `index` at `value` (a CPU address)."""
+        device = self.profile.device_for("U5")
+        at = self.profile.table_offset - (device.cpu_address
+                                          - self.profile.window_base)
+        data = bytearray(dumps["U5"])
+        off = at + 2 * index
+        data[off:off + 2] = value.to_bytes(2, "big")
+        dumps["U5"] = bytes(data)
+        return dumps
+
+    def test_a_phrase_starting_in_unmapped_space_is_refused(self):
+        # 0xE900 is inside the window but inside no device: U4 is a 2 KB part
+        # answering at 0xE000 and 0xE800, U5 starts at 0xF000.
+        dumps = self._table_entry(dict(self.dumps), 0, 0xD400)
+        raw = copy.deepcopy(self.raw)
+        for device in raw["devices"]:
+            device["sha256"] = sha256(dumps[device["socket"]])
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        self.assertIn("not inside any device", str(caught.exception))
+
+    def test_a_phrase_whose_declared_extent_overruns_its_device_is_allowed(self):
+        """The case the extent test used to fail: a bound past the speech.
+
+        The last phrase in a device is bounded by the pointer table, which
+        lives in the NEXT device. Nothing is wrong with that, and the bytes
+        past the stop frame are never written differently.
+        """
+        result = self.convert()
+        self.assertGreater(result.stats["frames"], 0)
+
+
+class TestConvertedBytesStayInSpeechDevices(unittest.TestCase):
+    """A backstop for a change that lands in NO device at all.
+
+    The per-device reconciliation compares each device against its input, so it
+    catches a change in a device the profile says holds no speech. It cannot
+    catch one that lands outside every device: those bytes exist only in the
+    assembled image, nothing is emitted for them, and the converted set would
+    silently be missing the tail of that phrase.
+
+    Reaching it needs a set with a HOLE -- a phrase whose declared extent runs
+    off the end of its device into unmapped space -- which the shared fixture,
+    whose devices tile their window, cannot express.
+    """
+
+    WINDOW, SPEECH, TABLE = 0xC000, 0xC000, 0xF000
+    HOLE = 0xC900               # inside the window, inside no device
+
+    def build_holed_set(self):
+        from synthetic import original
+        from synthetic_game import _phrase
+        chip = original()
+        body = _phrase(chip, 7, 40, True)
+
+        speech = bytearray(b"\xFF" * 0x800)          # 2 KB at 0xC000
+        speech[0:len(body)] = body
+        table = bytearray(b"\xFF" * 0x1000)          # 4 KB at 0xF000
+        # One phrase, starting in the device and bounded by the table -- so its
+        # declared extent crosses the unmapped space between them.
+        table[0:2] = self.SPEECH.to_bytes(2, "big")
+        table[2:4] = self.TABLE.to_bytes(2, "big")
+
+        dumps = {"U2": bytes(speech), "U5": bytes(table)}
+        raw = {
+            "schema_version": 1, "profile_id": "holed", "profile_version": 1,
+            "title": "Holed", "manufacturer": "Bally", "year": 1981,
+            "board": "Squawk & Talk AS-2518-61", "source_chip": "tms5200",
+            "status": "draft",
+            "memory": {"window_base": self.WINDOW, "window_size": 0x4000,
+                       "fill": 255},
+            "devices": [
+                {"socket": "U2", "label": "speech", "type": "2716",
+                 "size": 0x800, "cpu_address": self.SPEECH, "mirrored": False,
+                 "holds_speech": True, "sha256": sha256(dumps["U2"])},
+                {"socket": "U5", "label": "table", "type": "2532",
+                 "size": 0x1000, "cpu_address": self.TABLE, "mirrored": False,
+                 "holds_speech": False, "sha256": sha256(dumps["U5"])},
+            ],
+            "layout": {"table_offset": self.TABLE - self.WINDOW,
+                       "base_address": self.WINDOW, "phrases": 1,
+                       "address_ordered": True, "has_end_bound": True,
+                       "truncate_last_byte": []},
+            "evidence": {"layout": "constructed for this test"},
+        }
+        return dumps, raw
+
+    def test_the_hole_really_is_inside_a_phrase_extent(self):
+        """Otherwise the older stray-byte backstop would be what fires."""
+        from tms52xx.rom import PhraseTable
+        dumps, raw = self.build_holed_set()
+        profile = Profile(raw, "<holed>")
+        table = PhraseTable.from_pointers(
+            profile.assemble(dumps), profile.table_offset, profile.phrases,
+            address_ordered=True, has_end_bound=True,
+            base_address=profile.base_address)
+        offset = self.HOLE - self.WINDOW
+        self.assertTrue(any(p.start <= offset < p.end for p in table.phrases))
+
+    def test_a_change_landing_in_no_device_at_all_is_refused(self):
+        from tms52xx import workflow
+        from tms52xx.rom import patch_rom as real_patch
+        dumps, raw = self.build_holed_set()
+
+        def patch(image, table, source, target, **kwargs):
+            out, results = real_patch(image, table, source, target, **kwargs)
+            data = bytearray(out)
+            data[self.HOLE - self.WINDOW] ^= 0xFF
+            return bytes(data), results
+
+        workflow.patch_rom = patch
+        try:
+            with self.assertRaises(ConversionRefused) as caught:
+                convert_set(dumps, Profile(raw, "<holed>"),
+                            chips.resolve("tms5220"))
+        finally:
+            workflow.patch_rom = real_patch
+        self.assertIn("outside every device", str(caught.exception))
+
+    def test_without_the_tampering_the_same_set_converts(self):
+        dumps, raw = self.build_holed_set()
+        result = convert_set(dumps, Profile(raw, "<holed>"),
+                             chips.resolve("tms5220"))
+        self.assertGreater(result.stats["frames"], 0)
+
+
+class TestSilentPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
+    """Silence is refused unless the profile names it, and then it is checked.
+
+    A pointer aimed at padding looks exactly like a deliberately silent phrase,
+    so the guard cannot simply allow silence. It can require the profile to say
+    which phrases are silent -- and then hold it to the claim, so the field
+    cannot be used to switch the guard off.
+    """
+
+    #: Table order is c, a, d, b -- so the U4 phrase at the device's own
+    #: offset 0 is phrase 1, not phrase 0.
+    SILENT = 1
+
+    def silent_set(self):
+        """A set whose phrase 1 is a long run of silence and nothing else.
+
+        Replaced in place, keeping its length, so the phrase that follows it in
+        the same device is untouched.
+        """
+        from synthetic import original
+        from synthetic_game import _phrase
+        dumps, raw = build()
+        span = len(_phrase(original(), 7, 40, True))
+        data = bytearray(dumps["U4"])
+        data[0:span] = b"\x00" * (span - 1) + b"\xFF"
+        dumps["U4"] = bytes(data)
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        return dumps, raw
+
+    def test_undeclared_silence_is_refused_and_says_what_to_do(self):
+        dumps, raw = self.silent_set()
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        message = str(caught.exception)
+        self.assertIn("silence", message)
+        self.assertIn("silent_phrases", message)
+
+    def test_declaring_it_allows_the_conversion(self):
+        dumps, raw = self.silent_set()
+        raw["layout"]["silent_phrases"] = [self.SILENT]
+        result = self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        self.assertGreater(result.stats["frames"], 0)
+
+    def test_declaring_a_phrase_that_carries_speech_is_refused(self):
+        """The exemption is a claim about the ROM, not a switch."""
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["silent_phrases"] = [self.SILENT]
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(profile=Profile(raw, "<x>"))
+        self.assertIn("carries speech", str(caught.exception))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

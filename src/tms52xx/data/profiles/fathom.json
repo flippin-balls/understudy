@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile_id": "fathom",
-  "profile_version": 1,
+  "profile_version": 2,
   "title": "Fathom",
   "manufacturer": "Bally",
   "year": 1981,
@@ -44,24 +44,24 @@
   "layout": {
     "table_offset": 14959,
     "base_address": 49152,
-    "phrases": 28,
+    "phrases": 26,
     "address_ordered": false,
     "has_end_bound": true,
     "truncate_last_byte": []
   },
   "status": "board-simulated",
   "evidence": {
-    "layout": "Pointer table at CPU $FA6F, 28 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
-    "table_between_phrases": "This set puts the pointer table BETWEEN its speech: entries 0-26 run from $E000 up to $F77D, below the table at $FA6F, and entry 27 points at $FAD3, above it. The phrase below the table would otherwise run through it to reach the one above. Understudy clamps every phrase at the table, which is why this layout works.",
-    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv records 1192 frames across 28 streams for fathom, matching this layout exactly. The 28th stream, 9 frames at $FAD3, is the one above the table -- reading only the 27 below it gives 1183 and is how the layout was found to be short.",
-    "conversion": "1192 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "layout": "Pointer table at CPU $FA6F, 26 phrases with a final end bound at $F77D, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 26 distinct phrases spanning $E000-$F6DE, totalling 6013 bytes. This layout's 26 phrase starts are exactly that set -- no phrase missing, none invented.",
+    "conversion": "1182 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
     "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 8 SPEAK EXTERNAL commands as the original set.",
+    "corrected_in_v2": "Version 1 of this profile declared 28 phrases, taking two entries past the end of the table as speech. Entry 26 ($F77D) is the last phrase's end bound and points at erased 0xFF, which parses as an immediate stop frame; entry 27 ($FAD3) is 6802 CODE, and converting it rewrote 31 bytes of firmware. The board simulation still booted, because the 64 commands it issues never reach that code -- which is why the traced phrase list, not the simulation, is what settles a layout. The frame count that appeared to confirm v1 came from a corpus built by the same kind of static read, so it agreed with the error rather than testing it.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
   },
   "notes": [
     "This sound ROM set is shared by 3 game revisions: fathom, fathoma, fathomb.",
     "Command order, not address order.",
-    "The pointer table sits between the speech, not above or below it."
+    "The speech is all below the pointer table at $FA6F. Everything above it is code."
   ],
   "contributors": [
     "Flashback Fleet LLC"

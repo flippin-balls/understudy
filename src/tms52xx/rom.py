@@ -49,6 +49,61 @@ class PhraseTable:
     phrases: List[Phrase]
 
     @classmethod
+    def from_pointer_pairs(cls, rom: bytes, table_offset: int, count: int,
+                           base_address: int = 0) -> "PhraseTable":
+        """Read a table of 4-byte (start, end) records into phrase extents.
+
+        Some sets do not store a list of starts and derive each end from the
+        next entry. They store both ends of every phrase, one 4-byte record per
+        phrase: start high, start low, end high, end low. Centaur and Medusa are
+        both built this way, and reading such a table as a list of starts
+        produces phrases that are individually plausible -- every other pointer
+        is a real phrase start -- while silently describing half the ROM.
+
+        The record form carries its own bounds, so there is nothing to derive
+        and no ordering to know: `address_ordered` and `has_end_bound` have no
+        meaning here. Ends are used exactly as stored rather than being clamped
+        at the table, because an end that runs into the table is a misread
+        table, not a phrase to be trimmed -- and is refused below.
+        """
+        if table_offset < 0 or count < 0 or base_address < 0:
+            raise ValueError("table_offset, count and base_address must be "
+                             "non-negative (got %d, %d, %d)"
+                             % (table_offset, count, base_address))
+        if count == 0:
+            raise ValueError("count must be at least 1")
+
+        end_of_table = table_offset + count * 4
+        if end_of_table > len(rom):
+            raise ValueError(
+                "pointer-pair table of %d records at 0x%X runs past the end of "
+                "a %d-byte ROM" % (count, table_offset, len(rom)))
+
+        phrases = []
+        for i in range(count):
+            at = table_offset + 4 * i
+            start = int.from_bytes(rom[at:at + 2], "big") - base_address
+            end = int.from_bytes(rom[at + 2:at + 4], "big") - base_address
+            for name, value in (("start", start), ("end", end)):
+                if not 0 <= value <= len(rom):
+                    raise ValueError(
+                        "record %d has %s 0x%X, outside a %d-byte ROM -- check "
+                        "table_offset and base_address"
+                        % (i, name, value, len(rom)))
+            if end <= start:
+                raise ValueError(
+                    "record %d has end 0x%X <= start 0x%X. These are (start, "
+                    "end) pairs; a table of plain start pointers read this way "
+                    "produces exactly this." % (i, end, start))
+            if start < end_of_table and table_offset < end:
+                raise ValueError(
+                    "phrase %d (0x%X-0x%X) overlaps the pointer table at "
+                    "0x%X-0x%X; patching it would corrupt the table"
+                    % (i, start, end, table_offset, end_of_table))
+            phrases.append(Phrase(i, start, end))
+        return cls(phrases)
+
+    @classmethod
     def from_pointers(cls, rom: bytes, table_offset: int, count: int,
                       address_ordered: bool = True,
                       has_end_bound: bool = True,

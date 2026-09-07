@@ -624,5 +624,86 @@ class TestBundledEmbryonProfile(unittest.TestCase):
                 self.assertNotIn(key, raw, "%s: %r" % (path.name, key))
 
 
+class EntryFormSchema(unittest.TestCase):
+    """`entry_form` says what one table entry IS, and must not be guessable."""
+
+    def setUp(self):
+        _dumps, self.raw = build()
+
+    def profile(self, **layout):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"].update(layout)
+        return raw
+
+    def test_defaults_to_starts_so_existing_profiles_keep_their_meaning(self):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"].pop("entry_form", None)
+        self.assertEqual(Profile(raw, "<t>").entry_form, "starts")
+
+    def test_an_unknown_entry_form_is_refused_and_names_the_known_ones(self):
+        with self.assertRaises(ProfileError) as caught:
+            Profile(self.profile(entry_form="pairs"), "<t>")
+        self.assertIn("start_end_pairs", str(caught.exception))
+
+    def test_pair_form_refuses_fields_that_would_have_no_effect(self):
+        """Ordering and an end bound mean nothing to a (start, end) record.
+
+        Accepting and ignoring them would let a profile state something about
+        its layout that does nothing -- and a claim nobody applies is the kind
+        that later gets read as verified.
+        """
+        for key in ("address_ordered", "has_end_bound"):
+            raw = self.profile(entry_form="start_end_pairs")
+            for other in ("address_ordered", "has_end_bound"):
+                raw["layout"].pop(other, None)
+            raw["layout"][key] = True
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<t>")
+            self.assertIn(key, str(caught.exception))
+
+    def test_pair_form_does_not_require_ordering_fields(self):
+        raw = self.profile(entry_form="start_end_pairs")
+        for key in ("address_ordered", "has_end_bound"):
+            raw["layout"].pop(key, None)
+        self.assertEqual(Profile(raw, "<t>").entry_form, "start_end_pairs")
+
+    def test_starts_form_still_requires_them(self):
+        for key in ("address_ordered", "has_end_bound"):
+            raw = copy.deepcopy(self.raw)
+            raw["layout"].pop("entry_form", None)
+            raw["layout"].pop(key)
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<t>")
+            self.assertIn(key, str(caught.exception))
+
+
+class SilentPhraseSchema(unittest.TestCase):
+    def setUp(self):
+        _dumps, self.raw = build()
+
+    def test_defaults_to_none_declared(self):
+        self.assertEqual(Profile(self.raw, "<t>").silent_phrases, [])
+
+    def test_must_be_a_list(self):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["silent_phrases"] = 3
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<t>")
+        self.assertIn("silent_phrases", str(caught.exception))
+
+    def test_an_index_outside_the_phrase_range_is_refused(self):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["silent_phrases"] = [raw["layout"]["phrases"]]
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<t>")
+        self.assertIn("not a phrase index", str(caught.exception))
+
+    def test_a_bool_is_not_an_index(self):
+        """`true` is an int in Python, and would silently mean phrase 1."""
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["silent_phrases"] = [True]
+        with self.assertRaises(ProfileError):
+            Profile(raw, "<t>")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

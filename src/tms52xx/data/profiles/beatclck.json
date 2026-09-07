@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "profile_id": "beatclck",
+  "profile_version": 1,
+  "title": "Beat the Clock",
+  "manufacturer": "Bally",
+  "year": 1985,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "beatclc2",
+    "beatclck"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "btc_u2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "390a8e6a77edcedcbacff5cd8bb925098be3bc40ed63da9f5c9355e91379a94f",
+      "crc32": "fd22fd2a"
+    },
+    {
+      "socket": "U3",
+      "label": "btc_u3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "e11ff9587845f4a4793f1a51ebf5c9d990776896e2fa695ac28a04f8c6eb074b",
+      "crc32": "22311a4a"
+    },
+    {
+      "socket": "U4",
+      "label": "btc_u4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "1e1fc683c52872cca702e4f8c827253d2ac874eb3a3c07d98bc99254b9d2755a",
+      "crc32": "af1cf23b"
+    },
+    {
+      "socket": "U5",
+      "label": "btc_u5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "f6976a4f9e6914e0019d7b1e1760f65306e984aca31168e7a85bafe1da0a1819",
+      "crc32": "230cf329"
+    }
+  ],
+  "layout": {
+    "table_offset": 9087,
+    "base_address": 49152,
+    "phrases": 62,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "address_ordered": false,
+    "has_end_bound": true
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $E37F, 62 phrases, command-ordered, with a final end bound.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 48 streams from 48 distinct addresses spanning $C000-$DFA0. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1695 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 2 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "phrases_not_observed": "The layout declares 12 phrase(s) the trace never saw played ($C2AC, $C33D, $C3A8, $C7E1, $C836, $CA2E, $CDDD, $CE9F, $CF6E, $D021, $D0BF, $DE03). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues."
+  },
+  "notes": [
+    "This sound ROM set is shared by 2 game revisions: beatclc2, beatclck."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

@@ -154,13 +154,18 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     image = profile.assemble(dumps)
     result.before = image
 
-    table = PhraseTable.from_pointers(
-        image, profile.table_offset, profile.phrases,
-        address_ordered=profile.address_ordered,
-        has_end_bound=profile.has_end_bound,
-        base_address=profile.base_address)
+    if profile.entry_form == "start_end_pairs":
+        table = PhraseTable.from_pointer_pairs(
+            image, profile.table_offset, profile.phrases,
+            base_address=profile.base_address)
+    else:
+        table = PhraseTable.from_pointers(
+            image, profile.table_offset, profile.phrases,
+            address_ordered=profile.address_ordered,
+            has_end_bound=profile.has_end_bound,
+            base_address=profile.base_address)
 
-    # EVERY PHRASE MUST LIE INSIDE A SPEECH-BEARING DEVICE.
+    # EVERY PHRASE MUST START INSIDE A SPEECH-BEARING DEVICE.
     #
     # `assemble` fills windows no device covers with 0xFF, and 0xF is the stop
     # frame's energy code -- so a pointer into unpopulated space parses as a
@@ -168,23 +173,31 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     # changes no bytes, its frame kinds are trivially preserved, and the
     # reconciliation only counts bytes that changed. The result is a ROM missing
     # however many phrases pointed into the gap, reported as a success.
+    #
+    # The test is the phrase's START, not its whole extent. A phrase's extent is
+    # the DECLARED bound -- the next pointer, or the pointer table -- and the
+    # speech inside it stops at its stop frame, usually well short. Real sets
+    # bound the last phrase in a device with the table that lives in the NEXT
+    # device, so requiring the whole extent to be speech-bearing refuses a
+    # correct layout, and marking that next device as speech to satisfy it is
+    # refused in turn because nothing in it changes. What the extent must not do
+    # is carry speech out of the speech devices, and that is checked below,
+    # against the bytes conversion actually changed.
     covered = set()
     for device in profile.speech_devices:
         at = device.cpu_address - profile.window_base
         span = device.size * (2 if device.mirrored else 1)
         covered.update(range(at, at + span))
-    outside = [p for p in table.phrases
-               if not set(range(p.start, p.end)) <= covered]
+    outside = [p for p in table.phrases if p.start not in covered]
     if outside:
         first = outside[0]
         raise ConversionRefused(
-            "phrase %d (0x%X-0x%X) is not inside any device the profile marks "
-            "as holding speech. Unpopulated space reads as 0xFF, which parses "
-            "as a stop frame, so such a phrase looks valid and converts to "
-            "nothing -- the ROM would be missing it. %d of %d phrases are "
-            "affected."
-            % (first.index, first.start, first.end, len(outside),
-               len(table.phrases)))
+            "phrase %d starts at 0x%X, which is not inside any device the "
+            "profile marks as holding speech. Unpopulated space reads as 0xFF, "
+            "which parses as a stop frame, so such a phrase looks valid and "
+            "converts to nothing -- the ROM would be missing it. %d of %d "
+            "phrases are affected."
+            % (first.index, first.start, len(outside), len(table.phrases)))
 
     verdicts = diagnose_last_byte(image, table, src_tables)
     stuck = sorted(i for i, v in verdicts.items() if v == "no stop")
@@ -214,6 +227,24 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         raise ConversionRefused(
             "%d byte(s) outside the phrase extents changed, first at 0x%X. "
             "Refusing to write." % (len(stray), stray[0]))
+
+    # AND EVERY CHANGED BYTE MUST LAND IN A SPEECH-BEARING DEVICE.
+    #
+    # The per-device reconciliation below catches a change that lands in a
+    # device the profile says holds no speech. It cannot catch one that lands
+    # in no device AT ALL -- a phrase starting in the last bytes of a device
+    # and running on into unmapped space. Those bytes exist only in the
+    # assembled image; nothing is emitted for them, so the converted set would
+    # be missing the tail of that phrase and every check downstream would pass.
+    escaped = [i for i, (a, b) in enumerate(zip(image, patched))
+               if a != b and i not in covered]
+    if escaped:
+        raise ConversionRefused(
+            "%d converted byte(s) fall outside every device the profile marks "
+            "as holding speech, first at 0x%X. A phrase runs past the end of "
+            "its device, so the converted set would be missing it. Check the "
+            "layout, and which devices hold speech."
+            % (len(escaped), escaped[0]))
 
     result.phrases = [
         {"index": r.phrase.index, "start": r.phrase.start, "end": r.phrase.end,
@@ -322,6 +353,19 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             if frame.kind != "silence":
                 break
             leading += 1
+        silent = all(f.kind in ("silence", "stop") for f in frames)
+        if record.phrase.index in profile.silent_phrases:
+            # The profile claims this one is intentional silence. Hold it to
+            # that: an exemption that also covers speech would be a way to
+            # switch the guard off, which is the opposite of what it is for.
+            if not silent:
+                raise ConversionRefused(
+                    "phrase %d is listed in silent_phrases but carries speech "
+                    "(%d frames, %d of them silence). That list is for phrases "
+                    "that are silence and nothing else."
+                    % (record.phrase.index, len(frames),
+                       sum(1 for f in frames if f.kind == "silence")))
+            continue
         if leading >= LEADING_SILENCE_LIMIT:
             padded.append((record.phrase.index, leading))
     if padded:
@@ -329,7 +373,8 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "phrase(s) %s begin with a long run of silence frames (%s), which "
             "is what a pointer aimed at padding looks like rather than speech. "
             "That entry may be an end bound rather than a phrase -- try one "
-            "fewer phrase with has_end_bound set."
+            "fewer phrase with has_end_bound set. If the phrase really is "
+            "meant to be silent, name it in layout.silent_phrases."
             % (", ".join(str(i) for i, _ in padded),
                ", ".join("%d frames" % n for _, n in padded)))
 

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "profile_id": "mysteria",
+  "profile_version": 1,
+  "title": "Mysterian (Prototype)",
+  "manufacturer": "Bally",
+  "year": 1982,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "mysteria"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "snd-au3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "67c1ef2526022009d3c559b4d8b1ddabb8356cd9937b058ffe53045bbddd02be",
+      "crc32": "17b27bd7"
+    },
+    {
+      "socket": "U4",
+      "label": "snd-au4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "931eb53527af6eebda30cc50dda2c039a74c1ba2aca7b9b7ce8f76ce7cb6d499",
+      "crc32": "d229df68"
+    },
+    {
+      "socket": "U5",
+      "label": "snd-au5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "3033afeda7d39217c4b253c82414214a33200d88ee0054131837358368de9ac4",
+      "crc32": "44f9a29c"
+    }
+  ],
+  "layout": {
+    "table_offset": 12536,
+    "base_address": 49152,
+    "phrases": 36,
+    "truncate_last_byte": [],
+    "address_ordered": true,
+    "has_end_bound": true
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F0F8, 36 phrases, address-ordered, with a final end bound.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 46 streams from 37 distinct addresses spanning $D000-$E961. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1392 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 20 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "mid_phrase_entry_points": "The firmware also starts playback part-way into a phrase, at $DE00. Those addresses are not table entries and need not be: each lies inside a phrase this layout converts, so the bytes played from them are converted bytes."
+  },
+  "notes": [
+    "This sound ROM set is shared by 1 game revisions: mysteria."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

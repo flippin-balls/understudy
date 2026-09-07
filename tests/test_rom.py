@@ -654,5 +654,121 @@ class TestLastByteConvention(RomFixture):
         self.assertEqual(got, {"required", "spare"})
 
 
+class PointerPairTable(unittest.TestCase):
+    """Tables that store both bounds of every phrase, as Centaur's does.
+
+    Reading such a table as a list of starts is the failure this form exists to
+    prevent: every other pointer IS a real phrase start, so the wrong reading
+    produces phrases that all parse and terminate while describing half the ROM.
+    """
+
+    def setUp(self):
+        self.src = original()
+        body = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        self.body = body
+        # Three phrases with a gap between them, then the table after them.
+        # The gaps matter: with the phrases laid end to end, every end pointer
+        # equals the next start pointer and the two readings coincide. Real
+        # sets are not all contiguous -- Medusa's are not -- and the gap is what
+        # makes a misread visible.
+        step = len(body) + 4
+        self.starts = [0x10, 0x10 + step, 0x10 + 2 * step]
+        self.table_at = 0x10 + 3 * step
+        rom = bytearray(self.table_at + 3 * 4 + 8)
+        for start in self.starts:
+            rom[start:start + len(body)] = body
+        for i, start in enumerate(self.starts):
+            at = self.table_at + 4 * i
+            rom[at:at + 2] = start.to_bytes(2, "big")
+            rom[at + 2:at + 4] = (start + len(body)).to_bytes(2, "big")
+        self.rom = bytes(rom)
+
+    def table(self, count=3, rom=None):
+        return PhraseTable.from_pointer_pairs(rom or self.rom, self.table_at,
+                                              count)
+
+    def test_each_record_gives_one_phrase_with_both_its_bounds(self):
+        phrases = self.table().phrases
+        self.assertEqual([p.start for p in phrases], self.starts)
+        self.assertEqual([p.end for p in phrases],
+                         [s + len(self.body) for s in self.starts])
+
+    def test_reading_a_pair_table_as_starts_invents_phrases_and_does_not_raise(self):
+        """The motivating failure, demonstrated rather than asserted.
+
+        Read as starts, every END pointer becomes a phrase too, so the table
+        describes twice as many phrases as exist and the invented ones cover
+        whatever lies between the real ones -- fill, padding, or code. Nothing
+        raises: that is what makes this form worth supporting rather than
+        detecting.
+        """
+        as_starts = PhraseTable.from_pointers(
+            self.rom, self.table_at, 6, address_ordered=False,
+            has_end_bound=False)
+        self.assertEqual(len(as_starts.phrases), 6)
+        self.assertNotEqual([p.start for p in as_starts.phrases], self.starts)
+        real = {(p.start, p.end) for p in self.table().phrases}
+        read = {(p.start, p.end) for p in as_starts.phrases}
+        # Twice the phrases, and the extra ones are not speech at all.
+        self.assertEqual(len(as_starts.phrases), 2 * len(self.starts))
+        self.assertTrue(read - real, "the misreading must invent phrases")
+        for start, end in read - real:
+            self.assertNotIn(start, self.starts)
+
+    def test_a_record_whose_end_precedes_its_start_is_refused(self):
+        rom = bytearray(self.rom)
+        at = self.table_at
+        rom[at:at + 2] = (self.starts[1]).to_bytes(2, "big")
+        rom[at + 2:at + 4] = (self.starts[0]).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("(start, end) pairs", str(caught.exception))
+
+    def test_a_record_pointing_outside_the_rom_is_refused(self):
+        rom = bytearray(self.rom)
+        rom[self.table_at:self.table_at + 2] = (0xFFFF).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("outside", str(caught.exception))
+
+    def test_a_phrase_overlapping_the_table_is_refused(self):
+        """Patching it would rewrite the table that describes it."""
+        rom = bytearray(self.rom)
+        rom[self.table_at + 2:self.table_at + 4] = (
+            self.table_at + 4).to_bytes(2, "big")
+        with self.assertRaises(ValueError) as caught:
+            self.table(rom=bytes(rom))
+        self.assertIn("overlaps the pointer table", str(caught.exception))
+
+    def test_a_table_running_past_the_end_of_the_rom_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.table(count=64)
+        self.assertIn("runs past the end", str(caught.exception))
+
+    def test_records_are_four_bytes_not_two(self):
+        """A pair table of N phrases occupies 4N bytes.
+
+        Off-by-a-factor-of-two here would read the second half of the table as
+        phrases, which is exactly what a plain-starts reading does.
+        """
+        with self.assertRaises(ValueError):
+            PhraseTable.from_pointer_pairs(self.rom[:self.table_at + 4 * 3 - 1],
+                                           self.table_at, 3)
+        self.assertEqual(len(self.table().phrases), 3)
+
+    def test_conversion_through_a_pair_table_stays_in_place(self):
+        patched, results = patch_rom(self.rom, self.table(), self.src,
+                                     understudy())
+        self.assertEqual(len(patched), len(self.rom))
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(r.stopped_cleanly for r in results))
+        changed = [i for i, (a, b) in enumerate(zip(self.rom, patched))
+                   if a != b]
+        self.assertTrue(changed)
+        self.assertTrue(all(any(p.start <= i < p.end
+                                for p in self.table().phrases)
+                            for i in changed))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=0)

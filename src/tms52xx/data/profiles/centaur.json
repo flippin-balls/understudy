@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "profile_id": "centaur",
+  "profile_version": 1,
+  "title": "Centaur",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "centaur",
+    "centaura",
+    "centaurb"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "848-01_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "bfe1493330fb0994f92a605803694646ff8aae5857cfa03e01115871994ea49e",
+      "crc32": "88322c8a"
+    },
+    {
+      "socket": "U4",
+      "label": "848-02_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "bdf6501c8efa16eec5b81be0622995e009376d2853b1858f59c5334ad7f2e656",
+      "crc32": "d6dbd0e4"
+    },
+    {
+      "socket": "U5",
+      "label": "848-05_5",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 61440,
+      "mirrored": true,
+      "holds_speech": false,
+      "sha256": "73550e0d49a3f150b8726303ed231fffe1693464f1e05dabac6ff227ee5d495b",
+      "crc32": "cbd765ba"
+    }
+  ],
+  "layout": {
+    "table_offset": 13120,
+    "base_address": 49152,
+    "phrases": 37,
+    "truncate_last_byte": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F340, 37 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 37 streams from 37 distinct addresses spanning $D000-$ED6D. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1759 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 12 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
+  },
+  "notes": [
+    "This sound ROM set is shared by 3 game revisions: centaur, centaura, centaurb.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

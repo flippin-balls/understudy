@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "profile_id": "medusa",
+  "profile_version": 1,
+  "title": "Medusa",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "medusa",
+    "medusaa",
+    "medusaf"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "845-01_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "d8735006a36823477549bff53f95978d47f7fb27b1b6c93bdc7397870f40c79c",
+      "crc32": "32200e02"
+    },
+    {
+      "socket": "U4",
+      "label": "845-02_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "a3fa15e40fa02f56fb6a43cc55c1955240ff3e9cc3ec7695c1f3e9b17ead26c8",
+      "crc32": "ab95885a"
+    },
+    {
+      "socket": "U5",
+      "label": "845-05_5",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 61440,
+      "mirrored": true,
+      "holds_speech": false,
+      "sha256": "1c39d85d33d3c99c01068929f815df12ff80c4953b8ff12aeaf007e778acff26",
+      "crc32": "3792a812"
+    }
+  ],
+  "layout": {
+    "table_offset": 13149,
+    "base_address": 49152,
+    "phrases": 27,
+    "truncate_last_byte": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F35D, 27 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 26 streams from 26 distinct addresses spanning $D000-$EF5E. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1567 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 16 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "phrases_not_observed": "The layout declares 1 phrase(s) the trace never saw played ($D334). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues."
+  },
+  "notes": [
+    "This sound ROM set is shared by 3 game revisions: medusa, medusaa, medusaf.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}
