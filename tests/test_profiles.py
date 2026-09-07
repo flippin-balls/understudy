@@ -388,16 +388,53 @@ class TestAssembly(SynthProfile):
         self.assertTrue(got.from_mirror)
         self.assertEqual(got.data[0], self.dumps["U4"][0] ^ 0xFF)
 
-    def test_mirror_halves_changing_to_DIFFERENT_contents_is_refused(self):
-        """One device cannot hold two different things."""
+    def test_the_SAME_offset_converted_two_ways_is_refused(self):
+        """One device cannot hold two different things at one offset."""
         image = bytearray(self.profile.assemble(self.dumps))
         original = bytes(image)
         image[0xE000 - 0xC000] ^= 0xFF
-        image[0xE800 - 0xC000] ^= 0x0F        # a different change
+        image[0xE800 - 0xC000] ^= 0x0F        # same offset, different result
         with self.assertRaises(ProfileError) as caught:
             self.profile.extract(bytes(image), self.profile.device_for("U4"),
                                  original)
-        self.assertIn("different contents", str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn("two different ways", message)
+        self.assertIn("offset 0x0", message)
+
+    def test_different_offsets_reached_through_different_mirrors_are_merged(self):
+        """A set may reach some phrases low and others high.
+
+        A 2 KB part answers at two addresses, so both windows are the same
+        device; converting offset 0x10 through the lower one and offset 0x400
+        through the upper one touches two different bytes of one ROM. Eight Ball
+        Deluxe is built this way. Refusing it would be refusing a correct
+        layout, so the halves are merged and only a genuine collision refused.
+        """
+        image = bytearray(self.profile.assemble(self.dumps))
+        original = bytes(image)
+        low = 0xE000 - 0xC000
+        high = 0xE800 - 0xC000
+        image[low + 0x10] ^= 0xFF             # offset 0x10, via the low window
+        image[high + 0x400] ^= 0xFF           # offset 0x400, via the mirror
+        got = self.profile.extract(bytes(image), self.profile.device_for("U4"),
+                                   original)
+        self.assertTrue(got.changed)
+        self.assertEqual(len(got.data), self.profile.device_for("U4").size)
+        self.assertEqual(got.data[0x10], self.dumps["U4"][0x10] ^ 0xFF)
+        self.assertEqual(got.data[0x400], self.dumps["U4"][0x400] ^ 0xFF)
+        # Everything else is untouched.
+        for i, (a, b) in enumerate(zip(got.data, self.dumps["U4"])):
+            if i not in (0x10, 0x400):
+                self.assertEqual(a, b, "offset 0x%X" % i)
+
+    def test_both_halves_converted_identically_is_not_a_conflict(self):
+        image = bytearray(self.profile.assemble(self.dumps))
+        original = bytes(image)
+        image[0xE000 - 0xC000] ^= 0xFF
+        image[0xE800 - 0xC000] ^= 0xFF        # the same change
+        got = self.profile.extract(bytes(image), self.profile.device_for("U4"),
+                                   original)
+        self.assertEqual(got.data[0], self.dumps["U4"][0] ^ 0xFF)
 
     def test_mirror_halves_changing_IDENTICALLY_is_accepted(self):
         """A layout may address phrases through both windows.
@@ -704,6 +741,28 @@ class SilentPhraseSchema(unittest.TestCase):
         raw["layout"]["silent_phrases"] = [True]
         with self.assertRaises(ProfileError):
             Profile(raw, "<t>")
+
+
+class UnterminatedPhraseSchema(unittest.TestCase):
+    def setUp(self):
+        _dumps, self.raw = build()
+
+    def test_defaults_to_none_declared(self):
+        self.assertEqual(Profile(self.raw, "<t>").unterminated_phrases, [])
+
+    def test_must_be_a_list(self):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["unterminated_phrases"] = 2
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<t>")
+        self.assertIn("unterminated_phrases", str(caught.exception))
+
+    def test_an_index_outside_the_phrase_range_is_refused(self):
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["unterminated_phrases"] = [99]
+        with self.assertRaises(ProfileError) as caught:
+            Profile(raw, "<t>")
+        self.assertIn("not a phrase index", str(caught.exception))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

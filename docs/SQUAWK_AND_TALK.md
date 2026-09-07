@@ -40,9 +40,27 @@ it may lie below the speech it points at or above it, and Embryon's is above.
 
 ## What does not generalise
 
-Three properties vary between titles. None of them changes what conversion does
-to the bits, but each changes *which bytes are a phrase*, so getting one wrong
-converts the wrong region.
+Several properties vary between titles. None of them changes what conversion
+does to the bits, but each changes *which bytes are a phrase*, so getting one
+wrong converts the wrong region.
+
+**What an entry IS.** Most tables are a list of phrase *starts*: each phrase
+ends where the next begins. Some store **both bounds of every phrase**, as a
+four-byte record — start high, start low, end high, end low. Centaur, Medusa,
+Eight Ball Deluxe, Fireball II and Vector are all built this way.
+
+The two are hard to tell apart, and the failure is quiet. Read a pair table as a
+list of starts and every *end* pointer becomes a phrase too. Where the phrases
+happen to be contiguous, each end equals the next start and you get a plausible
+list with every entry duplicated. Where they are not, the invented phrases cover
+whatever lies between the real ones — fill, padding, or code. Nothing raises,
+because every other pointer really is a phrase start.
+
+What gives it away is the shape. In a pair table, entries come in couples whose
+second element is slightly above the first, and across a contiguous run you see
+`A A B B C C` rather than `A B C`. Set `entry_form` to `start_end_pairs` in the
+profile; ordering and an end bound then have no meaning, and stating either is
+refused rather than ignored.
 
 **Ordering.** Most tables list phrases in address order, so consecutive entries
 are consecutive in memory and the difference between neighbours is a phrase
@@ -87,6 +105,22 @@ terminator) or `spare` (the phrase already terminates before it). What it cannot
 tell you is which convention your player uses: that is firmware behaviour and is
 not recorded in the speech data. The diagnostic tells you where truncation is
 *safe*, not where it is *needed*.
+
+**Deliberate silence.** A few sets have a "say nothing" entry: a run of silence
+frames and nothing else, played by real commands. That is byte-for-byte what a
+pointer aimed at padding looks like, which is why Understudy refuses unexplained
+silence — the Embryon defect was exactly a pointer into padding. So the profile
+must *name* the phrases it claims are silent, in `silent_phrases`, and the claim
+is then checked: a named phrase that turns out to carry speech is refused. Flash
+Gordon has two such entries, both pointing at the same 35 zero bytes.
+
+**Phrases that never terminate.** Almost every phrase ends in a stop frame. In
+at least one set — Mr. and Mrs. Pac-Man — exactly one phrase does not, and the
+player supplies the terminator instead of the ROM. An unterminated phrase is
+also what a layout aimed at code looks like, so this too stays refused unless
+the profile names it in `unterminated_phrases`, and a named phrase that *does*
+terminate is refused in turn. Name only the phrases you have checked: the point
+of the list is that every other phrase must still stop.
 
 There is no terminator byte, no length field and no checksum. A phrase's end is
 positional: it is wherever the next phrase begins.
@@ -436,6 +470,44 @@ A layout is wrong when extents overlap, when a phrase runs into the pointer
 table, or when phrases decode without reaching a stop frame. `convert` refuses
 all three rather than writing a file, and `--dry-run` is there to be used before
 anything is written.
+
+### 6. The step that actually settles it
+
+Everything above is the ROM describing itself. A wrong layout that reads real
+pointers produces real phrases, so all of those checks can pass on a layout that
+is simply reading the wrong part of the table — and they have, three times in
+this project. Two of those wrong layouts also booted the board correctly.
+
+The check that separates a plausible layout from a right one has to come from
+outside the ROM's own description of itself:
+
+1. run the board's own firmware against the **original** ROMs;
+2. issue every command the MPU can send, and capture the byte stream the
+   firmware feeds the TMS;
+3. find each captured stream back in the ROM.
+
+That gives a list of phrase addresses derived from **execution**. A layout is
+right when every stream the firmware plays falls inside a phrase the layout
+converts. Two details matter when comparing:
+
+- **Trim each captured stream at its own stop frame.** The player keeps reading
+  past the terminator until the chip stops asking, so a captured stream runs a
+  few bytes into whatever follows it — erased `0xFF` in most sets, an ASCII
+  build stamp in Eight Ball Champ. Those bytes are not speech.
+- **Compare in device offsets, not CPU addresses.** A 2 KB part answers at two
+  addresses, and a set may reach some phrases through the lower window and
+  others through the mirror. Embryon addresses its speech entirely through the
+  upper one; Eight Ball Deluxe uses both.
+
+Phrase *starts* may legitimately disagree: a set can enter a phrase part-way
+through, so the firmware plays from an address the table never lists. Mysterian
+does this ten times. What may not happen is a played **byte** going unconverted,
+because that byte is still read with the old tables.
+
+This project runs that check with a private research toolkit that is not in this
+repository, because it needs ROM images. If you are working out a layout without
+it, the honest position is that your layout is a hypothesis — say so when you
+contribute it, and it will ship as `draft` rather than `board-simulated`.
 
 ## What we have not solved
 

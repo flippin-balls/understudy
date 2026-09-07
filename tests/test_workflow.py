@@ -1203,5 +1203,73 @@ class TestSilentPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
             self.convert(profile=Profile(raw, "<x>"))
         self.assertIn("carries speech", str(caught.exception))
 
+class TestUnterminatedPhrasesMustBeDeclaredAndTrue(WorkflowFixture):
+    """A phrase with no stop frame is refused unless the profile names it.
+
+    In a few sets the player supplies the terminator rather than the ROM --
+    Mr. and Mrs. Pac-Man has exactly one such phrase. That is indistinguishable,
+    from the bytes alone, from a layout aimed at code, so it stays refused by
+    default and the profile has to say which phrases it means. The claim is
+    then checked both ways.
+    """
+
+    def unterminated_set(self):
+        """A set built without stop frames, and which of its phrases lack one.
+
+        Not all of them do: a phrase bounded by erased 0xFF picks up a stop
+        frame from the fill, which is the same accident that makes a pointer
+        into a gap look terminated. The test needs the real list, so it asks.
+        """
+        dumps, raw = build(terminate=False)
+        profile = Profile(copy.deepcopy(raw), "<x>")
+        from tms52xx.rom import PhraseTable, diagnose_last_byte
+        from tms52xx.workflow import _load_tables
+        image = profile.assemble(dumps)
+        table = PhraseTable.from_pointers(
+            image, profile.table_offset, profile.phrases,
+            address_ordered=profile.address_ordered,
+            has_end_bound=profile.has_end_bound,
+            base_address=profile.base_address)
+        src = _load_tables(chips.resolve(profile.source_chip), None)[0]
+        verdicts = diagnose_last_byte(image, table, src)
+        stuck = sorted(i for i, v in verdicts.items() if v == "no stop")
+        self.assertTrue(stuck, "the fixture must have an unterminated phrase")
+        return dumps, raw, stuck
+
+    def test_undeclared_it_is_refused_and_says_what_to_do(self):
+        dumps, raw, _stuck = self.unterminated_set()
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        message = str(caught.exception)
+        self.assertIn("stop frame", message)
+        self.assertIn("unterminated_phrases", message)
+
+    def test_declaring_every_phrase_allows_the_conversion(self):
+        dumps, raw, stuck = self.unterminated_set()
+        raw["layout"]["unterminated_phrases"] = stuck
+        result = self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        self.assertGreater(result.stats["frames"], 0)
+
+    def test_declaring_only_some_still_refuses_the_rest(self):
+        """The narrow claim must not become a blanket one."""
+        dumps, raw, stuck = self.unterminated_set()
+        if len(stuck) < 2:
+            self.skipTest("fixture has only one unterminated phrase")
+        raw["layout"]["unterminated_phrases"] = stuck[:1]
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        message = str(caught.exception)
+        self.assertIn("stop frame", message)
+        for index in stuck[1:]:
+            self.assertIn(str(index), message)
+
+    def test_declaring_a_phrase_that_DOES_terminate_is_refused(self):
+        """The field is a claim about the ROM, not a switch."""
+        raw = copy.deepcopy(self.raw)
+        raw["layout"]["unterminated_phrases"] = [0]
+        with self.assertRaises(ConversionRefused) as caught:
+            self.convert(profile=Profile(raw, "<x>"))
+        self.assertIn("do end in a stop frame", str(caught.exception))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

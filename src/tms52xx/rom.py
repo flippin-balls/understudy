@@ -314,7 +314,8 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     than returning, because the usual cause is a wrong layout aimed at code or
     data and the result would be a plausible-looking corrupt ROM. Pass
     `allow_unterminated=True` if you have checked and the phrases really are
-    unterminated. This lives here rather than in the command line so that a
+    unterminated, or an iterable of the phrase indexes that are known not to
+    terminate -- which keeps the refusal in force for every other phrase. This lives here rather than in the command line so that a
     library caller gets the same protection as a CLI user.
 
     The ROM is the same length as the input and differs only inside phrase
@@ -408,11 +409,18 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
     # each get their own entry, marked with `alias_of`, so no command loses its
     # identity and no total is counted twice.
     unterminated = [r.phrase.index for r in results if not r.stopped_cleanly]
+    if allow_unterminated is not True and allow_unterminated:
+        # An iterable of indexes: those phrases are known not to terminate and
+        # every other one must still be refused.
+        expected = set(allow_unterminated)
+        unterminated = [i for i in unterminated if i not in expected]
+        allow_unterminated = False
     if unterminated and not allow_unterminated:
         raise ValueError(
             "%d of %d phrase(s) do not end in a stop frame (first is phrase "
             "%d); the declared layout is probably wrong. Pass "
-            "allow_unterminated=True to convert them anyway."
+            "allow_unterminated=True to convert them anyway, or a list of "
+            "the phrase indexes that are known not to terminate."
             % (len(unterminated), len(results), unterminated[0]))
 
     return bytes(out), results

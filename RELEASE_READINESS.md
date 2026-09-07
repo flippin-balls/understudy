@@ -15,7 +15,8 @@ Prepared 2026-09-06. Repository private at
 |---|---|
 | **Bundled chip tables** | TMS5200 and TMS5220 coefficient tables ship in `src/tms52xx/data/`. No extraction step, no PinMAME clone. |
 | **TMS5220C / TSP5220C** | Added as conversion targets, scoped to LPC-table equivalence. |
-| **Game profiles** | Versioned schema of layout facts and device hashes. No ROM contents. Embryon is the first. |
+| **Game profiles** | Versioned schema of layout facts and device hashes. No ROM contents. Fifteen of the nineteen distinct sound ROM sets, covering 44 of 49 game revisions. |
+| **Layout forms** | Three facts a table can carry that could not previously be stated: `entry_form=start_end_pairs` (both bounds per phrase in a 4-byte record), `silent_phrases` (a deliberate "say nothing" entry), and `unterminated_phrases` (the player, not the ROM, supplies the terminator). Each is a checked claim, not a switch. |
 | **Two-command path** | `understudy identify` and `understudy convert-set`: socket dumps in, burnable device images out. |
 | **Manifest v2** | Versioned, with tool version, profile identity and hash, chip and table identity and hashes, per-device input/output hashes, layout, per-phrase rows, warnings, overrides. |
 | **Platform support** | Windows a first-class target, CI on Windows/macOS/Linux × 3.9/3.13. |
@@ -50,19 +51,61 @@ Coverage is counted in **distinct sound ROM sets**. The 49 PinMAME Squawk &
 Talk drivers collapse to **19**; the rest are game-ROM revisions sharing sound
 ROMs, so one profile serves several.
 
-| profile | status | phrases | revisions |
-|---|---|---|---|
-| `embryon` | `board-simulated` | 20 | 6 |
-| `elektra` | `board-simulated` | 16 | 2 |
-| `fathom` | `board-simulated` | 28 | 3 |
-| `flashgdn` | `board-simulated` | 5 | 2 |
-| `spectrum` | `board-simulated` | 31 | 4 |
+| profile | status | phrases | frames | revisions |
+|---|---|---|---|---|
+| `beatclck` | `board-simulated` | 62 | 1695 | 2 |
+| `centaur` | `board-simulated` | 37 | 1759 | 3 |
+| `eballchp` | `board-simulated` | 62 | 1485 | 1 |
+| `eballdlx` | `board-simulated` | 42 | 1448 | 6 |
+| `elektra` | `board-simulated` | 16 | 1148 | 2 |
+| `embryon` | `board-simulated` | 20 | 850 | 6 |
+| `fathom` | `board-simulated` | 26 | 1182 | 3 |
+| `fball_ii` | `board-simulated` | 16 | 721 | 2 |
+| `flashgdf` | `board-simulated` | 24 | 663 | 2 |
+| `flashgdn` | `board-simulated` | 24 | 677 | 2 |
+| `m_mpac` | `board-simulated` | 26 | 721 | 3 |
+| `medusa` | `board-simulated` | 27 | 1567 | 3 |
+| `mysteria` | `board-simulated` | 36 | 1392 | 1 |
+| `spectrum` | `board-simulated` | 31 | 1478 | 4 |
+| `vector` | `board-simulated` | 50 | 2287 | 4 |
 
-**5 of 19 sound ROM sets; 17 of 49 game revisions.** Each cleared all four
-acceptance criteria: every phrase terminating, healthy per-device speech
-coverage (48–100%), a frame count matching an independently built corpus, and
+**15 of 19 sound ROM sets; 44 of 49 game revisions.** Each cleared all four
+acceptance criteria: every phrase terminating in a stop frame, healthy
+per-device speech coverage, agreement with an **independent** phrase list, and
 the board's own firmware booting and driving the converted ROMs identically to
 the originals.
+
+The third criterion changed during this work, and that is the substantive
+result. It used to be a frame count from a separately built corpus. That corpus
+was produced by static extraction — the same kind of read a profile does — so
+where a profile misread a table, the corpus misread it the same way and
+confirmed it. It is now a phrase list derived from **execution**: the board's
+own firmware is run, the byte stream it sends the TMS is captured, and those
+bytes are located back in the ROM. Every stream the firmware plays must fall
+inside a phrase the profile converts.
+
+Re-checking the already-shipped profiles that way found two of the five wrong:
+
+| profile | was | defect |
+|---|---|---|
+| `fathom` v1 | 28 phrases | Two entries past the end of the table. One aimed at erased 0xFF (parses as an immediate stop frame); one aimed at 6802 code, and conversion rewrote 31 bytes of firmware in the region reached from the reset vector. The board simulation booted and issued identical speech commands, because the commands it issues never reach that code. Its frame count matched the static corpus, which had made the same misread. |
+| `flashgdn` v1 | table `$F326`, 5 phrases | `$F326` is entry 14 of a table that starts at `$F30A`. Reading from the middle of a table still yields plausible pointers: it found 5 of 8 phrases and converted 372 of 677 frames, leaving the rest to be read with the wrong tables. |
+
+Both are corrected. No other profile disagreed with its traced phrase list.
+
+### The four sets not covered
+
+These are accounted for, not merely absent:
+
+| set | drivers | why |
+|---|---|---|
+| `rapidfir` | 2 | The board is fitted with only its firmware ROM (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Driven through all 64 commands its MPU can send, the firmware makes **zero** writes to the TMS. There is no speech in this set to convert. |
+| `cosflash` | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
+| `bigbat` | 1 | No dump obtainable. |
+| `blackbl2` | 1 | The PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
+
+`rapidfir` is the reason coverage stops at 15 rather than 16: it was expected to
+be convertible and is not, because there is nothing there.
 
 An unrecognised set is reported and refused, never converted on a guess.
 
@@ -167,16 +210,24 @@ against the converted devices.
 | worst false pass | one set converted **1.5%** of its speech and still behaved normally |
 
 The 25 figure is the misleading one. Booting proves the ROM is not corrupt; it
-does not prove the layout found the speech. `elektra`, `embryon`, `flashgdn` and
-`spectrum` matched an independently built corpus exactly — including a
-1478-frame set — which says the **conversion** is sound where the layout is
-right. `eballchp` converted 42 frames where the corpus has 550.
+does not prove the layout found the speech. `eballchp` converted 42 frames where
+the corpus has 550 and still drove the board normally.
 
-Two conclusions, both acted on:
+Since then the same point has been made twice more, and more sharply: `fathom`
+v1 booted identically to the original while rewriting 31 bytes of the firmware's
+own code, and the frame corpus **agreed with it**, because that corpus was built
+by static extraction and had made the same misread. A static cross-check is only
+independent of the layout if it was not derived the same way. The corpus is no
+longer used as the third criterion; a traced phrase list is (§3).
+
+Three conclusions, all acted on:
 
 1. **The bottleneck is layout discovery, not conversion.** Profiles stay
    hand-verified and few, and automatic detection is not used to ship one.
-2. **Coverage is now reported.** `convert-set` prints what fraction of each
+2. **The third criterion must come from execution, not from another static
+   read.** A phrase list captured from the running board is the only check a
+   wrong layout cannot agree with, and it is now what every profile clears.
+3. **Coverage is now reported.** `convert-set` prints what fraction of each
    speech device the layout reached, and calls out anything under 20%. Correct
    layouts in the sweep ran 33–70%; the false pass ran 1.5%. Reported rather
    than gated — 24.3% was wrong and 32.7% was right, so no threshold is safe.
@@ -192,8 +243,9 @@ and on ROM images. Its findings are.
   is labelled as such.
 - Nearest-value coefficient mapping is an auditable baseline, not a perceptual
   optimum.
-- One game profile, and a corpus sweep (§8a) showing that automatically
-  detected layouts are wrong often enough that they must not be shipped.
+- Fifteen sound ROM sets have profiles; four do not, for stated reasons (§3).
+  The corpus sweep (§8a) shows automatically detected layouts are wrong often
+  enough that they must not be shipped, and none is.
 - ROM checksum behaviour on Squawk & Talk is **not established**. If a board
   validates these ROMs, Understudy does not update any checksum.
 - No layout discovery: an unsupported revision needs the manual path.
@@ -214,11 +266,32 @@ Booting the board's firmware against the converted ROMs did not — illegal
 opcode at `$F9E9`. Tracing the original firmware confirms 270 distinct
 addresses are executed in that region.
 
-Fixed (profile v2, 20 phrases with an end bound), guarded (a phrase beginning
+Fixed (profile v4, 20 phrases with an end bound), guarded (a phrase beginning
 with a long run of silence frames is refused; Embryon's 20 real phrases begin
 with none, the padding entry with twelve), and written up in
 `docs/SQUAWK_AND_TALK.md` because it is what the next person working out a
 layout will hit.
+
+### It happened twice more, and the guard did not catch either
+
+`fathom` v1 read two entries past the end of its table. One aimed at erased
+`0xFF`, which parses as an immediate stop frame and so begins with no silence at
+all. The other aimed straight at 6802 code whose first byte carries a non-zero
+energy nibble — again, no leading silence. The silence guard is aimed at
+padding, and neither of these was padding. Conversion rewrote 31 bytes of
+firmware in the region reached from the reset vector, the board simulation
+booted, and the static frame corpus agreed with it.
+
+`flashgdn` v1 put the table at `$F326`, which is entry 14 of a table starting at
+`$F30A`. Every pointer it read was a real phrase pointer. It simply read 5 of
+the 8 phrases and converted 372 of 677 frames.
+
+The lesson is not that another static guard was needed. It is that **no static
+check distinguishes a plausible wrong layout from a right one**, because a wrong
+layout that reads real pointers produces real phrases. The check that separates
+them has to come from outside the ROM's own description of itself: run the
+firmware, capture what it sends the TMS, and require every played byte to be
+converted. That is now criterion 3, and it is what found both of these.
 
 ## 11. Community and contribution readiness
 
@@ -247,6 +320,11 @@ lose an input, use the wrong profile or table, or misrepresent evidence.
 | 7 | **BLOCKER** — `emulator-verified` claimed an acoustic result never established. |
 | 8 | **BLOCKER** — rename half-propagated; two claims stronger than the evidence. |
 | 9 | **Ready.** No blocker; no claim stronger than its evidence. |
+
+Round 10 is pending on the traced-layout work in §3: eleven new profiles, two
+corrected ones, three new layout facts in the schema, a per-byte merge for
+mirrored devices, and the replacement of the static frame corpus with an
+execution-derived phrase list as criterion 3.
 
 Every material finding was independently reproduced before being fixed, and
 carries a regression test. Review does not prove correctness — round 2's

@@ -118,17 +118,36 @@ mid-run, check the hashes in the manifest against the files before burning.
 
 | game | status | phrases | revisions covered |
 |---|---|---|---|
-| Bally **Embryon** (1981) | `board-simulated` | 20 | 6 |
+| Bally **Centaur** (1981) | `board-simulated` | 37 | 3 |
+| Bally **Eight Ball Deluxe** (1981) | `board-simulated` | 42 | 6 |
 | Bally **Elektra** (1981) | `board-simulated` | 16 | 2 |
-| Bally **Fathom** (1981) | `board-simulated` | 28 | 3 |
-| Bally **Flash Gordon** (1981) | `board-simulated` | 5 | 2 |
+| Bally **Embryon** (1981) | `board-simulated` | 20 | 6 |
+| Bally **Fathom** (1981) | `board-simulated` | 26 | 3 |
+| Bally **Fireball II** (1981) | `board-simulated` | 16 | 2 |
+| Bally **Flash Gordon** (1981) | `board-simulated` | 24 | 2 |
+| Bally **Flash Gordon (French)** (1981) | `board-simulated` | 24 | 2 |
+| Bally **Medusa** (1981) | `board-simulated` | 27 | 3 |
+| Bally **Mr. & Mrs. Pac-Man** (1982) | `board-simulated` | 26 | 3 |
+| Bally **Mysterian** (prototype, 1982) | `board-simulated` | 36 | 1 |
 | Bally **Spectrum** (1982) | `board-simulated` | 31 | 4 |
+| Bally **Vector** (1982) | `board-simulated` | 50 | 4 |
+| Bally **Beat the Clock** (1985) | `board-simulated` | 62 | 2 |
+| Bally **Eight Ball Champ** (1985) | `board-simulated` | 62 | 1 |
 
 **Coverage is counted in sound ROM sets, not game revisions.** The 49 Squawk &
 Talk drivers PinMAME knows collapse to **19 distinct sound ROM sets** — most of
-the rest are game-ROM revisions sharing their sound ROMs. So these five profiles
-serve **17 game revisions**, and `identify` will name yours whichever revision
-it is.
+the rest are game-ROM revisions sharing their sound ROMs. These 15 profiles
+serve **44 of the 49 game revisions**, and `identify` will name yours whichever
+revision it is.
+
+The other four sets are not gaps that more work would close:
+
+| set | drivers | why not |
+|---|---|---|
+| **Rapid Fire** | 2 | Its Squawk & Talk board has only the firmware ROM fitted (`U5`); the three speech sockets are empty. The firmware never writes to the TMS at all. There is no speech to convert. |
+| **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
+| **Big Bat** | 1 | No dump obtainable. |
+| **Black Belt** (`blackbl2`) | 1 | The PinMAME driver records no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
@@ -163,10 +182,10 @@ keep your originals.
 ## Will this work for my game?
 
 **If your game is not in the table above, this tool will not convert it
-automatically, and that is deliberate.** Understudy covers 5 of the 19 distinct
-sound ROM sets. It has no way to know the layout of the other fourteen, and it
-does not guess: an unrecognised set is reported and refused, not converted on a
-hunch.
+automatically, and that is deliberate.** Understudy covers 15 of the 19 distinct
+sound ROM sets, and the four it does not are accounted for above rather than
+merely absent. It does not guess: an unrecognised set is reported and refused,
+not converted on a hunch.
 
 That is the honest answer to "is it safe for all Squawk & Talk ROMs". It is not
 validated for all of them and does not claim to be. What it is designed around
@@ -186,26 +205,51 @@ output that drove the board exactly as the original did.
 independently built frame corpus, only 4 of the 12 comparable sets matched
 exactly. One set converted **1.5% of its speech** and still booted, still issued
 the same commands, and would still have sounded wrong. Booting is necessary and
-nowhere near sufficient, which is why `convert-set` now reports how much of each
-device the layout actually reached.
+nowhere near sufficient, which is why `convert-set` reports how much of each
+device the layout actually reached, and why no profile ships on a boot alone.
 
-So the bottleneck is not the conversion — where the layout is right, it is right,
-including a 1478-frame set matching the corpus exactly. The bottleneck is
-**knowing the layout**, and that is why profiles are hand-verified and few.
+So the bottleneck is not the conversion — where the layout is right, it is right.
+The bottleneck is **knowing the layout**, and that is why every profile here was
+worked out and checked one at a time rather than detected.
 
-We take that seriously because our own only profile was wrong. Embryon shipped
-briefly reading one pointer too many — an end bound treated as a 21st phrase.
-It parsed. It terminated in a stop frame. It changed nothing outside its own
-declared extent. Every static check passed, and it rewrote 6800 instructions the
-sound board executes. What caught it was booting the board's firmware against
-the converted ROMs in emulation, and that is now what `board-simulated` means
-and what a profile has to clear.
+We take that seriously because our own profiles have been wrong three times,
+and each one passed everything we had at the time.
+
+**Embryon** shipped briefly reading one pointer too many — an end bound treated
+as a 21st phrase. It parsed. It terminated in a stop frame. It changed nothing
+outside its own declared extent. Every static check passed, and it rewrote 6800
+instructions the sound board executes. What caught it was booting the board's
+firmware against the converted ROMs in emulation.
+
+**Fathom** then shipped a profile that booted. It read two entries past the end
+of its pointer table: one aimed at erased 0xFF, which parses as an immediate
+stop frame, and one aimed at 6802 code, which conversion rewrote — 31 bytes of
+firmware in the region reached from the reset vector. The board simulation
+booted and issued exactly the same speech commands, because the 64 commands it
+issues never reach that code. Its frame count agreed with an independently built
+corpus, too — but that corpus was built by the same kind of static read, so it
+agreed with the error instead of testing it.
+
+**Flash Gordon** shipped with its pointer table at `$F326`. That address is
+real; it is entry 14 of a table that starts at `$F30A`. Reading from the middle
+of a table still yields pointers that look like phrases, so it found 5 of the 8
+phrases the game plays and converted 372 of 677 frames. Everything it did
+convert was correct. The rest was left to be read with the wrong tables.
+
+What caught the last two is the check every profile now has to clear: run the
+board's own firmware, capture the byte stream it sends the TMS, and find those
+bytes back in the ROM. That yields a phrase list derived from **execution**
+rather than from parsing the pointer table — the one kind of evidence a wrong
+layout cannot agree with. Every phrase the firmware actually plays must fall
+inside a phrase the profile converts.
 
 So the assurance for a supported game is: an exact hash match on every device, a
 layout whose every phrase is found and terminates, a conversion checked frame by
-frame and reconciled byte for byte, and the board's own firmware running against
-the result. The assurance for an unsupported game is that you will be told it is
-unsupported.
+frame and reconciled byte for byte, every byte the firmware plays accounted for,
+and the board's own firmware running against the result. The assurance for an
+unsupported game is that you will be told it is unsupported.
+
+None of that is a claim that anyone has heard the output. Nobody has.
 
 ## Things that will bite you at the bench
 

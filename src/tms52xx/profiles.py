@@ -244,7 +244,8 @@ class Profile:
                     "%s: layout.%s must be true or false, got %r -- a string "
                     "here would silently change the layout"
                     % (where, key, layout[key]))
-        for key in ("truncate_last_byte", "silent_phrases"):
+        for key in ("truncate_last_byte", "silent_phrases",
+                    "unterminated_phrases"):
             if not isinstance(layout.get(key, []), list):
                 raise ProfileError("%s: layout.%s must be a list" % (where, key))
 
@@ -262,10 +263,19 @@ class Profile:
         #: that turns out to carry speech is refused, so this cannot be used to
         #: wave a bad layout through.
         self.silent_phrases = list(layout.get("silent_phrases", []))
+        #: Phrases that do not carry a stop frame, because the player supplies
+        #: the terminator rather than the ROM. Refused by default -- an
+        #: unterminated phrase is usually a layout aimed at code or data -- so
+        #: a profile has to name them, and the claim is checked: a named phrase
+        #: that does terminate is refused.
+        self.unterminated_phrases = list(
+            layout.get("unterminated_phrases", []))
         if not isinstance(self.phrases, int) or self.phrases < 1:
             raise ProfileError("%s: layout.phrases must be at least 1" % where)
         for key, indexes in (("truncate_last_byte", self.truncate_last_byte),
-                             ("silent_phrases", self.silent_phrases)):
+                             ("silent_phrases", self.silent_phrases),
+                             ("unterminated_phrases",
+                              self.unterminated_phrases)):
             for index in indexes:
                 if (isinstance(index, bool) or not isinstance(index, int)
                         or not 0 <= index < self.phrases):
@@ -421,23 +431,42 @@ class Profile:
             windows.append((at + device.size, at + 2 * device.size))
 
         changed = [w for w in windows if image[w[0]:w[1]] != original[w[0]:w[1]]]
-        if len(changed) > 1:
-            # Both halves changed. That is only a problem if they now DIFFER:
-            # one device cannot hold two contents. If they came out identical,
-            # the device can represent the result and there is nothing wrong --
-            # which is what happens when a layout addresses phrases through
-            # both the real and mirrored windows.
-            contents = {bytes(image[lo:hi]) for lo, hi in changed}
-            if len(contents) > 1:
+        if len(changed) < 2:
+            lo, hi = changed[0] if changed else windows[0]
+            return DeviceResult(
+                device=device, data=bytes(image[lo:hi]), window=(lo, hi),
+                changed=bool(changed),
+                from_mirror=bool(changed) and changed[0] is windows[-1]
+                and device.mirrored)
+
+        # BOTH HALVES CHANGED. One device, two windows onto it.
+        #
+        # This is not by itself wrong. A 2 KB part answers at two addresses, so
+        # a set is free to reach some phrases through the lower window and
+        # others through the upper one -- Eight Ball Deluxe does, and the two
+        # groups land on different offsets of the same physical device. Merging
+        # them byte by byte reconstructs what that device holds.
+        #
+        # What one device cannot represent is the same offset converted two
+        # different ways, so that is what is refused, naming the offset rather
+        # than the whole window.
+        lower, upper = windows
+        base = bytes(original[lower[0]:lower[1]])
+        low = bytes(image[lower[0]:lower[1]])
+        high = bytes(image[upper[0]:upper[1]])
+        merged = bytearray(base)
+        for i, (was, a, b) in enumerate(zip(base, low, high)):
+            if a != was and b != was and a != b:
                 raise ProfileError(
-                    "socket %s: the two mirror halves changed to different "
-                    "contents, which one device cannot represent -- the layout "
-                    "is wrong" % device.socket)
-        lo, hi = changed[0] if changed else windows[0]
-        return DeviceResult(device=device, data=bytes(image[lo:hi]),
-                            window=(lo, hi), changed=bool(changed),
-                            from_mirror=bool(changed) and changed[0] is windows[-1]
-                            and device.mirrored)
+                    "socket %s: offset 0x%X was converted two different ways "
+                    "through the device's two mirror windows (0x%02X at "
+                    "0x%04X, 0x%02X at 0x%04X). One device cannot hold both -- "
+                    "the layout is wrong."
+                    % (device.socket, i, a, self.window_base + lower[0] + i,
+                       b, self.window_base + upper[0] + i))
+            merged[i] = a if a != was else b
+        return DeviceResult(device=device, data=bytes(merged),
+                            window=lower, changed=True, from_mirror=True)
 
 
 class DeviceResult:

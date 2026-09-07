@@ -201,16 +201,34 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
 
     verdicts = diagnose_last_byte(image, table, src_tables)
     stuck = sorted(i for i, v in verdicts.items() if v == "no stop")
+    # A phrase the profile DECLARES unterminated is expected not to stop: in a
+    # few sets the player supplies the terminator rather than the ROM. The
+    # claim is checked both ways -- an undeclared phrase that does not stop is
+    # still refused, and a declared one that DOES stop is refused too, so the
+    # field cannot be used to wave a whole layout through.
+    declared = set(profile.unterminated_phrases)
+    if declared and not allow_unterminated:
+        wrong = sorted(i for i in declared if verdicts.get(i) != "no stop")
+        if wrong:
+            raise ConversionRefused(
+                "phrase(s) %s are listed in unterminated_phrases but do end in "
+                "a stop frame. That list is for phrases the ROM leaves the "
+                "player to terminate."
+                % ", ".join(str(i) for i in wrong))
+        stuck = [i for i in stuck if i not in declared]
     if stuck and not allow_unterminated:
         raise ConversionRefused(
             "%d phrase(s) in this set do not end in a stop frame (%s). The "
-            "profile's layout does not fit these dumps."
+            "profile's layout does not fit these dumps. If the ROM really does "
+            "leave the player to terminate them, name them in "
+            "layout.unterminated_phrases."
             % (len(stuck), ", ".join(str(i) for i in stuck)))
 
     patched, results = patch_rom(
         image, table, src_tables, dst_tables,
         truncate_last_byte=profile.truncate_last_byte or False,
-        allow_unterminated=allow_unterminated)
+        allow_unterminated=(allow_unterminated
+                            or sorted(declared) or False))
     result.after = patched
     result.stats = summarise(results)
 

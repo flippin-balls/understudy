@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "profile_id": "vector",
+  "profile_version": 1,
+  "title": "Vector",
+  "manufacturer": "Bally",
+  "year": 1982,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "vector",
+    "vector4",
+    "vectora",
+    "vectorb"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "858-01_2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "0347685630350a77b0c8a16612919fc78ee5e324ba086216cf11b03869d4627e",
+      "crc32": "bd2edef9"
+    },
+    {
+      "socket": "U3",
+      "label": "858-02_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "6cfca3789cac3456bc9846fdc14dc7e46130d226e694ed757863013f8bee567c",
+      "crc32": "c592fb35"
+    },
+    {
+      "socket": "U4",
+      "label": "858-03_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "8e0d5c047e5988fac9d70b8ef4f552ce8d50af6e1a39240da33caf321579fe2c",
+      "crc32": "8661d312"
+    },
+    {
+      "socket": "U5",
+      "label": "858-06_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "6f7779806ad645b66eba7c344e9a64407c6101346db7f5a3b941387f736bf27f",
+      "crc32": "3050edf6"
+    }
+  ],
+  "layout": {
+    "table_offset": 13312,
+    "base_address": 49152,
+    "phrases": 50,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F400, 50 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 51 streams from 50 distinct addresses spanning $C000-$EE75. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "2287 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 16 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
+  },
+  "notes": [
+    "This sound ROM set is shared by 4 game revisions: vector, vector4, vectora, vectorb.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

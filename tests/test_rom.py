@@ -770,5 +770,59 @@ class PointerPairTable(unittest.TestCase):
                             for i in changed))
 
 
+class AllowUnterminatedByName(unittest.TestCase):
+    """`allow_unterminated` takes a list, so one phrase can be excused alone.
+
+    A blanket `True` excuses every phrase in the set, which is the wrong shape
+    for a ROM with exactly one phrase the player has to terminate: it would
+    also excuse a second, unnoticed one -- and an unterminated phrase is what a
+    layout aimed at code looks like.
+    """
+
+    def setUp(self):
+        self.src = original()
+        # Two phrases, neither carrying a stop frame.
+        body = stream(self.src, [(7, 0, 40, list(range(10)))])
+        self.span = len(body)
+        rom = bytearray(4 + 2 * self.span)
+        rom[4:4 + self.span] = body
+        rom[4 + self.span:4 + 2 * self.span] = body
+        self.rom = bytes(rom)
+        self.table = PhraseTable(phrases=[
+            Phrase(0, 4, 4 + self.span),
+            Phrase(1, 4 + self.span, 4 + 2 * self.span)])
+
+    def patch(self, allow):
+        return patch_rom(self.rom, self.table, self.src, understudy(),
+                         allow_unterminated=allow)
+
+    def test_neither_phrase_terminates(self):
+        with self.assertRaises(ValueError) as caught:
+            self.patch(False)
+        message = str(caught.exception)
+        self.assertIn("2 of 2", message)
+        self.assertIn("phrase 0", message)
+
+    def test_naming_one_still_refuses_the_other(self):
+        with self.assertRaises(ValueError) as caught:
+            self.patch([0])
+        message = str(caught.exception)
+        self.assertIn("1 of 2", message)
+        self.assertIn("phrase 1", message)
+
+    def test_naming_both_converts(self):
+        _patched, results = self.patch([0, 1])
+        self.assertEqual(len(results), 2)
+        self.assertFalse(any(r.stopped_cleanly for r in results))
+
+    def test_true_still_excuses_everything(self):
+        _patched, results = self.patch(True)
+        self.assertEqual(len(results), 2)
+
+    def test_an_empty_list_excuses_nothing(self):
+        with self.assertRaises(ValueError):
+            self.patch([])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=0)

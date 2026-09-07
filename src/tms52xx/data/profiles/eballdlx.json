@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "profile_id": "eballdlx",
+  "profile_version": 1,
+  "title": "Eight Ball Deluxe (rev. 15)",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "eballd14",
+    "eballdla",
+    "eballdlb",
+    "eballdlc",
+    "eballdld",
+    "eballdlx"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "838-08_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "cbe029f95044eb420a6402046dad6ef3d0b11775d2216b17b71e883a3c713e88",
+      "crc32": "c39478d7"
+    },
+    {
+      "socket": "U4",
+      "label": "838-09_4",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 57344,
+      "mirrored": true,
+      "holds_speech": true,
+      "sha256": "f1cd7ff91d2648a6535d2a4224c3939322112b07d3131bf414b5055ef59635f1",
+      "crc32": "518ea89e"
+    },
+    {
+      "socket": "U5",
+      "label": "838-10_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "55a1badf202f47d9d375afaa5f4802ede7b7b9dfa2031e39f7fdce452099ffb0",
+      "crc32": "9c63925d"
+    }
+  ],
+  "layout": {
+    "table_offset": 14947,
+    "base_address": 49152,
+    "phrases": 42,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $FA63, 42 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 36 streams from 36 distinct addresses spanning $D000-$F53B. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1448 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 20 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "phrases_not_observed": "The layout declares 6 phrase(s) the trace never saw played ($D11F, $D500, $D6E0, $D780, $D7FA, $E469). They are table entries like any other and convert the same way; the commands that reach them are simply not among those the simulation issues."
+  },
+  "notes": [
+    "This sound ROM set is shared by 6 game revisions: eballd14, eballdla, eballdlb, eballdlc, eballdld, eballdlx.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}
