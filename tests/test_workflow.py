@@ -816,7 +816,9 @@ class TestCommandLine(unittest.TestCase):
         result = run("identify", str(self.u4), str(self.u5), cwd=self.dir)
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("No bundled profile recognises", result.stdout)
-        self.assertIn("understudy inspect", result.stdout)
+        # Not "understudy inspect": the tool names the invocation the reader
+        # actually used, which here is `python -m tms52xx.cli`.
+        self.assertIn("inspect <image> --table-offset", result.stdout)
 
     def test_identify_reports_hashes_for_a_bug_report(self):
         result = run("identify", str(self.u4), cwd=self.dir)
@@ -1721,6 +1723,72 @@ class TestOutputContainmentIsIndependent(WorkflowFixture):
                              ["in", "out", "profiles"])
 
 
+
+class TestRunningFromAClone(unittest.TestCase):
+    """`python understudy.py` is the documented path, so it is tested.
+
+    Nothing is installed and nothing is built: the tool is pure standard
+    library, and the launcher exists only because the code lives under `src/`,
+    which Python does not search unless told to. That makes the launcher the
+    first thing a new user touches and the easiest thing to break silently.
+    """
+
+    def run_launcher(self, *args, cwd=None):
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)          # prove it needs no help
+        env.pop("UNDERSTUDY_PROFILE_DIR", None)
+        return subprocess.run([sys.executable, str(ROOT / "understudy.py"),
+                               *args],
+                              cwd=str(cwd or ROOT), capture_output=True,
+                              text=True, env=env)
+
+    def test_it_runs_with_nothing_installed_and_no_PYTHONPATH(self):
+        result = self.run_launcher("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("understudy", result.stdout)
+
+    def test_the_bundled_profiles_are_found_from_a_clone(self):
+        result = self.run_launcher("profiles")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("embryon", result.stdout)
+
+    def test_it_names_the_invocation_the_reader_actually_used(self):
+        """Telling a clone user to run `understudy` sends them hunting."""
+        result = self.run_launcher("identify", "nosuchfile.bin")
+        combined = result.stdout + result.stderr
+        self.assertNotIn("  understudy ", combined)
+
+
+class TestSuggestedCommandIsCopyPasteable(WorkflowFixture):
+    """`identify` prints a command to copy. It has to survive being copied."""
+
+    def test_a_filename_with_spaces_is_quoted(self):
+        """Real dumps carry names like "... EPROM U3 06-20-1984.BIN".
+
+        Unquoted, that becomes four arguments and the command fails on the
+        line after the tool said it had identified the set.
+        """
+        import shlex
+        from tms52xx.cli import shell_quote
+        spaced = "Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN"
+        quoted = shell_quote(spaced)
+        self.assertNotEqual(quoted, spaced, "a spaced name must be quoted")
+        if os.name != "nt":
+            self.assertEqual(shlex.split(quoted), [spaced])
+
+    def test_an_ordinary_filename_is_left_alone(self):
+        from tms52xx.cli import shell_quote
+        for plain in ("841-01_4.716", "u4.bin", "U5.532"):
+            self.assertEqual(shell_quote(plain), plain)
+
+    def test_the_printed_command_round_trips_through_the_shell(self):
+        import shlex
+        from tms52xx.cli import shell_quote
+        if os.name == "nt":
+            self.skipTest("POSIX shell semantics")
+        names = ["Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN", "u4.bin"]
+        line = " ".join(shell_quote(n) for n in names)
+        self.assertEqual(shlex.split(line), names)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

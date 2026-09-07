@@ -10,7 +10,7 @@ current, clock and output level are between you, the datasheet and the
 schematic. Everything below is about the data.
 
 ```
-understudy chips
+python understudy.py chips
 ```
 
 lists what the tool accepts.

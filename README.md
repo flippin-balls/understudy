@@ -34,27 +34,40 @@ on location and would rather they kept talking.
   because their LPC tables are identical; the TSP5220C is usually the easiest
   to find. Electrical substitution is **not** something this project has
   verified — see [docs/CHIPS.md](docs/CHIPS.md);
-- Python 3.9 or newer.
+- Python 3.9 or newer. Nothing else — no libraries to fetch, nothing to build.
 
 You do **not** need MAME, PinMAME, coefficient tables, or any knowledge of how
 the speech data is laid out. Those are bundled or worked out for you.
 
-## Install
+## Getting it
+
+There is nothing to install. Download the repository — the green **Code**
+button, then **Download ZIP** — unzip it, and run `understudy.py` out of the
+folder. If you use git:
 
 ```
-pip install understudy
+git clone https://github.com/flippin-balls/understudy
+cd understudy
 ```
 
-or run it straight from a clone with `PYTHONPATH=src python -m tms52xx.cli`.
+On Windows, open the unzipped folder, then Shift+right-click an empty part of
+it and choose **Open PowerShell window here**. Type `py understudy.py --version`
+to check Python is working; you should see a version number. Elsewhere, use
+`python3 understudy.py`.
+
+The examples below say `python understudy.py`. Use whichever of `py`,
+`python3` or `python` works on your machine — the tool prints the exact command
+to run next, spelled the way you started it, so you can copy that instead of
+adapting these.
 
 ## Two commands
 
 ```
-understudy identify 841-01_4.716 841-02_5.532
+python understudy.py identify 841-01_4.716 841-02_5.532
 ```
 
 ```
-understudy convert-set 841-01_4.716 841-02_5.532 --target tsp5220c -o out/
+python understudy.py convert-set 841-01_4.716 841-02_5.532 --target tsp5220c -o out/
 ```
 
 That is the whole job. `identify` tells you which game and revision you have.
@@ -369,10 +382,10 @@ from the manifest.
 For a revision no profile covers:
 
 ```
-understudy inspect speech.bin --table-offset 0x3C1C --phrases 21 \
+python understudy.py inspect speech.bin --table-offset 0x3C1C --phrases 21 \
     --base-address 0xC000 --no-end-bound --command-ordered
 
-understudy convert speech.bin -o speech-5220.bin \
+python understudy.py convert speech.bin -o speech-5220.bin \
     --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
     --no-end-bound --command-ordered --dry-run
 ```

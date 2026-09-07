@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -228,6 +229,40 @@ class PublishRollbackError(OSError):
             "bytes:\n%s"
             % "\n".join("  %s  ->  should be restored to  %s" % (b, d)
                          for b, d in self.lost))
+
+
+def invocation() -> str:
+    """How the user actually started this tool.
+
+    The commands this tool prints are meant to be copied and run, so they have
+    to name the thing the reader just typed. Someone running it from a clone
+    typed `python understudy.py`; telling them to run `understudy` sends them
+    looking for a command that is not on their PATH.
+    """
+    argv0 = Path(sys.argv[0] or "understudy")
+    stem = argv0.name
+    if stem in ("understudy", "understudy.exe"):
+        return "understudy"                      # installed as a command
+    if stem == "cli.py":
+        return "%s -m tms52xx.cli" % Path(sys.executable).name
+    if argv0.suffix == ".py":
+        return "%s %s" % (Path(sys.executable).name, stem)
+    return "understudy"
+
+
+def shell_quote(name: str) -> str:
+    """Quote one argument for the shell the user is most likely holding.
+
+    ROM dumps really are named things like
+    "Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN", and a printed command
+    that splits such a name into four arguments is worse than no command at
+    all. Quoting follows the running platform, because the command is for the
+    shell on that machine: double quotes on Windows, where cmd.exe does not
+    accept single ones, and POSIX quoting elsewhere.
+    """
+    if os.name == "nt":
+        return '"%s"' % name if any(c in name for c in ' \t"&()^|<>') else name
+    return shlex.quote(name)
 
 
 def _within(path: Path, directory: Path) -> bool:
@@ -676,7 +711,7 @@ def cmd_profiles(args) -> int:
     print("sound ROMs, so one profile serves all of them.")
     print("\nA profile is chosen only on an exact hash match of every "
           "speech-bearing\ndevice. Anything less is reported and refused -- see "
-          "`understudy identify`.")
+          "`%s identify`." % invocation())
     return 0
 
 
@@ -700,7 +735,8 @@ def cmd_identify(args) -> int:
         print()
         print("That is not a failure -- it means this set is not one of the")
         print("revisions shipped with this version. Use the manual path:")
-        print("  understudy inspect <image> --table-offset ... --phrases ...")
+        print("  %s inspect <image> --table-offset ... --phrases ..."
+              % invocation())
         print("and see docs/SQUAWK_AND_TALK.md for how to find the layout.")
         print("If you work it out, please contribute a profile:")
         print("  docs/CONTRIBUTING_PROFILES.md")
@@ -752,8 +788,10 @@ def cmd_identify(args) -> int:
             return 1
         print()
         print("Convert it with:")
-        print("  understudy convert-set %s --game %s --target tsp5220c -o out/"
-              % (" ".join(Path(f).name for f in files), profile.id))
+        print("  %s convert-set %s --game %s --target tsp5220c -o out/"
+              % (invocation(),
+                 " ".join(shell_quote(Path(f).name) for f in files),
+                 profile.id))
         if profile.status != "silicon-verified":
             print()
             print("Note: this profile is %r. No converted ROM from it has been"
@@ -784,8 +822,8 @@ def cmd_convert_set(args) -> int:
         matches = [m for m in profile_mod.identify(files) if m.complete]
         if len(matches) != 1:
             print("error: could not identify this set (%d complete matches). "
-                  "Run `understudy identify` to see why, or name the profile "
-                  "with --game." % len(matches), file=sys.stderr)
+                  "Run `%s identify` to see why, or name the profile with "
+                  "--game." % (len(matches), invocation()), file=sys.stderr)
             return 2
         profile = matches[0].profile
         print("identified   %s (profile %s v%d)"
@@ -1016,7 +1054,7 @@ def _print_set_summary(result, profile, target, written, args) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="understudy",
+        prog=invocation(),
         description="Convert TMS5200 speech data in a Squawk & Talk ROM so it "
                     "plays on a TMS5220.")
     parser.add_argument("--version", action="version",
