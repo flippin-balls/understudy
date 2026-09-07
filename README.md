@@ -145,9 +145,14 @@ The other four sets are not gaps that more work would close:
 | set | drivers | why not |
 |---|---|---|
 | **Rapid Fire** | 2 | Only the firmware ROM is fitted (`U5`); the three speech sockets are empty. Driven through all 256 commands the MPU can send, the firmware writes to the TMS **zero** times while writing the DAC 128,144 times — it makes sound, but never speech. Its ROM does contain the standard TMS byte-write routine, at `$F365`; no direct call to it appears anywhere — no `JSR`, no `JMP`, no literal occurrence of its address — though that is not a proof of unreachability, since the firmware dispatches through a computed jump and a target can be built without its address appearing. No profile can ship for it regardless: the trace yields no streams, so the third acceptance criterion has nothing to be satisfied against, and a profile could only rest on self-consistency. |
-| **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
-| **Big Bat** | 1 | No dump obtainable. |
-| **Black Belt** (`blackbl2`) | 1 | The PinMAME driver records no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
+| **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump on hand to confirm it. |
+| **Big Bat** | 1 | No dump on hand. |
+| **Black Belt** (`blackbl2`) | 1 | No dump on hand, and the PinMAME driver records no CRC or SHA-1 for its sound ROMs, so one could not be verified as the right file even if it turned up. |
+
+The last three are an acquisition problem rather than an engineering one — the
+archives here were searched by hash, and by filename for the one whose driver
+records no hash. If you have a dump of any of them, that is the fastest way to
+make this list shorter.
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
