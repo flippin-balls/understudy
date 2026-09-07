@@ -83,7 +83,7 @@ speech commands while its other sound output collapses (§8b).
 
 That third criterion is stated as coverage of what was played, deliberately. It
 is not a claim that every declared phrase was independently confirmed; eight of
-the fifteen have entries no command reached, and the next section gives the
+the sixteen have entries no command reached, and the next section gives the
 numbers.
 
 ### What the third criterion does and does not establish
