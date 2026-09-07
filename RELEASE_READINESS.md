@@ -46,12 +46,24 @@ file the run reads. The set is written as a unit or not at all.
 
 ## 3. Supported games
 
-| game | profile | status | notes |
-|---|---|---|---|
-| Bally Embryon (1981) | `embryon` v3 | `board-simulated` | 20 phrases, U4 (2716) + U5 (2532, mirrored addressing) |
+Coverage is counted in **distinct sound ROM sets**. The 49 PinMAME Squawk &
+Talk drivers collapse to **19**; the rest are game-ROM revisions sharing sound
+ROMs, so one profile serves several.
 
-**One profile.** There are roughly fifty known Squawk & Talk ROM sets. An
-unrecognised set is reported and refused, never converted on a guess.
+| profile | status | phrases | revisions |
+|---|---|---|---|
+| `embryon` | `board-simulated` | 20 | 6 |
+| `elektra` | `board-simulated` | 16 | 2 |
+| `flashgdn` | `board-simulated` | 5 | 2 |
+| `spectrum` | `board-simulated` | 31 | 4 |
+
+**4 of 19 sound ROM sets; 14 of 49 game revisions.** Each cleared all four
+acceptance criteria: every phrase terminating, healthy per-device speech
+coverage (48–100%), a frame count matching an independently built corpus, and
+the board's own firmware booting and driving the converted ROMs identically to
+the originals.
+
+An unrecognised set is reported and refused, never converted on a guess.
 
 ## 4. Supported replacement chips
 

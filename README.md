@@ -153,10 +153,10 @@ keep your originals.
 ## Will this work for my game?
 
 **If your game is not in the table above, this tool will not convert it
-automatically, and that is deliberate.** There are roughly fifty known Squawk &
-Talk ROM sets. Understudy ships one profile. It has no way to know the layout of
-the other forty-nine, and it does not guess: an unrecognised set is reported and
-refused, not converted on a hunch.
+automatically, and that is deliberate.** Understudy covers 4 of the 19 distinct
+sound ROM sets. It has no way to know the layout of the other fifteen, and it
+does not guess: an unrecognised set is reported and refused, not converted on a
+hunch.
 
 That is the honest answer to "is it safe for all Squawk & Talk ROMs". It is not
 validated for all of them and does not claim to be. What it is designed around
