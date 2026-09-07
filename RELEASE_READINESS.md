@@ -290,15 +290,16 @@ this release (§10), which every static check had passed.
 
 ## 8a. Corpus sweep — how far this was actually tested
 
-Every Squawk & Talk sound ROM set obtainable here, **46 of the 49 PinMAME
-knows**, each file hash-verified against its driver record. Each was put through
+Every Squawk & Talk ROM set obtainable here, **46 of the 49 drivers PinMAME
+knows** — drivers, not the 19 distinct sound ROM sets they collapse to — each
+file hash-verified against its driver record. Each was put through
 automatic layout detection, conversion, and a boot of the board's own firmware
 against the converted devices.
 
 | | |
 |---|---|
-| sets with complete sound ROMs | 46 of 49 |
-| converted and drove the board identically to the original | 25 |
+| drivers with complete sound ROMs | 46 of 49 |
+| of those, converted and drove the board identically to the original | 25 |
 | of the 12 with an independent frame corpus, matched it exactly | **4** |
 | worst false pass | one set converted **1.5%** of its speech and still behaved normally |
 

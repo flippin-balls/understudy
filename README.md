@@ -208,9 +208,9 @@ listed below. That is a design stance and a set of enumerated checks, not a
 proof that no wrong output is possible — the Embryon defect below is exactly a
 case that passed every check there was at the time.
 
-We tested that claim rather than asserting it. Every Squawk & Talk sound ROM
-set we could obtain — **46 of the 49 PinMAME knows**, each hash-verified against
-its driver record — was put through automatic layout detection, conversion, and
+We tested that claim rather than asserting it. Every Squawk & Talk ROM set we
+could obtain — **46 of the 49 drivers PinMAME knows**, each hash-verified
+against its driver record — was put through automatic layout detection, conversion, and
 a boot of the board's own firmware against the converted result. 25 produced
 output that drove the board exactly as the original did.
 
