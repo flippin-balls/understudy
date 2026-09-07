@@ -64,7 +64,7 @@
     "layout": "Pointer table at CPU $EE30, 62 phrases, command-ordered, with a final end bound.",
     "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 34 streams from 33 distinct addresses spanning $D000-$EDB5. Every one of those streams falls inside a phrase this layout converts.",
     "conversion": "1485 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
-    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 24 SPEAK EXTERNAL commands as the original set.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 24 SPEAK EXTERNAL commands, 3390 writes to the TMS, and 34368 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
     "traced_phrase_starts": [
       "$D000",

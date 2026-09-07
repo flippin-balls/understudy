@@ -58,7 +58,7 @@
     "layout": "Pointer table at CPU $F20E, 26 phrases, address-ordered.",
     "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 27 streams from 25 distinct addresses spanning $E000-$ED75. Every one of those streams falls inside a phrase this layout converts.",
     "conversion": "721 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
-    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 4 SPEAK EXTERNAL commands as the original set.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 4 SPEAK EXTERNAL commands, 392 writes to the TMS, and 23853 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
     "unterminated_phrases": "Phrase(s) 24 carry no stop frame; the player terminates them rather than the ROM. Understudy refuses an unterminated phrase by default -- it is what a layout aimed at code looks like -- so they are named in the layout, and every other phrase must still stop.",
     "traced_phrase_starts": [

@@ -68,9 +68,13 @@ features.
 - **Criterion 4 now compares total sound output, not just speech commands.**
   Rapid Fire showed why: a conversion that rewrites executed code can still boot
   and still issue an identical set of speech commands while the board's DAC
-  output falls by 63%. All 15 bundled profiles drive the sound hardware
-  identically to their originals — speech commands, total TMS writes and DAC
-  writes all equal.
+  writes fall by 62.7%. Equal counts are not equal behaviour either, so the DAC
+  is compared as an ordered stream of values — it has nothing to do with
+  conversion, so every write to it must survive byte for byte and in order —
+  alongside the SPEAK EXTERNAL count and the number of TMS writes. The bytes
+  sent to the TMS are deliberately not compared: changing them is what
+  conversion is. All 15 bundled profiles pass, each recording its figures in
+  `evidence.emulation`.
 
 ### Fixed
 

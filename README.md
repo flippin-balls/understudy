@@ -144,7 +144,7 @@ The other four sets are not gaps that more work would close:
 
 | set | drivers | why not |
 |---|---|---|
-| **Rapid Fire** | 2 | Only the firmware ROM is fitted (`U5`); the three speech sockets are empty. Driven through all 256 commands, the firmware writes to the TMS **zero** times while writing the DAC 128,144 times — it makes sound, but never speech. There is nothing to convert, and §"the one that proves the point" below shows what happens if you try anyway. |
+| **Rapid Fire** | 2 | Only the firmware ROM is fitted (`U5`); the three speech sockets are empty. Driven through all 256 commands the MPU can send, the firmware writes to the TMS **zero** times while writing the DAC 128,144 times — it makes sound, but never speech. Its ROM does contain the standard TMS byte-write routine, at `$F365`, but nothing calls it: no `JSR`, no `JMP`, and its address appears nowhere in the ROM as a 16-bit value, so the firmware's computed dispatch cannot reach it either. It is dead code carried in the shared sound firmware. No profile can ship for it — the trace yields no streams, so the third acceptance criterion has nothing to be satisfied against. |
 | **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
 | **Big Bat** | 1 | No dump obtainable. |
 | **Black Belt** (`blackbl2`) | 1 | The PinMAME driver records no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
@@ -268,8 +268,8 @@ None of that is a claim that anyone has heard the output. Nobody has.
 ### The one that proves the point
 
 Rapid Fire is the set that was expected to be the sixteenth and turned out to
-have no speech at all. It is worth reading, because it is the cleanest example
-of why a boot is not a check.
+have no speech that anything plays. It is worth reading, because it is the
+cleanest example of why a boot is not a check.
 
 Point automatic layout detection at it and it returns a table at `$F82D` with a
 confident score and every phrase terminating in a stop frame. Convert on that
@@ -279,8 +279,10 @@ simulation and **it boots**, and issues exactly the same speech commands as the
 original, because the original issues none.
 
 27 of those 111 changed bytes are addresses the CPU actually executes. The
-board's DAC output falls from 128,144 writes to 47,760 — it lost 63% of its
-sound and still passed every check that looks at speech.
+board's DAC writes fall from 128,144 to 47,760 — down 62.7%, on a board whose
+only sound output is that DAC — and it still passed every check that looks at
+speech. (Write count is not audible duration or energy; what it shows is that
+the firmware stopped doing most of what it used to do.)
 
 The detector is not being stupid, either: the same detector proposes `$FA6F`
 with 28 phrases for Fathom, which is precisely the layout that shipped and

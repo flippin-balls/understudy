@@ -64,7 +64,7 @@
     "layout": "Pointer table at CPU $F08B, 16 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
     "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv: 1148 frames.",
     "conversion": "1148 frames converted, all keeping their frame kind when the output was re-parsed with the target tables; 109 frames below the TMS5220 pitch floor were clamped.",
-    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board -- its own 6802, PIAs and firmware -- which booted and issued the same SPEAK EXTERNAL commands as the original set.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 4 SPEAK EXTERNAL commands, 2624 writes to the TMS, and 4370 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
     "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
     "traced_phrase_starts": [
       "$D000",

@@ -145,15 +145,23 @@ These are accounted for, not merely absent:
 
 | set | drivers | why |
 |---|---|---|
-| `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Driven through all 256 commands, the firmware makes **zero** writes to the TMS while writing the DAC 128,144 times: it makes sound, but never speech. The trace therefore yields no streams, so criterion 3 cannot be satisfied by any layout — and the one the auto-detector proposes rewrites 27 bytes of executed code while still booting (§8b). |
+| `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Across all 256 commands the MPU can send it makes **zero** writes to the TMS while writing the DAC 128,144 times. Its ROM does carry the standard TMS byte-write routine at `$F365` — this was checked rather than assumed — but nothing reaches it: no `JSR`, no `JMP`, and its address is nowhere in the ROM as a 16-bit value, so the computed dispatch cannot either. Dead code in the shared firmware. The trace yields no streams, so criterion 3 has nothing to be satisfied against, and the layout the auto-detector proposes is executed code (§8b). |
 | `cosflash` | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
 | `bigbat` | 1 | No dump obtainable. |
 | `blackbl2` | 1 | The PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
 
 `rapidfir` is the reason coverage stops at 15 rather than 16. It was expected to
-be convertible and is not, and the finding is a negative one established rather
-than assumed: no speech sockets fitted, no TMS writes in 256 commands, no traced
-streams, and the only candidate layout is code.
+be convertible and is not.
+
+Be exact about the strength of that. What is established: no speech ROM is
+fitted, no command makes the firmware write to the TMS, the routine that could
+is unreachable, no traced stream exists, and the only candidate layout is
+executed code. What is **not** established is the universal negative that no
+LPC data could be embedded in that 4 KB firmware ROM and reached by some path
+the model does not exercise. The reason no profile ships is the narrower and
+sufficient one: criterion 3 requires an independent phrase list, and there is
+no stream to build one from. A profile here could only ever rest on
+self-consistency, which this project does not ship.
 
 An unrecognised set is reported and refused, never converted on a guess.
 
@@ -236,7 +244,7 @@ What has been done, precisely:
 | | |
 |---|---|
 | every conversion | re-parsed with the target tables, every frame's kind compared, changed bytes reconciled — structural |
-| all 15 bundled profiles | the board's own firmware, in emulation, boots and drives the **converted** ROMs and issues the same SPEAK EXTERNAL commands as the original — structure and control flow, **not sound** |
+| all 15 bundled profiles | the board's own firmware, in emulation, boots and drives the **converted** ROMs: same SPEAK EXTERNAL commands, same number of TMS writes, and a DAC stream identical value for value and in order — structure and control flow, **not sound** |
 | all 15 bundled profiles | every stream the firmware plays, captured and shown to fall inside a converted phrase — coverage, still **not sound**. It does not confirm table entries no command reached; see §3 |
 | any conversion, heard | never |
 | any conversion, on hardware | never |
@@ -296,16 +304,20 @@ alone.
 | Understudy's verdict | refused at 8 and 9 phrases; **accepted at 7** — 69 frames, 111 bytes changed |
 | board simulation | **boots**, and issues the same speech commands as the original (both zero) |
 | bytes rewritten that the CPU executes | **27** |
-| DAC output, original → converted | 128,144 → 47,760 writes, a 63% loss |
+| DAC writes, original → converted | 128,144 → 47,760, down 62.7% |
 
 The same detector proposes Fathom's known-wrong `$FA6F`/28 and a table for
 Mr. and Mrs. Pac-Man that is nowhere near its real one at `$F20E`. Nothing here
 ships on detection, and nothing ships on a boot.
 
 It also sharpened criterion 4. Comparing SPEAK EXTERNAL counts cannot see a set
-whose *other* sound output collapsed, so the check now compares total writes to
-the sound hardware. All 15 bundled profiles drive it identically to their
-originals — speech commands, total TMS writes and DAC writes all equal.
+whose *other* sound output collapsed, and equal counts are not equal behaviour.
+The check now compares the DAC as an ORDERED stream of values — conversion has
+nothing to do with the DAC, so every write to it must survive byte for byte and
+in order — alongside the SPEAK EXTERNAL count and the total number of TMS
+writes. The bytes sent to the TMS are deliberately not compared: changing them
+is what conversion is. All 15 bundled profiles pass, and each records its own
+figures in `evidence.emulation`.
 
 ## 9. Known limitations
 
