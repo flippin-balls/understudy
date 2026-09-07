@@ -73,8 +73,15 @@ ROMs, so one profile serves several.
 acceptance criteria: every phrase either terminating in a stop frame or
 declared and checked as one the player terminates instead (one phrase of
 `m_mpac`, and nothing else in the fifteen), healthy per-device speech coverage,
-agreement with an **independent** phrase list, and the board's own firmware
-booting and driving the converted ROMs identically to the originals.
+**every stream the firmware plays falling inside a converted phrase** — checked
+against a phrase list captured from the running board, not against another
+static read of the ROM — and the board's own firmware booting and driving the
+converted ROMs identically to the originals.
+
+That third criterion is stated as coverage of what was played, deliberately. It
+is not a claim that every declared phrase was independently confirmed; eight of
+the fifteen have entries no command reached, and the next section gives the
+numbers.
 
 ### What the third criterion does and does not establish
 
@@ -202,7 +209,7 @@ revisiting if technicians report install friction.
 
 ## 7. Test coverage
 
-**278 tests.** Standard library only, no fixtures, no network, no ROM data.
+**340 tests.** Standard library only, no fixtures, no network, no ROM data.
 
 Coverage spans the bit codec (including a frame transcribed by hand from the
 field spec, independent of the parser's own assumptions), conversion arithmetic
@@ -225,7 +232,8 @@ What has been done, precisely:
 | | |
 |---|---|
 | every conversion | re-parsed with the target tables, every frame's kind compared, changed bytes reconciled — structural |
-| Embryon reference set | the board's own firmware, in emulation, boots and drives the **converted** ROMs and issues the same SPEAK EXTERNAL commands as the original — structure and control flow, **not sound** |
+| all 15 bundled profiles | the board's own firmware, in emulation, boots and drives the **converted** ROMs and issues the same SPEAK EXTERNAL commands as the original — structure and control flow, **not sound** |
+| all 15 bundled profiles | every stream the firmware plays, captured and shown to fall inside a converted phrase — coverage, still **not sound**. It does not confirm table entries no command reached; see §3 |
 | any conversion, heard | never |
 | any conversion, on hardware | never |
 

@@ -44,12 +44,21 @@ exercises the board's firmware and control flow against the converted data, and
 it is what the `board-simulated` profile status means. **It renders no audio and
 nobody has heard the result.**
 
-If you converted a supported set through `convert-set`, your output is
-byte-identical to the one that was simulated — identification is by SHA-256 of
-every device, so it cannot be anything else. If you used the manual `convert`
-path, on an unsupported revision or a layout of your own, it has not had even
-that. Either way, calling the result a "working ROM" would require hardware
-testing nobody has done.
+What that means for your own output is narrower than it may look. Hash
+identification fixes the *inputs*: every device is matched by SHA-256, so a
+`convert-set` run is working on the same bytes the simulation did. The output
+also depends on the target part, the coefficient tables, any override you pass,
+and the version of this tool. Run the same release against the same set with the
+same target and the bundled tables and no overrides, and the result is the one
+that was simulated. Change the target, supply `--source-tables` or
+`--target-tables`, or pass `--allow-unterminated`, and it is not — the manifest
+records each of those precisely so the difference is visible rather than
+assumed.
+
+If you used the manual `convert` path, on an unsupported revision or a layout of
+your own, none of this applies: it has had no simulation at all. Either way,
+calling the result a "working ROM" would require hardware testing nobody has
+done.
 
 ## Nearest-value conversion is a baseline, not an optimum
 

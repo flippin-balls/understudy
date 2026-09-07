@@ -263,9 +263,22 @@ def extract(path, cpu_addr, size, holds_speech):
 
     changed = [(lo, hi) for lo, hi in halves if after[lo:hi] != before[lo:hi]]
     if len(changed) > 1:
-        raise SystemExit("%s: both mirror halves changed; the layout puts "
-                         "phrases at both addresses, which one device cannot "
-                         "represent" % path)
+        # Both halves changed. That is allowed: the two windows are the same
+        # 2 KB device, and a set may reach some phrases through one and some
+        # through the other. Merge them, and refuse only where they DISAGREE
+        # about a byte, because that is one physical byte with two values.
+        (alo, _), (blo, _) = halves
+        merged = bytearray(before[alo:alo + size])
+        for i in range(size):
+            a, b, was = after[alo + i], after[blo + i], before[alo + i]
+            if a != was and b != was and a != b:
+                raise SystemExit(
+                    "%s: offset 0x%X converts to 0x%02X through one mirror "
+                    "window and 0x%02X through the other; one device cannot "
+                    "hold both" % (path, i, a, b))
+            merged[i] = a if a != was else b
+        open(path, "wb").write(bytes(merged))
+        return size
     if holds_speech and not changed:
         raise SystemExit("%s: declared as holding speech but nothing in it "
                          "changed -- the layout is probably wrong" % path)
@@ -288,9 +301,14 @@ for path, addr, size, speech in DEVICES:
 **Declare the speech-bearing devices, and mean it.** A device that simply comes
 out `unchanged` is ambiguous: it might hold no speech, or the layout might have
 missed its phrases entirely, and those look identical from here. Saying which
-devices you expect to change turns that ambiguity into an error. If the script
-stops because both mirror halves changed, your layout has phrases at both the
-real and mirrored addresses, which a single device cannot represent.
+devices you expect to change turns that ambiguity into an error.
+
+**Both mirror halves changing is not by itself an error.** The two windows are
+one 2 KB device answering at two addresses, and a set may reach some phrases
+through each — Eight Ball Deluxe does. The halves merge. What cannot be merged
+is one offset converted two different ways through the two windows: that is a
+single physical byte with two values, so only one conversion could survive into
+the burned device and the other phrase would be read as corrupt.
 
 **Check before you burn.** Each output must be exactly the size of the original,
 and the differing byte counts must add up to what conversion reported:
