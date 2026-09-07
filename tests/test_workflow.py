@@ -6,6 +6,7 @@ ROM that is subtly wrong. Each test here drives one of those situations.
 """
 import copy
 import json
+import json as _json
 import os
 import subprocess
 import sys
@@ -179,7 +180,7 @@ class TestDestinationPreflight(unittest.TestCase):
                          "--target", "tms5220", "-o", str(self.dir), *args,
                          cwd=self.dir, extra_env=self.env)
             self.assertEqual(result.returncode, 2, result.stdout)
-            self.assertIn("written over an input dump", result.stderr)
+            self.assertIn("written over a file this run reads", result.stderr)
             self.assertEqual(victim.read_bytes(), before,
                              "the input dump was modified")
 
@@ -205,6 +206,45 @@ class TestDestinationPreflight(unittest.TestCase):
                              "%s was modified" % name)
         added = {p.name for p in self.dir.iterdir() if p.is_file()} - set(before)
         self.assertEqual(len(added), 3, added)     # two devices + manifest
+
+    def test_a_custom_table_is_an_input_too(self):
+        """"Input" means every file the run reads, not only the ROM dumps.
+
+        A coefficient table someone wrote is as irreplaceable to them as a ROM
+        dump, and an earlier version of this check would replace it.
+        """
+        import json as _json
+        from tms52xx import chips as chips_mod
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        # Name the table exactly what one of the outputs will be called.
+        collide = self.dir / "u4_U4_2716_custom.bin"
+        chips_mod.resolve("tms5220").tables().to_json(collide)
+        before = collide.read_bytes()
+
+        result = run("convert-set", str(u4), str(self.u5), "--game",
+                     "synthgame", "--target", "tms5220",
+                     "--target-tables", str(collide),
+                     "-o", str(self.dir), "--force",
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("this run reads", result.stderr)
+        self.assertEqual(collide.read_bytes(), before)
+
+    def test_the_profile_file_is_an_input_too(self):
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        # Convert into the profile directory; the manifest would land on it.
+        result = run("convert-set", str(u4), str(self.u5), "--game",
+                     "synthgame", "--target", "tms5220",
+                     "-o", str(self.profiles), "--force",
+                     cwd=self.dir, extra_env=self.env)
+        # The profile is synthgame.json, the manifest synthgame.manifest.json,
+        # so they do not collide -- but the profile must survive regardless.
+        self.assertTrue((self.profiles / "synthgame.json").exists())
+        self.assertEqual(
+            _json.loads((self.profiles / "synthgame.json").read_text())
+            ["profile_id"], "synthgame")
 
     def test_a_refusal_leaves_no_partial_output_set(self):
         """A half-written set invites burning a mixture of new and stale files."""

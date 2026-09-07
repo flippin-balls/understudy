@@ -32,6 +32,11 @@ Copy `src/tms52xx/data/profiles/embryon.json` and edit it. The fields are
 documented in `src/tms52xx/profiles.py`; the loader validates every one and will
 tell you exactly what is wrong.
 
+**Every device needs a `sha256`, not only the speech-bearing ones.** A device
+carrying no speech is still copied out as a burn image, so it has to be
+authenticated too; `convert-set` refuses a profile that cannot verify every
+device it will emit.
+
 Get the device hashes with:
 
 ```

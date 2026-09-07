@@ -132,9 +132,11 @@ data.
 
 Understudy stops rather than write a ROM that might be wrong. It refuses when:
 
-- **your dumps do not match a profile exactly.** Identification is by SHA-256 of
-  every speech-bearing device. A near-miss is a different revision or a bad
-  read, and either way this layout is not the right one for it;
+- **your dumps do not match a profile exactly.** Identification is by SHA-256:
+  every speech-bearing device must match for a set to be recognised, and every
+  device the profile emits must be hashed before it will convert at all. A
+  near-miss is a different revision or a bad read, and either way this layout is
+  not the right one for it;
 - **more than one profile matches**, or none does;
 - **a phrase does not end in a stop frame** — the usual sign that the layout is
   aimed at something that is not speech;

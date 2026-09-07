@@ -45,6 +45,17 @@ def _table_file(path, default_chip: str) -> Path:
     return CHIPS[default_chip].table_path
 
 
+def _load_table(path, default_chip: str):
+    """Read a table file ONCE, returning (tables, bytes, path).
+
+    Parsing and hashing separate reads lets a file changed in between produce a
+    manifest that describes something other than what made the ROM.
+    """
+    where = _table_file(path, default_chip)
+    raw = where.read_bytes()
+    return ChipTables.from_bytes(raw, where), raw, where
+
+
 def _table_origin(path, default_chip: str) -> str:
     return str(path) if path else "bundled:%s" % default_chip
 
@@ -313,19 +324,23 @@ def cmd_convert(args) -> int:
 
     out_path = Path(args.output)
     manifest_path = out_path.with_suffix(out_path.suffix + ".manifest.json")
+    consumed = [rom_path] + [Path(t) for t in (args.source_tables,
+                                               args.target_tables) if t]
     # --force means "replace the file you named", never "destroy the ROM you are
     # converting". A source ROM may be the only copy someone has of a board's
     # contents, and there is no version of this tool's job that requires
     # overwriting it -- so this check sits ahead of --force rather than under it.
     for label, candidate in (("output", out_path), ("manifest", manifest_path)):
-        if _same_file(rom_path, candidate):
-            print("refusing to convert: the %s path (%s) is the input ROM"
-                  % (label, candidate), file=sys.stderr)
-            return 2
+        for supplied in consumed:
+            if _same_file(supplied, candidate):
+                print("refusing to convert: the %s path (%s) is an input to "
+                      "this run (%s)" % (label, candidate, supplied),
+                      file=sys.stderr)
+                return 2
 
     rom = rom_path.read_bytes()
-    source = _tables_or_bundled(args.source_tables, "tms5200")
-    target = _tables_or_bundled(args.target_tables, "tms5220")
+    source, source_raw, source_path = _load_table(args.source_tables, "tms5200")
+    target, target_raw, target_path = _load_table(args.target_tables, "tms5220")
     table = _load_layout(args, rom)
 
     try:
@@ -443,8 +458,8 @@ def cmd_convert(args) -> int:
         "tables": {"source": source.name, "target": target.name,
                    "source_file": _table_origin(args.source_tables, "tms5200"),
                    "target_file": _table_origin(args.target_tables, "tms5220"),
-                   "source_sha256": _table_hash(args.source_tables, "tms5200"),
-                   "target_sha256": _table_hash(args.target_tables, "tms5220"),
+                   "source_sha256": _sha256(source_raw),
+                   "target_sha256": _sha256(target_raw),
                    "source_bundled": args.source_tables is None,
                    "target_bundled": args.target_tables is None,
                    "source_lowest_f0_hz": round(source.lowest_f0_hz, 2),
@@ -488,8 +503,9 @@ def cmd_convert(args) -> int:
               "was there:\n%s" % error, file=sys.stderr)
         return 2
     except OSError as error:
-        print("failed to write the output: %s\nNothing was left behind."
-              % error, file=sys.stderr)
+        print("failed to write the output: %s\nNeither the ROM nor its manifest "
+              "was created or replaced. Any leftover .part or .backup file is "
+              "safe to delete." % error, file=sys.stderr)
         return 2
     print("\nwrote %s\nwrote %s" % (out_path, manifest_path))
     return 0
@@ -772,13 +788,22 @@ def cmd_convert_set(args) -> int:
 
     destinations = [path for path, _ in plan] + [manifest_path]
 
+    # EVERY file this run consumed, not only the ROM dumps. A custom
+    # coefficient table or a profile is just as much an input, and just as
+    # irreplaceable to whoever wrote it; an earlier version of this check
+    # defined "input" as the dumps alone and would replace the others.
     inputs = [Path(origin) for origin in sources.values()]
+    for extra in (args.source_tables, args.target_tables):
+        if extra:
+            inputs.append(Path(extra))
+    if getattr(profile, "source", None):
+        inputs.append(Path(profile.source))
     for destination in destinations:
         for supplied in inputs:
             if _same_file(supplied, destination):
-                print("refusing to convert: %s would be written over an input "
-                      "dump (%s). Choose a different --output directory."
-                      % (destination, supplied), file=sys.stderr)
+                print("refusing to convert: %s would be written over a file "
+                      "this run reads (%s). Choose a different --output "
+                      "directory." % (destination, supplied), file=sys.stderr)
                 return 2
     for i, first in enumerate(destinations):
         for second in destinations[i + 1:]:
@@ -812,9 +837,10 @@ def cmd_convert_set(args) -> int:
                   "what was there:\n%s" % error, file=sys.stderr)
             return 2
         except OSError as error:
-            print("failed to write the output set: %s\nNothing was left behind; "
-                  "no file in %s was created or replaced."
-                  % (error, outdir), file=sys.stderr)
+            print("failed to write the output set: %s\nNo file in %s was "
+                  "created or replaced. Cleanup of the temporary files is "
+                  "best-effort: if any remain they end in .part or .backup and "
+                  "are safe to delete." % (error, outdir), file=sys.stderr)
             return 2
         written = [(path, entry) for path, entry in plan]
 

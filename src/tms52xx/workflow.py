@@ -231,7 +231,16 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         extracted = profile.extract(patched, device, image)
         changed_bytes = sum(1 for a, b in zip(dumps[device.socket],
                                               extracted.data) if a != b)
-        total_changed += changed_bytes
+        # Reconciliation counts WINDOWS, not devices. A mirrored device appears
+        # at two addresses, so if a layout converts through both, the image
+        # changes in twice as many places as the single physical device holds.
+        # Comparing the device's own count against the image total would then
+        # fail on a layout that is perfectly valid.
+        at = device.cpu_address - profile.window_base
+        span = device.size * (2 if device.mirrored else 1)
+        window_changed = sum(1 for i in range(at, at + span)
+                             if image[i] != patched[i])
+        total_changed += window_changed
         if device.holds_speech and not extracted.changed:
             raise ConversionRefused(
                 "socket %s is marked as holding speech but nothing in it "
@@ -247,6 +256,7 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "bytes": len(extracted.data),
             "sha256": sha256(extracted.data),
             "changed_bytes": changed_bytes,
+            "window_changed_bytes": window_changed,
             "changed": extracted.changed,
             "taken_from_mirror": extracted.from_mirror,
             "window": [extracted.window[0], extracted.window[1]],

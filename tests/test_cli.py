@@ -135,7 +135,7 @@ class TestCli(RomFixture):
                          "--table-offset", "0", "--phrases", "2", *args,
                          cwd=self.dir)
             self.assertEqual(result.returncode, 2, result.stdout)
-            self.assertIn("is the input ROM", result.stderr)
+            self.assertIn("is an input to this run", result.stderr)
             self.assertEqual(self.rom_path.read_bytes(), self.rom)
 
     def test_refuses_when_the_manifest_would_land_on_the_input(self):
@@ -148,7 +148,7 @@ class TestCli(RomFixture):
                      "--table-offset", "0", "--phrases", "2", "--force",
                      cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("is the input ROM", result.stderr)
+        self.assertIn("is an input to this run", result.stderr)
         self.assertEqual(rom_path.read_bytes(), self.rom)
 
     def test_a_temporary_file_cannot_land_on_the_input(self):
@@ -186,7 +186,7 @@ class TestCli(RomFixture):
                      "--table-offset", "0", "--phrases", "2", "--force",
                      cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("is the input ROM", result.stderr)
+        self.assertIn("is an input to this run", result.stderr)
         self.assertEqual(self.rom_path.read_bytes(), self.rom)
 
     def test_leaves_no_temporary_files_behind(self):
