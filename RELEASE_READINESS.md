@@ -351,7 +351,7 @@ chips.
 
 ## 12. Review rounds
 
-Nine adversarial Codex reviews, each briefed to find ways to corrupt a ROM,
+Fifteen adversarial Codex reviews, each briefed to find ways to corrupt a ROM,
 lose an input, use the wrong profile or table, or misrepresent evidence.
 
 | round | outcome |
@@ -365,14 +365,19 @@ lose an input, use the wrong profile or table, or misrepresent evidence.
 | 7 | **BLOCKER** — `emulator-verified` claimed an acoustic result never established. |
 | 8 | **BLOCKER** — rename half-propagated; two claims stronger than the evidence. |
 | 9 | **Ready.** No blocker; no claim stronger than its evidence. |
-
-| 10 | Three HIGH findings on the traced-layout work, fixed and mutation-tested: the relaxed phrase-coverage guard needed a replacement for the case it stopped catching (a phrase that converts nothing is now refused outright); `silent_phrases` could be claimed for a phrase that was merely never found; and the mirrored-device merge tested changed bytes when the invariant is about phrase *coverage*, since a conversion may legitimately leave a byte unchanged. Two MEDIUM findings on evidence wording were fixed by stating what the trace does and does not establish, per profile and in §3. |
+| 10 | Three HIGH on the traced-layout work, fixed and mutation-tested: the relaxed phrase-coverage guard needed a replacement for the case it stopped catching (a phrase that converts nothing is now refused outright); `silent_phrases` could be claimed for a phrase that was merely never found; and the mirrored-device merge tested which bytes changed when a conversion may legitimately leave a byte unchanged — the first replacement tested coverage, which round 11 showed was too strong. Two MEDIUM findings on evidence wording were fixed by stating what the trace does and does not establish, per profile and in §3. |
 | 11 | **No blocker.** Confirmed HIGH 2 and MEDIUM 4 closed. HIGH 1 only partly: the new guard catches a phrase cut off by a missing device, but a profile that simply declares fewer phrases than its table holds is self-contained and no static check can see it — that is now stated as a limitation rather than covered by a claim. HIGH 3's replacement was too strong and refused a harmless duplicate; it now tests whether the two windows *disagree* rather than whether they overlap. Three MEDIUM: a miscount of the affected profiles (nine → eight), a headline criterion that contradicted `m_mpac`'s declared unterminated phrase, and guard ordering that hid the specific diagnosis behind a device-level one. All fixed. |
+| 12 | No blocker. Three MEDIUM: documents describing an earlier version of the mirror check, of the termination criterion, and of how many profiles had been board-simulated. |
+| 13 | No blocker. Four MEDIUM: a hand procedure that would have rejected a correct layout, a byte-identity claim that did not follow from hash identification, a precision table naming only Embryon, and a headline stronger than the qualification beneath it. |
+| 14 | No blocker. Two MEDIUM: the corrected hand procedure was still weaker than the tool without saying so, and "the output is not the simulated one" was too strong for options that may not change a byte. |
+| 15 | **Ready.** No HIGH, no MEDIUM. Ship as a clearly-labelled pre-1.0 research preview. |
 
-Every material finding was independently reproduced before being fixed, and
-carries a regression test. Review does not prove correctness — round 2's
-blocker existed through round 1's clean bill, and the Embryon defect was found
-by emulation after nine rounds of code review had passed it.
+Rounds 10 to 15 covered the traced-layout work: eleven new profiles, two
+corrected ones, three new layout facts in the schema, a per-byte merge for
+mirrored devices, and the replacement of the static frame corpus with an
+execution-derived phrase list as criterion 3. Nothing in that round was accepted
+on the first pass, and two of the guards written to answer a finding were
+themselves found to be too strong or to claim more than they did.
 
 ## 13. Unresolved blockers
 
@@ -389,8 +394,9 @@ by emulation after nine rounds of code review had passed it.
    ROMs, or Understudy updates the checksum and that is tested.
 4. Phrase-by-phrase comparison against an original-TMS5200 baseline, with only
    the quantified pitch-floor difference remaining.
-5. Embryon moved to `silicon-verified` on the strength of that report; any
-   failure understood and fixed.
+5. At least one profile moved to `silicon-verified` on the strength of that
+   report; any failure understood and fixed. `silicon-verified` is per profile,
+   so a single hardware test raises one set, not the other fourteen.
 6. The exact release artifact still passing every CI check.
 
 More profiles and a better mapper are welcome afterwards. They are not
