@@ -148,7 +148,7 @@ These are accounted for, not merely absent:
 | `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Across all 256 commands the MPU can send it makes **zero** writes to the TMS while writing the DAC 128,144 times. Its ROM does carry the standard TMS byte-write routine at `$F365` — checked rather than assumed — and no direct call to it appears anywhere: no `JSR`, no `JMP`, no literal occurrence of its address. That is an observation, **not** a proof of unreachability; the firmware dispatches through a computed jump, and a target can be constructed without its address appearing literally. The exclusion does not rest on it. It rests on criterion 3: the trace yields no streams, so there is nothing for a phrase list to be checked against, and the layout the auto-detector proposes is executed code (§8b). |
 | `cosflash` | 1 | Same single-socket arrangement, and no dump on hand to confirm it. |
 | `bigbat` | 1 | No dump on hand. |
-| `blackbl2` | 1 | No dump on hand, and the PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so one could not be verified as the right file even if it turned up. |
+| `blackbl2` | 1 | No *identifiable* dump on hand — the PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a search can only ask whether the expected filenames are present, and a renamed dump sitting in the collection could not be ruled out. |
 
 "No dump on hand" was checked rather than assumed: the 1,141 archives available
 here were searched by SHA-1 for every ROM the drivers record, and — for
@@ -158,10 +158,13 @@ find it — by filename as well. `bigbat` and `cosflash` produce no hash match;
 Squawk & Talk set filed under Midnight Marauders, which is not one of the 49
 drivers and whose two ROMs match nothing in Big Bat.
 
-These three are an acquisition problem, not an engineering one. A sixteenth set
-is reachable the moment one of them is dumped — and for `blackbl2`, a dump would
-have to be authenticated some other way, most naturally by the same traced
-phrase list that criterion 3 already requires.
+These three are an acquisition problem before they are an engineering one. A
+dump does not by itself make a sixteenth set: it would still need its layout
+worked out, a trace captured, a profile written and the whole acceptance bar
+cleared, which is the same work every set here took. What a dump changes is that
+the work becomes possible. For `blackbl2` there is an extra step — with no hash
+in the driver, the dump would have to be authenticated some other way, most
+naturally by the traced phrase list criterion 3 already requires.
 
 `rapidfir` is the reason coverage stops at 15 rather than 16. It was expected to
 be convertible and is not.
