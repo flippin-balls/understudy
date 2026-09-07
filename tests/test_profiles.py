@@ -309,6 +309,19 @@ class TestProfileValidation(SynthProfile):
             Profile(raw, "<x>")
         self.assertIn("both cover", str(caught.exception))
 
+    def test_applies_to_must_be_driver_names(self):
+        for bad in (["ok", 7], [""], [None], ["  "]):
+            raw = copy.deepcopy(self.raw)
+            raw["applies_to"] = bad
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn("applies_to", str(caught.exception), repr(bad))
+
+    def test_applies_to_defaults_to_just_this_profile(self):
+        raw = copy.deepcopy(self.raw)
+        raw.pop("applies_to", None)
+        self.assertEqual(Profile(raw, "<x>").revisions, [raw["profile_id"]])
+
     def test_a_profile_id_that_is_a_path_is_rejected(self):
         """The id becomes `<outdir>/<id>.manifest.json`."""
         for bad in ("../evil", "a/b", "a\\b", "Embryon", "-x", "", "a b"):
@@ -555,6 +568,40 @@ class TestBundledEmbryonProfile(unittest.TestCase):
         """Nothing may claim silicon verification until it has happened."""
         self.assertNotEqual(self.profile.status, "silicon-verified")
         self.assertIn("not_verified", self.profile.evidence)
+
+    def test_profiles_declare_the_revisions_they_serve(self):
+        """One sound ROM set usually serves several game revisions.
+
+        The 49 Squawk & Talk drivers collapse to 19 distinct sound ROM sets, so
+        coverage counted in drivers and coverage counted in soundsets are very
+        different numbers. Both are stated, so `applies_to` must be present and
+        must include the profile's own id.
+        """
+        for profile in profiles.available():
+            self.assertTrue(profile.applies_to,
+                            "%s declares no applies_to" % profile.id)
+            self.assertIn(profile.id, profile.revisions, profile.id)
+            self.assertEqual(len(profile.revisions), len(set(profile.revisions)),
+                             "%s repeats a revision" % profile.id)
+
+    def test_no_two_profiles_claim_the_same_revision(self):
+        """Two profiles serving one driver would make `--game` ambiguous."""
+        seen = {}
+        for profile in profiles.available():
+            for revision in profile.revisions:
+                self.assertNotIn(revision, seen,
+                                 "%s and %s both claim %s"
+                                 % (seen.get(revision), profile.id, revision))
+                seen[revision] = profile.id
+
+    def test_every_bundled_profile_carries_its_evidence(self):
+        """Each shipped profile must say what was checked and what was not."""
+        for profile in profiles.available():
+            self.assertIn("independent_check", profile.evidence,
+                          "%s ships without an independent frame check" % profile.id)
+            self.assertIn("emulation", profile.evidence, profile.id)
+            self.assertIn("not_verified", profile.evidence, profile.id)
+            self.assertEqual(profile.status, "board-simulated", profile.id)
 
     def test_every_bundled_profile_parses(self):
         found = profiles.available()

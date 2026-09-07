@@ -369,6 +369,7 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
                     # authorised this conversion, which is what a later bug
                     # report needs.
                     "sha256": profile.digest,
+                    "applies_to": profile.revisions,
                     # A package-relative identity for bundled profiles: an
                     # absolute path is not portable, leaks a workstation layout,
                     # and makes a manifest look like a record of one machine.

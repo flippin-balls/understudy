@@ -150,6 +150,16 @@ class Profile:
         self.source_chip = raw["source_chip"]
         self.status = raw["status"]
         self.notes = list(raw.get("notes", []))
+        # Every emulator driver / game revision this soundset serves. The 49
+        # Squawk & Talk drivers collapse to 19 distinct sound ROM sets, so one
+        # profile normally covers several revisions -- Embryon's covers six.
+        # Recorded so coverage can be stated honestly in both units.
+        self.applies_to = list(raw.get("applies_to", []))
+        for entry in self.applies_to:
+            if not isinstance(entry, str) or not entry.strip():
+                raise ProfileError(
+                    "%s: applies_to must be a list of driver names, got %r"
+                    % (where, entry))
         self.evidence = dict(raw.get("evidence", {}))
         self.chip_commands_observed = list(raw.get("chip_commands_observed", []))
 
@@ -292,6 +302,14 @@ class Profile:
             return hashlib.sha256(Path(self.source).read_bytes()).hexdigest()
         except (OSError, ValueError):
             return None
+
+    @property
+    def revisions(self) -> List[str]:
+        """Driver names this profile serves, the profile's own id included."""
+        names = list(self.applies_to)
+        if self.id not in names:
+            names.insert(0, self.id)
+        return names
 
     @property
     def identity(self) -> str:

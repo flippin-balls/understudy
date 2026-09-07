@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "profile_id": "spectrum",
+  "profile_version": 1,
+  "title": "Spectrum",
+  "manufacturer": "Bally",
+  "year": 1982,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "spectr4a",
+    "spectru4",
+    "spectrua",
+    "spectrum"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "868-01_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "78b6d587f18d715731414a3a5738cc3e7269cbd7b502f46e0e41ba46f9fafed0",
+      "crc32": "c3a16c66"
+    },
+    {
+      "socket": "U4",
+      "label": "868-02_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "689263a37aace78af7585675d8d861e26b6455776b748875ea2699b2512a85ef",
+      "crc32": "6b441399"
+    },
+    {
+      "socket": "U5",
+      "label": "868-03_5",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 61440,
+      "mirrored": true,
+      "holds_speech": false,
+      "sha256": "ff35446579d542f511ad2b7dd1ab9bedef871ad9f4cd4151acdc1551102c3b8f",
+      "crc32": "4a5ac3b8"
+    }
+  ],
+  "layout": {
+    "table_offset": 12410,
+    "base_address": 49152,
+    "phrases": 31,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F07A, 31 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv: 1478 frames; platform_trace_summary.json: 31 phrase starts.",
+    "conversion": "1478 frames converted, all keeping their frame kind when the output was re-parsed with the target tables; 23 frames below the TMS5220 pitch floor were clamped.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board -- its own 6802, PIAs and firmware -- which booted and issued the same SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
+  },
+  "notes": [
+    "This sound ROM set is shared by 4 game revisions: spectr4a, spectru4, spectrua, spectrum.",
+    "Command order, not address order."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

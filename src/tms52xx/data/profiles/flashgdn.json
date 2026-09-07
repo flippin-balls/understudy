@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "profile_id": "flashgdn",
+  "profile_version": 1,
+  "title": "Flash Gordon",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "flashgda",
+    "flashgdn"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "834-20_2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "3f8d99fd367d81464770584e9a8e812a4ae4b0074bf1968e8a62982da4f17933",
+      "crc32": "2f8ced3e"
+    },
+    {
+      "socket": "U5",
+      "label": "834-18_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "1cb8d9fd19aae09aa522a19d28c8eafa428196ca163150f6dcdcc49c846f57eb",
+      "crc32": "8799e80e"
+    }
+  ],
+  "layout": {
+    "table_offset": 13094,
+    "base_address": 49152,
+    "phrases": 5,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F326, 5 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv: 372 frames.",
+    "conversion": "372 frames converted, all keeping their frame kind when the output was re-parsed with the target tables; 22 frames below the TMS5220 pitch floor were clamped.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board -- its own 6802, PIAs and firmware -- which booted and issued the same SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
+  },
+  "notes": [
+    "This sound ROM set is shared by 2 game revisions: flashgda, flashgdn.",
+    "Command order, not address order."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

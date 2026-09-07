@@ -711,6 +711,18 @@ class TestManifest(WorkflowFixture):
         self.assertEqual(sorted(example["outputs"][0]),
                          sorted(list(self.manifest["outputs"][0]) + ["path"]))
 
+    def test_it_records_every_revision_the_profile_serves(self):
+        """A bug report names one game; the manifest must say which set it was.
+
+        Revisions of a game share sound ROMs, so the driver a technician names
+        and the profile that converted it are often different words for the
+        same ROMs.
+        """
+        served = self.manifest["profile"]["applies_to"]
+        self.assertTrue(served)
+        self.assertIn(self.profile.id, served)
+        self.assertEqual(served, self.profile.revisions)
+
     def test_it_records_how_much_of_each_device_the_layout_reached(self):
         """A layout that finds a corner of the speech still converts and boots.
 
