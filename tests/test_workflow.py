@@ -1364,5 +1364,115 @@ class TestMirrorDoubleCoverage(WorkflowFixture):
     def test_the_ordinary_mirrored_set_still_converts(self):
         self.assertGreater(self.convert().stats["frames"], 0)
 
+class TestSpeechRunningOffTheEndOfAListedDevice(unittest.TestCase):
+    """The case a START test cannot see: a device the profile does not list.
+
+    If a set has two speech devices and the profile lists one, every phrase it
+    declares starts inside the listed device, every byte it changes is inside
+    it, that device changes, and the reconciliation balances. Nothing objects,
+    while the other device's speech is never converted and the user burns a set
+    that is half old tables.
+
+    Where the speech STOPS is what gives it away. A phrase whose data really
+    continues into the missing device runs off the end of the mapped one and
+    terminates in the 0xFF that fills unmapped space.
+    """
+
+    WINDOW, SPEECH, TABLE = 0xC000, 0xC000, 0xF000
+
+    def build_truncated_set(self):
+        """Speech that overruns its device, with the next device unlisted."""
+        from synthetic import original
+        from synthetic_game import _phrase
+        chip = original()
+        body = _phrase(chip, 7, 40, True)
+
+        size = 0x40
+        speech = bytearray(b"\xFF" * size)
+        # Fill the whole device with un-terminated speech, so the stream is
+        # still going when the device ends.
+        run = _phrase(chip, 7, 40, False)
+        while len(run) < size:
+            run += _phrase(chip, 9, 12, False)
+        speech[0:size] = run[:size]
+
+        table = bytearray(b"\xFF" * 0x1000)
+        table[0:2] = self.SPEECH.to_bytes(2, "big")
+        table[2:4] = self.TABLE.to_bytes(2, "big")
+
+        dumps = {"U2": bytes(speech), "U5": bytes(table)}
+        raw = {
+            "schema_version": 1, "profile_id": "truncated", "profile_version": 1,
+            "title": "Truncated", "manufacturer": "Bally", "year": 1981,
+            "board": "Squawk & Talk AS-2518-61", "source_chip": "tms5200",
+            "status": "draft",
+            "memory": {"window_base": self.WINDOW, "window_size": 0x4000,
+                       "fill": 255},
+            "devices": [
+                {"socket": "U2", "label": "speech", "type": "2716",
+                 "size": size, "cpu_address": self.SPEECH, "mirrored": False,
+                 "holds_speech": True, "sha256": sha256(dumps["U2"])},
+                {"socket": "U5", "label": "table", "type": "2532",
+                 "size": 0x1000, "cpu_address": self.TABLE, "mirrored": False,
+                 "holds_speech": False, "sha256": sha256(dumps["U5"])},
+            ],
+            "layout": {"table_offset": self.TABLE - self.WINDOW,
+                       "base_address": self.WINDOW, "phrases": 1,
+                       "address_ordered": True, "has_end_bound": True,
+                       "truncate_last_byte": []},
+            "evidence": {"layout": "constructed for this test"},
+        }
+        return dumps, raw
+
+    def test_it_is_refused(self):
+        """Two guards can catch this; the set must not convert either way.
+
+        Usually the overrun bytes CHANGE, and the converted-bytes check names
+        them. The terminator check is the backstop for when they happen to
+        convert to themselves, which changes nothing and so is invisible to a
+        byte comparison.
+        """
+        dumps, raw = self.build_truncated_set()
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dumps, Profile(raw, "<truncated>"),
+                        chips.resolve("tms5220"))
+        message = str(caught.exception)
+        self.assertIn("past the end of", message)
+
+    def test_the_terminator_check_catches_it_on_its_own(self):
+        """With the byte comparison satisfied, the backstop must still fire."""
+        from tms52xx import workflow
+        from tms52xx.rom import patch_rom as real_patch
+        dumps, raw = self.build_truncated_set()
+        profile = Profile(raw, "<truncated>")
+        device = profile.device_for("U2")
+        end = device.cpu_address - profile.window_base + device.size
+
+        def patch(image, table, source, target, **kwargs):
+            out, results = real_patch(image, table, source, target, **kwargs)
+            # Undo every change past the device, so the converted-bytes check
+            # sees nothing to complain about and only the terminator is wrong.
+            data = bytearray(out)
+            data[end:] = image[end:]
+            return bytes(data), results
+
+        workflow.patch_rom = patch
+        try:
+            with self.assertRaises(ConversionRefused) as caught:
+                convert_set(dumps, profile, chips.resolve("tms5220"))
+        finally:
+            workflow.patch_rom = real_patch
+        message = str(caught.exception)
+        self.assertIn("unmapped space", message)
+        self.assertIn("left unconverted", message)
+
+    def test_the_phrase_starts_inside_the_listed_device(self):
+        """Otherwise the START guard would be what fires, not this one."""
+        dumps, raw = self.build_truncated_set()
+        profile = Profile(raw, "<truncated>")
+        device = profile.device_for("U2")
+        at = device.cpu_address - profile.window_base
+        self.assertTrue(at <= (self.SPEECH - self.WINDOW) < at + device.size)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

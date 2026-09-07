@@ -274,6 +274,53 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
          "final_byte": verdicts.get(r.phrase.index)}
         for r in results]
 
+    # EVERY PHRASE MUST TERMINATE INSIDE A DEVICE.
+    #
+    # This is the case the START test above cannot see. Suppose a set has two
+    # speech devices and a profile lists only one. Every phrase it declares
+    # starts inside the listed device, every byte it changes is inside it, that
+    # device changes, and the reconciliation balances -- so nothing so far
+    # objects, while the second device's speech is never converted at all and
+    # the user is handed a set that is half old tables.
+    #
+    # What gives it away is where the speech STOPS. A phrase whose data really
+    # does continue into the missing device runs off the end of the mapped one
+    # and terminates in the 0xFF that fills unmapped space, because 0xFF is a
+    # stop frame. So the stop frame lands outside every device, which cannot
+    # happen for a phrase whose device is present.
+    #
+    # In most such layouts the overrun bytes CHANGE, and the converted-bytes
+    # check above names them first. This is the backstop for when they happen to
+    # convert to themselves: that changes nothing, so a byte comparison cannot
+    # see it, while the terminator is still sitting in unmapped space.
+    #
+    # This is deliberately about the TERMINATOR and not about the declared
+    # extent. A phrase is bounded by the next pointer or by the table, and that
+    # bound legitimately reaches across unmapped space -- Flash Gordon (French)
+    # has a phrase bounded 10 KB away, whose speech stops after 207 bytes, well
+    # inside its device. Testing the extent refuses that; testing where the
+    # speech ends does not.
+    stranded = []
+    for record in results:
+        if not record.stopped_cleanly:
+            continue                    # already refused, or declared
+        frames, _ = parse(bytes(image[record.phrase.start:record.phrase.end]),
+                          src_tables.pitch_bits, list(src_tables.k_widths))
+        if not frames:
+            continue
+        last = record.phrase.start + (frames[-1].end_bit + 7) // 8 - 1
+        if last not in covered:
+            stranded.append((record.phrase.index, record.phrase.start, last))
+    if stranded:
+        index, start, last = stranded[0]
+        raise ConversionRefused(
+            "phrase %d starts at 0x%X but its speech runs past the end of every "
+            "device and only stops at 0x%X, in unmapped space -- %d phrase(s) "
+            "do. Unmapped space is 0xFF, which is a stop frame, so this is what "
+            "a phrase whose device the profile does not list looks like. Some "
+            "of this set's speech would be left unconverted."
+            % (index, start, last, len(stranded)))
+
     # A MIRRORED DEVICE MUST NOT BE CONVERTED THROUGH BOTH OF ITS WINDOWS AT
     # THE SAME OFFSET.
     #
