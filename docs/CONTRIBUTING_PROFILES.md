@@ -50,12 +50,22 @@ which prints the SHA-256 of each file whether it recognises them or not.
 Be honest about this. It is the field a technician reads before trusting the
 profile.
 
-| status | means |
+| status | means, exactly |
 |---|---|
 | `draft` | written, not yet checked against a real dump |
-| `layout-verified` | the layout parses: every phrase found, every one terminates |
-| `emulator-verified` | converted output renders correctly through an emulator |
-| `silicon-verified` | a converted set has been played on a real board |
+| `layout-verified` | every phrase is found and terminates in a stop frame |
+| `board-simulated` | the board's own firmware, in emulation, boots and drives the **converted** ROMs |
+| `silicon-verified` | a converted set has been fitted to a real board and listened to |
+
+**No rung below `silicon-verified` means anyone has heard the speech.** Not
+even `board-simulated`: that checks structure and control flow, not sound.
+
+`board-simulated` is nonetheless the rung that matters most, because it is the
+only one that catches a layout which converted something that was not speech.
+Embryon's own profile shipped briefly with a pointer-table end bound read as a
+21st phrase; it parsed, it terminated, it changed nothing outside its extent,
+and it rewrote 6800 instructions. Every static check passed it. Booting the
+board against the converted ROMs did not.
 
 **Only a real-machine test earns `silicon-verified`**, and it needs a report —
 see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).

@@ -39,9 +39,19 @@ def profile_dir() -> Path:
 #: Bumped when the on-disk shape changes in a way older readers cannot handle.
 SCHEMA_VERSION = 1
 
-#: How far a profile has been taken. Only "silicon-verified" means someone has
-#: played the converted ROM on a real board.
-STATUS_VALUES = ("draft", "layout-verified", "emulator-verified",
+#: How far a profile has been taken. Each rung names exactly what was done, and
+#: nothing implies the next one. In particular no rung below `silicon-verified`
+#: means anyone has HEARD the converted speech.
+#:
+#:   draft             written, not checked against a real dump
+#:   layout-verified   every phrase found and terminating in a stop frame
+#:   board-simulated   the board's own firmware, in emulation, boots and drives
+#:                     the CONVERTED ROMs -- structure and control flow, not
+#:                     sound. This is the rung that catches a layout which
+#:                     rewrote code: nothing static will.
+#:   silicon-verified  a converted set has been fitted to a real board and
+#:                     listened to, with a report
+STATUS_VALUES = ("draft", "layout-verified", "board-simulated",
                  "silicon-verified")
 
 

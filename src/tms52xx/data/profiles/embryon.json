@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile_id": "embryon",
-  "profile_version": 2,
+  "profile_version": 3,
   "title": "Embryon",
   "manufacturer": "Bally",
   "year": 1981,
@@ -49,7 +49,7 @@
   "chip_commands_observed": [
     "0x60"
   ],
-  "status": "emulator-verified",
+  "status": "board-simulated",
   "evidence": {
     "layout": "Pointer table at CPU $FC1C (file 0x3C1C in the assembled window), 21 entries: 20 phrases and a final END BOUND at $F9DA. Command-ordered. All 20 phrases parse and terminate in a stop frame.",
     "speech_addressing": "Phrase pointers resolve to $E800-$F9DA, i.e. U4 is reached through its mirror.",

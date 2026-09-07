@@ -114,7 +114,7 @@ Anything else worth knowing?
 
 ## What happens to your report
 
-A PASS on a profile moves it from `emulator-verified` to `silicon-verified`, and
+A PASS on a profile moves it from `board-simulated` to `silicon-verified`, and
 that is recorded in the profile with your report referenced. A FAIL or PARTIAL
 is more valuable still: it means something is wrong that no amount of emulation
 was going to find, and it will be treated as a bug.

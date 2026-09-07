@@ -120,7 +120,7 @@ mid-run, check the hashes in the manifest against the files before burning.
 
 | game | status | notes |
 |---|---|---|
-| Bally **Embryon** (1981) | `emulator-verified` | 20 phrases, U4 (2716) + U5 (2532) |
+| Bally **Embryon** (1981) | `board-simulated` | 20 phrases, U4 (2716) + U5 (2532) |
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
@@ -151,6 +151,33 @@ so — there is nowhere in a TMS52xx stream to put one — but it no longer matc
 the profile's hashes, so `convert-set` refuses it whether you let it identify
 the set or force `--game`. The manual `convert` path has no such protection, so
 keep your originals.
+
+## Will this work for my game?
+
+**If your game is not in the table above, this tool will not convert it
+automatically, and that is deliberate.** There are roughly fifty known Squawk &
+Talk ROM sets. Understudy ships one profile. It has no way to know the layout of
+the other forty-nine, and it does not guess: an unrecognised set is reported and
+refused, not converted on a hunch.
+
+That is the honest answer to "is it safe for all Squawk & Talk ROMs". It is not
+validated for all of them and does not claim to be. What it is built to
+guarantee is narrower and more useful: **it will not silently hand you a wrong
+ROM.** Where it cannot be sure, it stops.
+
+We take that seriously because our own only profile was wrong. Embryon shipped
+briefly reading one pointer too many — an end bound treated as a 21st phrase.
+It parsed. It terminated in a stop frame. It changed nothing outside its own
+declared extent. Every static check passed, and it rewrote 6800 instructions the
+sound board executes. What caught it was booting the board's firmware against
+the converted ROMs in emulation, and that is now what `board-simulated` means
+and what a profile has to clear.
+
+So the assurance for a supported game is: an exact hash match on every device, a
+layout whose every phrase is found and terminates, a conversion checked frame by
+frame and reconciled byte for byte, and the board's own firmware running against
+the result. The assurance for an unsupported game is that you will be told it is
+unsupported.
 
 ## Things that will bite you at the bench
 
@@ -185,14 +212,18 @@ Be precise about what has been done, because the three are different things:
 | | |
 |---|---|
 | every conversion you run | re-parsed and checked frame by frame — **structural only** |
-| the Embryon reference conversion | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them |
+| the Embryon reference conversion | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them — **structure and control flow, not sound** |
+| any conversion, listened to | **never** |
 | any conversion, on hardware | **never** |
 
-That middle row is worth reading twice. It means the board's own firmware runs
-against the converted ROMs in an emulator — which is how a real defect in the
-Embryon profile was found: an entry in the pointer table was an end bound
-rather than a 21st phrase, converting it rewrote 6800 instructions, and the
-simulated board stopped booting. It does not mean anyone has heard the result.
+The middle rows are worth reading carefully. The board's own firmware runs
+against the converted ROMs in an emulator, which is how a real defect in the
+Embryon profile was found: an entry in the pointer table was an end bound rather
+than a 21st phrase, converting it rewrote 6800 instructions, and the simulated
+board stopped booting. Every static check had passed it.
+
+That is a strong structural result and it is **not** an acoustic one. Nobody has
+heard this speech, in an emulator or otherwise.
 
 If you fit a converted set to a real board, please tell us how it went:
 [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) is a template for
