@@ -65,6 +65,13 @@ features.
   rather than ignored — otherwise the argument would act as a blanket override
   instead of a statement about the bytes in front of it.
 
+- **Criterion 4 now compares total sound output, not just speech commands.**
+  Rapid Fire showed why: a conversion that rewrites executed code can still boot
+  and still issue an identical set of speech commands while the board's DAC
+  output falls by 63%. All 15 bundled profiles drive the sound hardware
+  identically to their originals — speech commands, total TMS writes and DAC
+  writes all equal.
+
 ### Fixed
 
 - **Two shipped profiles were wrong**, both found by checking them against a

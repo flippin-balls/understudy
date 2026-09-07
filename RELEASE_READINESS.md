@@ -76,7 +76,9 @@ declared and checked as one the player terminates instead (one phrase of
 **every stream the firmware plays falling inside a converted phrase** — checked
 against a phrase list captured from the running board, not against another
 static read of the ROM — and the board's own firmware booting and driving the
-converted ROMs identically to the originals.
+converted ROMs identically to the originals — compared on total writes to the
+sound hardware, not only on speech commands, because a set can issue identical
+speech commands while its other sound output collapses (§8b).
 
 That third criterion is stated as coverage of what was played, deliberately. It
 is not a claim that every declared phrase was independently confirmed; eight of
@@ -143,13 +145,15 @@ These are accounted for, not merely absent:
 
 | set | drivers | why |
 |---|---|---|
-| `rapidfir` | 2 | The board is fitted with only its firmware ROM (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Driven through all 64 commands its MPU can send, the firmware makes **zero** writes to the TMS. There is no speech in this set to convert. |
+| `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Driven through all 256 commands, the firmware makes **zero** writes to the TMS while writing the DAC 128,144 times: it makes sound, but never speech. The trace therefore yields no streams, so criterion 3 cannot be satisfied by any layout — and the one the auto-detector proposes rewrites 27 bytes of executed code while still booting (§8b). |
 | `cosflash` | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
 | `bigbat` | 1 | No dump obtainable. |
 | `blackbl2` | 1 | The PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
 
-`rapidfir` is the reason coverage stops at 15 rather than 16: it was expected to
-be convertible and is not, because there is nothing there.
+`rapidfir` is the reason coverage stops at 15 rather than 16. It was expected to
+be convertible and is not, and the finding is a negative one established rather
+than assumed: no speech sockets fitted, no TMS writes in 256 commands, no traced
+streams, and the only candidate layout is code.
 
 An unrecognised set is reported and refused, never converted on a guess.
 
@@ -279,6 +283,29 @@ Three conclusions, all acted on:
 
 The harness is not in the repository: it depends on a private research toolkit
 and on ROM images. Its findings are.
+
+## 8b. Rapid Fire: a boot is not a check
+
+The set expected to be the sixteenth has no speech. Trying to convert it anyway
+is the sharpest demonstration in this project of why criterion 4 cannot stand
+alone.
+
+| | |
+|---|---|
+| auto-detected layout | table `$F82D`, 8 phrases, every one terminating in a stop frame, confident score |
+| Understudy's verdict | refused at 8 and 9 phrases; **accepted at 7** — 69 frames, 111 bytes changed |
+| board simulation | **boots**, and issues the same speech commands as the original (both zero) |
+| bytes rewritten that the CPU executes | **27** |
+| DAC output, original → converted | 128,144 → 47,760 writes, a 63% loss |
+
+The same detector proposes Fathom's known-wrong `$FA6F`/28 and a table for
+Mr. and Mrs. Pac-Man that is nowhere near its real one at `$F20E`. Nothing here
+ships on detection, and nothing ships on a boot.
+
+It also sharpened criterion 4. Comparing SPEAK EXTERNAL counts cannot see a set
+whose *other* sound output collapsed, so the check now compares total writes to
+the sound hardware. All 15 bundled profiles drive it identically to their
+originals — speech commands, total TMS writes and DAC writes all equal.
 
 ## 9. Known limitations
 

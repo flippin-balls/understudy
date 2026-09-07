@@ -144,7 +144,7 @@ The other four sets are not gaps that more work would close:
 
 | set | drivers | why not |
 |---|---|---|
-| **Rapid Fire** | 2 | Its Squawk & Talk board has only the firmware ROM fitted (`U5`); the three speech sockets are empty. The firmware never writes to the TMS at all. There is no speech to convert. |
+| **Rapid Fire** | 2 | Only the firmware ROM is fitted (`U5`); the three speech sockets are empty. Driven through all 256 commands, the firmware writes to the TMS **zero** times while writing the DAC 128,144 times — it makes sound, but never speech. There is nothing to convert, and §"the one that proves the point" below shows what happens if you try anyway. |
 | **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump obtainable to confirm it. |
 | **Big Bat** | 1 | No dump obtainable. |
 | **Black Belt** (`blackbl2`) | 1 | The PinMAME driver records no CRC or SHA-1 for its sound ROMs, so a dump could not be verified as the right one even with one in hand. |
@@ -264,6 +264,28 @@ and the board's own firmware running against the result. The assurance for an
 unsupported game is that you will be told it is unsupported.
 
 None of that is a claim that anyone has heard the output. Nobody has.
+
+### The one that proves the point
+
+Rapid Fire is the set that was expected to be the sixteenth and turned out to
+have no speech at all. It is worth reading, because it is the cleanest example
+of why a boot is not a check.
+
+Point automatic layout detection at it and it returns a table at `$F82D` with a
+confident score and every phrase terminating in a stop frame. Convert on that
+basis and Understudy — for one of the three phrase counts you might pick —
+accepts it: 69 frames, 111 bytes changed. Load the result into the board
+simulation and **it boots**, and issues exactly the same speech commands as the
+original, because the original issues none.
+
+27 of those 111 changed bytes are addresses the CPU actually executes. The
+board's DAC output falls from 128,144 writes to 47,760 — it lost 63% of its
+sound and still passed every check that looks at speech.
+
+The detector is not being stupid, either: the same detector proposes `$FA6F`
+with 28 phrases for Fathom, which is precisely the layout that shipped and
+rewrote firmware, and `$EF25` for Mr. and Mrs. Pac-Man, whose real table is at
+`$F20E`. Its acceptance means nothing, which is why no profile here ships on it.
 
 ## Things that will bite you at the bench
 
