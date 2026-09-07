@@ -1,35 +1,67 @@
 # Where the chip tables come from
 
-This project ships no TMS5200 or TMS5220 coefficient data. You supply it.
+**Understudy bundles the TMS5200 and TMS5220 coefficient tables.** You do not
+need to extract anything to convert a ROM. They live in `src/tms52xx/data/`,
+ship inside the installed package, and each file records where it came from.
 
-## Why
+This page explains what that data is, how to check it yourself, and what else
+exists. [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) is the licence
+record; this is the research one.
 
-This is a practical decision about provenance, and the paragraphs below are not
-legal advice. Individual values in these tables are measurements of silicon, but
-that observation does not by itself settle anything: selection, transcription
-and arrangement can matter, and so can the licence of whatever file you extract
-from. The position taken here is to keep that decision with you rather than make
-it for you.
+## What is bundled, and why that source
 
-The practical problem is provenance. Other projects do carry these tables, and
-every copy we found that holds *these* values traces back to MAME — the projects
-carrying it say so themselves, and one downstream copy is tagged with a
-permissive licence its own upstream does not use. The copies that do not trace
-back to MAME hold **different numbers**. Both cases are set out with the
-evidence in *Other projects carry these tables* below.
+| | |
+|---|---|
+| Upstream | MAME, `src/devices/sound/tms5110r.hxx` |
+| Licence | BSD-3-Clause, by that file's own header |
+| Verification | decap and PROMOUT, stated upstream per table |
 
-PinMAME, the most complete of them, is part-way through migrating from the old
-MAME licence to 3-Clause BSD, per file, and files that have not been converted
-remain under terms that restrict commercial use. Vendoring a generated copy
-would carry that ambiguity into every project that depends on this one,
-permanently, in exchange for saving each user a single command.
+Two things had to be true before bundling anything. Both are checkable:
 
-So the extraction is a step you run, against a source you have chosen, under a
-licence you have read. To be plain about what that does and does not achieve:
-extracting the values yourself is **not a licence workaround**. Output generated
-from a file may carry that file's terms with it. You are responsible for
-complying with whatever governs the source you use; this project simply declines
-to make that choice on your behalf and then hide it in a data file.
+**The file is BSD-3-Clause.** Its header reads `// license:BSD-3-Clause`, and
+MAME's `COPYING` says individual files may be under less restrictive licences
+than MAME as a whole, as noted in their header comments. So the notice travels
+with the data — that is what `THIRD_PARTY_NOTICES.md` and
+`LICENSES/BSD-3-Clause.txt` are, and both ship inside the package.
+
+**The values are decap-verified, not transcribed.** Upstream records, for the
+TMS5200, "decapped and imaged by digshadow in March, 2013 […] The LPC table is
+verified to match the decap. (It was previously dumped with PROMOUT which
+matches as well)"; and for the TMS5220 and 5220C the same, with the 5220C's
+table "verified to match the decap and exactly matches TMS5220NL".
+
+This is our reading of the licensing, offered so you can check it rather than
+take it on trust. It is not legal advice.
+
+## Checking the bundled data yourself
+
+```
+git clone https://github.com/mamedev/mame
+python tools/extract_tables.py mame src/tms52xx/data/
+git diff --stat src/tms52xx/data/
+```
+
+A clean diff means what ships is exactly what upstream holds. The extractor
+prints the source file's SHA-256 and licence header, and says so plainly if the
+file is not a revision it has been checked against.
+
+It also reads PinMAME's `src/sound/tms5220r.c`, whose tables are identical for
+these two parts. That path is for comparison. PinMAME is mid-migration to
+per-file BSD-3-Clause and not every file has been converted, which is why the
+bundled copy comes from MAME.
+
+## Using your own tables instead
+
+Every command takes `--source-tables` and `--target-tables`. That is the
+research path, and the route for a variant these tables do not cover. Understand
+what you give up: the manifest records that custom tables were used and hashes
+them, but nothing checks that a file you supply describes the part you named.
+
+## A note on extracting data yourself
+
+Extracting values from a file is **not a licence workaround**. Output generated
+from a file may carry that file's terms with it. If you build tables from some
+other source, you are responsible for complying with whatever governs it.
 
 ## Format
 
@@ -51,85 +83,13 @@ Two files, `tms5200.json` and `tms5220.json`:
 declared field width, so a mis-sized table fails at load rather than producing
 quiet nonsense downstream.
 
-## Getting them
+## Where else these tables exist
 
-**From a PinMAME checkout.** The most practical route. Clone the source and run
-the extractor; you need only the source tree, not a built emulator.
-
-```
-git clone https://github.com/vpinball/pinmame
-python docs/from_pinmame.py pinmame tables/
-```
-
-That writes `tables/tms5200.json` and `tables/tms5220.json`, which is what the
-`--source-tables` and `--target-tables` options take. The file it reads is
-`src/sound/tms5220r.c` — **read the licence header on that specific file in your
-own checkout** and satisfy yourself it suits your use before relying on the
-output. The clone is a few hundred megabytes; `--depth 1` is enough if you only
-want the tables, though the pinned revision below will then not be in it.
-
-### The revision this was last verified against
-
-PinMAME moves, and `tms5220r.c` is hand-maintained C rather than a data file, so
-an extractor that reads it is a parser against a moving target. The last
-revision this was run against:
-
-| | |
-|---|---|
-| repository | <https://github.com/vpinball/pinmame> |
-| commit | `9ac98e75ade3ce9efc967fa3082cddec8c5ab869` |
-| `src/sound/tms5220r.c` sha256 | `21e3e4c16f044f2a380dbbb630ed375061218936256d413802c3f73883afbdc0` |
-
-At that revision the extracted tables were compared value-for-value against an
-independently written parser of the same file — 12 tables per part, energy,
-pitch and K1–K10 — and matched exactly. That second parser lives in a private
-repository and is **not included here**, so the comparison is an assertion about
-work done elsewhere, not something you can re-run from this checkout. It is also
-only a check on the extractor: it says two readers agree about what the file
-says, and nothing about whether PinMAME is right.
-
-What you CAN reproduce here is `tests/test_extractor.py`, which runs the
-extractor against a synthetic C file with the same awkward shape as the real one
-— positional struct fields, a dead `#if 0` branch holding a decoy table, and
-backslash-continued macro bodies — and asserts both the extracted values and
-that a changed source shape is refused rather than misparsed.
-
-It writes both tables only after extracting and validating both, so a failure
-on the second cannot leave a fresh file beside a stale one. Two renames are
-still two renames: a filesystem failure between them could leave one new table
-and one old, which is why conversion manifests record the SHA-256 of both table
-files.
-
-`from_pinmame.py` checks the source file's SHA-256 against the revision above
-and says so if it differs, and it validates every extracted table against the
-width its own struct declares. That catches a changed table *shape*. It does not
-prove semantic correctness: a reordering of the struct's fields, or a
-preprocessor construct the parser does not model — it handles literal `#if 0`
-blocks and nothing more — could produce a table of the right size and the wrong
-contents. If the hash note appears, compare a few values by eye before relying
-on the result.
-
-**From the datasheet.** Texas Instruments' *TMS5220 Voice Synthesis Processor
-Data Manual* documents the frame format and the tables. Scanned copies are
-mirrored publicly:
-
-* archive.org, [the June 1981 preliminary manual](https://archive.org/details/bitsavers_tidataBooksisProcessorDataManualpreliminaryJun81_7901308)
-* archive.org, [an IC datasheet copy](https://archive.org/details/TMS5220)
-* [bitsavers](http://bitsavers.org/components/ti/), under `components/ti`
-
-Transcribing by hand is tedious and error-prone, but it is the cleanest
-provenance available, and `ChipTables` will catch a mis-keyed table length. Note
-that the manual is the TMS5220's: a TMS5200 table transcribed from it would be
-the wrong chip, which is the entire problem this project exists to solve.
-
-**From your own measurements.** If you have working silicon and the patience,
-this is the only route that owes nothing to anyone else's transcription.
-
-### Other projects carry these tables. Here is what is actually in them.
-
-A reasonable question is whether some other project already publishes the tables
-under a friendlier licence. Several do carry them, so it is worth setting out
-what is in each, because the answer is not the one you would hope for.
+A reasonable question during this work was whether some other project
+publishes these tables under a friendlier licence than MAME's old terms.
+Several carry them. What is in each is worth recording, because the answer is
+not the one you would hope for — and because it is why the bundled copy comes
+from MAME rather than from a downstream repackaging.
 
 | project | licence | has 5200 *and* 5220? | values |
 |---|---|---|---|
@@ -143,7 +103,7 @@ Two things follow.
 
 **A permissive tag downstream does not launder the ancestry.** python_wizard's
 `lpcplayer/tables.py` is the closest thing to a drop-in: it is Python, it has
-both variants, and every value in it is identical to what `from_pinmame.py`
+both variants, and every value in it is identical to what `tools/extract_tables.py`
 extracts — energy, pitch and K1–K10, both parts, checked field by field. Its
 repository declares MIT. But its own README says `lpcplayer` is "based on
 talkie", Talkie is GPL-3.0, and Talkie's `TalkieLPC.h` header says where the

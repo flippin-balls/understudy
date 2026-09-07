@@ -1,230 +1,354 @@
 # understudy
 
-Convert TMS5200 LPC speech data so it plays correctly on a TMS5220.
+**Your Bally Squawk & Talk has a dead TMS5200 and you cannot get another one.**
+This converts the speech data in its ROMs into the coefficient tables a
+TMS5220, TMS5220C or TSP5220C uses, so the data means the same thing to the
+replacement part that it meant to the original.
 
-The TMS5200 has been out of production for decades. Machines that shipped with
-one still need to talk, and the TMS5220 — a later part from the same family — is
-what this project targets as a substitute.
+What that does *not* do is establish that any of those parts drops into your
+board electrically. Nobody has yet run a converted ROM on real hardware — see
+[Silicon validation](#silicon-validation) — and pinout, supply and clock are
+yours to check against the datasheet.
 
-The two are close enough to be tempting and different enough to be wrong. They
-share the frame grammar and every field width, so a TMS5200 stream fed to a
-TMS5220 parses perfectly — and then sounds wrong, because the coefficient tables
-behind the indexes are not the same. Nothing errors; the speech is just off.
+An open-source preservation project from
+[Flashback Fleet LLC](https://github.com/flippin-balls), who run these machines
+on location and would rather they kept talking.
 
-This library re-indexes the data into the substitute chip's tables. Because no
-field changes width, a converted stream is **exactly as long as the original**,
-so a speech ROM can be patched in place with no pointer table, phrase boundary
-or timing changed.
+> **Status: pre-1.0.** The reference Embryon conversion was checked against
+> real ROM data, and the board's own firmware boots and drives the converted
+> ROMs in emulation — a structural result, not an acoustic one. Each conversion
+> you run is **structurally checked**: the output is re-parsed and every frame's
+> kind compared. **Nobody has heard this speech, and no converted ROM from this
+> tool has ever been played on a real Squawk & Talk board.** Until that happens
+> this is a research preview: see [Silicon validation](#silicon-validation).
 
+---
 
-## The constraint worth knowing before you start
+# I'm fixing a board
 
-The two chips do not cover the same pitch range. The TMS5220's excitation
-period table stops shorter than the TMS5200's, so the lowest-pitched frames in a
-TMS5200 stream have no destination to map to and must be clamped upward.
+## What you need
 
-Reading PinMAME's `src/sound/tms5220r.c`, the longest period a TMS5220 can be
-driven to is 159 samples against the TMS5200's 211 — about 50.3 Hz against
-37.9 Hz at the 8 kHz sample rate. Nine candidate workarounds were built and
-rendered; none moved the fundamental below the table's floor.
+- your machine's sound ROMs, read out of their sockets (one file per device);
+- a blank EPROM of the same type for each device that holds speech;
+- a replacement chip. All three targets produce identical converted bytes,
+  because their LPC tables are identical; the TSP5220C is usually the easiest
+  to find. Electrical substitution is **not** something this project has
+  verified — see [docs/CHIPS.md](docs/CHIPS.md);
+- Python 3.9 or newer.
 
-So conversion preserves the frame structure and timing exactly, maps each
-coefficient to the nearest entry in the substitute chip's tables, and raises the
-pitch of frames below that chip's floor. `FrameConversion` reports
-`pitch_clamped` per frame, so you can see where and how often rather than
-discovering it by ear.
+You do **not** need MAME, PinMAME, coefficient tables, or any knowledge of how
+the speech data is laid out. Those are bundled or worked out for you.
 
-**Nothing here has been confirmed on silicon.** The ceiling follows from the
-coefficient table and the counter comparison, both documented chip behaviour, so
-it should transfer — but that is an expectation, not a measurement, and it is
-the only caveat of its kind stated in this file.
-[docs/PITCH_CEILING.md](docs/PITCH_CEILING.md) has the detail and
-[docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) the rest.
-
-## Installing
-
-Pure Python, standard library only, no dependencies. Python 3.9 or newer.
+## Install
 
 ```
-git clone https://github.com/flippin-balls/understudy
-cd understudy
-PYTHONPATH=src python -m unittest discover -s tests    # all offline, no fixtures
+pip install understudy
 ```
 
-Either install it, which gives you an `understudy` command:
+or run it straight from a clone with `PYTHONPATH=src python -m tms52xx.cli`.
+
+## Two commands
 
 ```
-pip install .
-understudy --help
+understudy identify 841-01_4.716 841-02_5.532
 ```
 
-or run it in place without installing anything:
-
 ```
-PYTHONPATH=src python -m tms52xx.cli --help
+understudy convert-set 841-01_4.716 841-02_5.532 --target tsp5220c -o out/
 ```
 
-The examples below use the second form. If you installed it, replace
-`python -m tms52xx.cli` with `understudy`.
+That is the whole job. `identify` tells you which game and revision you have.
+`convert-set` assembles the CPU's view of the sockets, converts every phrase,
+splits the result back into device-sized files, and tells you which chip to burn
+each one into.
 
-## Converting a ROM
+Your original dumps are never modified, and `convert-set` refuses to write over
+them even if you ask it to.
 
-You need three things, and each has a section explaining where to get it:
-
-* **the chip tables** — not included; extract them from a PinMAME checkout with
-  the script provided, or transcribe them from TI's data manual.
-  [docs/PROVENANCE.md](docs/PROVENANCE.md#getting-them) has the commands and the
-  archived datasheet links.
-* **your ROM** — read from your own board, or from the machine's entry on the
-  [Internet Pinball Database](https://www.ipdb.org/), which also carries the
-  manuals and schematics that tell you which socket is which.
-  [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md#where-the-roms-come-from)
-  covers that, and the 2532-versus-2732 pinout trap that will otherwise give you
-  a file of the right size and the wrong contents.
-* **the phrase layout for your title** — five numbers, none of them derivable
-  from the ROM alone.
-  [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md#working-out-the-layout-for-your-rom)
-  is a step-by-step procedure for finding them, with a worked example.
+## What it prints before you burn anything
 
 ```
-python -m tms52xx.cli inspect speech.bin --table-offset 0x40 --phrases 20 \
-    --source-tables tables/tms5200.json
+====================================================================
+  CHECK THIS BEFORE YOU BURN ANYTHING
+====================================================================
+profile      Bally Embryon (1981)  (embryon v3, status board-simulated)
+chips        tms5200  ->  tsp5220c
+tables       source b52952638192 / target f15418abad1b  (bundled)
 
-python -m tms52xx.cli convert speech.bin -o speech-5220.bin \
-    --source-tables tables/tms5200.json \
-    --target-tables tables/tms5220.json \
-    --table-offset 0x40 --phrases 20 --dry-run
+input dumps
+  U4   2716       2048 bytes  sha256 8495958b46c73f98840adff7
+  U5   2532       4096 bytes  sha256 f24559ad001b4cbb1ef4442a
+
+conversion
+  phrases                20
+  frames                 850
+  frame kinds preserved  850 of 850
+  clamped to pitch floor 17 (2.0%)
+  f0 error, unclamped    median 1.07 Hz, max 3.40 Hz
+  bytes changed          3508
+
+output devices
+  U4   2716       2048 bytes  1560 changed  (taken from the mirror half)
+       burn into 2716: out/841-01_4_U4_2716_tsp5220c.716
+  U5   2532       4096 bytes  1948 changed
+       burn into 2532: out/841-02_5_U5_2532_tsp5220c.532
+
+  reconciliation         3508 changed across devices == 3508 in the image
+
+warnings
+  - 17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised; those will sound higher than the original.
+  - profile status is 'board-simulated': no converted ROM from this profile has been played on a real board.
 ```
 
-`inspect` writes nothing. With `--source-tables` it also parses each phrase and
-reports whether its final ROM byte is `required` or `spare`, which is what
-decides whether `--truncate-last-byte` is safe for that phrase — the convention
-is per stream, so the flag takes phrase indexes.
+Read the reconciliation line. It is the arithmetic check that the bytes changed
+in the image are exactly the bytes changed in the files you are about to burn.
 
-The dry run reports how many frames had to be pitch-clamped before anything is
-written. Drop `--dry-run` to produce the file.
+Output filenames carry the socket **and the device type**, because those are the
+two things you need at the programmer.
 
-**Convert the original, once.** The input must be the unmodified TMS5200 image.
-Running the same conversion on a ROM that has already been converted re-reads
-its indexes as though they were TMS5200 indexes and moves them a second time —
-the file stays valid, the same length, and structurally correct, and the speech
-degrades. Nothing detects this for you: a converted ROM carries no marker, and
-the tool cannot tell one from an original. Keep the original, and use the
-manifest's `input.sha256` to confirm what you are feeding it.
+Nothing is written until every destination has been checked, and then the files
+are written as a set: each is staged and flushed to disk before any of them is
+renamed into place, and if a rename fails the ones already done are rolled back.
+So an ordinary failure — a full disk, a permission change, a drive pulled —
+leaves the directory as it was rather than a mixture of new and stale images.
+A power loss during the renames is not covered by that; if the machine dies
+mid-run, check the hashes in the manifest against the files before burning.
 
-**What it refuses to do.** The input ROM is never modified, and `--force` will
-not write over it even if you name it as the output — it only permits replacing
-an existing output file. A phrase that does not end in a stop frame stops the
-conversion outright rather than warning, because the usual cause is a wrong
-layout aimed at code or data, and the result would be a plausible-looking file
-that is silently wrong (`--allow-unterminated` if you are sure). A frame whose
-fields run past the end of its phrase is left exactly as found rather than
-half-rewritten. Before writing, the tool re-reads its own output and refuses to
-emit the file if anything outside the declared phrase extents changed.
+## Supported games
 
-Output and manifest are each written through a temporary file and renamed, so an
-interrupted run cannot leave a half-written ROM in place of a good one. The two
-renames are not a single transaction: the manifest is committed first, so an
-interruption between them leaves a manifest describing a ROM that was not
-written. Compare the manifest's `output.sha256` against the file before
-trusting a pair you did not watch complete.
+| game | status | notes |
+|---|---|---|
+| Bally **Embryon** (1981) | `board-simulated` | 20 phrases, U4 (2716) + U5 (2532) |
 
-The manifest records the hashes of the input, the output and both table files,
-the layout you declared, the per-phrase results and the exact byte ranges that
-changed.
+`understudy profiles` lists what your copy has. A game not in that list is not
+unsupported — it just has no profile yet, so it needs the
+[manual path](#i-want-to-understand-or-extend-the-research). If you work one
+out, please [contribute it](docs/CONTRIBUTING_PROFILES.md); it needs no ROM
+data.
 
-## Has it been run on a real ROM?
+## What it will refuse to do
 
-Yes, though not yet on real silicon. The tool was run end to end against a
-Squawk & Talk speech image assembled from an original Bally *Embryon* ROM set
-(a 2716 in U4, a 2532 in U5, mapped at `$E000` and `$F000`). No ROM data from
-that set appears in this repository.
+Understudy stops rather than write a ROM that might be wrong. It refuses when:
 
-All 21 phrases parsed and every one ended in a stop frame. That is a necessary
-consistency check rather than proof: a 4-bit `0xF` can occur by chance in
-arbitrary data, so clean termination across every phrase is evidence the layout
-is right, not a demonstration of it. Converting them:
+- **your dumps do not match a profile exactly.** Identification is by SHA-256:
+  every speech-bearing device must match for a set to be recognised, and every
+  device the profile emits must be hashed before it will convert at all. A
+  near-miss is a different revision or a bad read, and either way this layout is
+  not the right one for it;
+- **more than one profile matches**, or none does;
+- **a phrase does not end in a stop frame** — the usual sign that the layout is
+  aimed at something that is not speech;
+- **a socket the profile says holds speech did not change**, or one it says
+  holds none did;
+- **the changed-byte totals do not reconcile** between the image and the
+  devices;
+- **the output path is one of your input dumps.**
+
+It also catches **double conversion**. A converted ROM carries no marker saying
+so — there is nowhere in a TMS52xx stream to put one — but it no longer matches
+the profile's hashes, so `convert-set` refuses it whether you let it identify
+the set or force `--game`. The manual `convert` path has no such protection, so
+keep your originals.
+
+## Will this work for my game?
+
+**If your game is not in the table above, this tool will not convert it
+automatically, and that is deliberate.** There are roughly fifty known Squawk &
+Talk ROM sets. Understudy ships one profile. It has no way to know the layout of
+the other forty-nine, and it does not guess: an unrecognised set is reported and
+refused, not converted on a hunch.
+
+That is the honest answer to "is it safe for all Squawk & Talk ROMs". It is not
+validated for all of them and does not claim to be. What it is designed around
+is narrower: **where it cannot be sure, it stops.** An unrecognised set is
+refused rather than converted, and a supported one has to pass every check
+listed below. That is a design stance and a set of enumerated checks, not a
+proof that no wrong output is possible — the Embryon defect below is exactly a
+case that passed every check there was at the time.
+
+We tested that claim rather than asserting it. Every Squawk & Talk sound ROM
+set we could obtain — **46 of the 49 PinMAME knows**, each hash-verified against
+its driver record — was put through automatic layout detection, conversion, and
+a boot of the board's own firmware against the converted result. 25 produced
+output that drove the board exactly as the original did.
+
+**That number is not the good news it looks like.** Cross-checked against an
+independently built frame corpus, only 4 of the 12 comparable sets matched
+exactly. One set converted **1.5% of its speech** and still booted, still issued
+the same commands, and would still have sounded wrong. Booting is necessary and
+nowhere near sufficient, which is why `convert-set` now reports how much of each
+device the layout actually reached.
+
+So the bottleneck is not the conversion — where the layout is right, it is right,
+including a 1478-frame set matching the corpus exactly. The bottleneck is
+**knowing the layout**, and that is why profiles are hand-verified and few.
+
+We take that seriously because our own only profile was wrong. Embryon shipped
+briefly reading one pointer too many — an end bound treated as a 21st phrase.
+It parsed. It terminated in a stop frame. It changed nothing outside its own
+declared extent. Every static check passed, and it rewrote 6800 instructions the
+sound board executes. What caught it was booting the board's firmware against
+the converted ROMs in emulation, and that is now what `board-simulated` means
+and what a profile has to clear.
+
+So the assurance for a supported game is: an exact hash match on every device, a
+layout whose every phrase is found and terminates, a conversion checked frame by
+frame and reconciled byte for byte, and the board's own firmware running against
+the result. The assurance for an unsupported game is that you will be told it is
+unsupported.
+
+## Things that will bite you at the bench
+
+- **2532 and 2732 are not pin-compatible**, and a Squawk & Talk socket takes
+  either by jumper. Read and burn as the type actually fitted, or you will get a
+  file of the right size and the wrong contents.
+- **A 2 KB device in a 4 KB socket is mirrored**, and on Embryon the firmware
+  reads its speech through the *mirror*. `convert-set` handles this; if you do
+  it by hand, taking the lower half gives you an unconverted ROM that burns
+  fine.
+- **Read each device twice and compare** before converting anything.
+- **Keep the originals.** Converting an already-converted ROM moves every index
+  a second time, and nothing in the file marks it as converted.
+
+[docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md) covers all of this properly,
+including where to get ROMs for a machine you own.
+
+## The one thing it cannot fix
+
+A TMS5220 cannot go as low as a TMS5200: 50.3 Hz against 37.9 Hz. Frames below
+that floor are raised and will sound higher than the original. On Embryon that
+is 2.0% of frames. [docs/PITCH_CEILING.md](docs/PITCH_CEILING.md) explains why,
+and what was tried.
+
+## Silicon validation
+
+**None yet.** No physical TMS5200, TMS5220 or TSP5220C has been fitted or
+measured for this project, and no converted ROM has been played on a board.
+
+Be precise about what has been done, because the three are different things:
 
 | | |
 |---|---|
-| frames converted | 871 |
-| frame kinds preserved (voiced/unvoiced/silence/stop) | 871 of 871 |
-| frames at the TMS5220 pitch floor | 17 (2.0%) |
-| f0 error on the rest | median 1.07 Hz, max 3.40 Hz |
-| bytes changed outside the phrase extents | 0 |
-| pointer table modified | no |
+| every conversion you run | re-parsed and checked frame by frame — **structural only** |
+| the Embryon reference conversion | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them — **structure and control flow, not sound** |
+| any conversion, listened to | **never** |
+| any conversion, on hardware | **never** |
 
-Every one of those numbers is printed by `convert` itself and recorded in the
-manifest it writes, so the same table can be produced from any ROM — including
-yours. The manifest from that run is checked in as
-[examples/embryon.manifest.json](examples/embryon.manifest.json): 21 phrases,
-899 changed byte ranges, and the input's SHA-256, so you can confirm you have
-the same image before comparing. It records offsets, counts and hashes only.
+The middle rows are worth reading carefully. The board's own firmware runs
+against the converted ROMs in an emulator, which is how a real defect in the
+Embryon profile was found: an entry in the pointer table was an end bound rather
+than a 21st phrase, converting it rewrote 6800 instructions, and the simulated
+board stopped booting. Every static check had passed it.
 
-What you cannot do without that ROM set is reproduce this particular row. The
-ROM is not included and is not ours to distribute.
+That is a strong structural result and it is **not** an acoustic one. Nobody has
+heard this speech, in an emulator or otherwise.
 
-The f0 figures are the difference between the source period decoded on a
-TMS5200 and the converted period decoded on a TMS5220 — that is, what the
-substitute part will actually excite at. The 17 clamped frames are the pitch
-floor described above and are the one thing conversion cannot fix.
+If you fit a converted set to a real board, please tell us how it went:
+[docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) is a template for
+recording it, and it is the single most useful thing anyone can contribute.
 
-What this does **not** show is how it sounds on a real TMS5220 in a real
-machine. That measurement has not been made.
+---
+
+# I want to understand or extend the research
+
+## How the conversion works
+
+The TMS5200 and TMS5220 share the frame grammar and **every field width**; only
+the coefficient tables behind the indexes differ. So a TMS5200 stream played on
+a TMS5220 parses perfectly and sounds wrong. Re-indexing the parameters into the
+substitute's tables is therefore length-preserving, which is what makes patching
+a ROM in place possible: no pointer table, phrase boundary or timing changes.
+
+Each parameter maps to the nearest entry in the destination table. That is not
+optimal — the reflection coefficients interact — but it is the mapping the frame
+grammar guarantees is safe to patch in place, and it is auditable frame by frame
+from the manifest.
+
+## The manual path
+
+For a revision no profile covers:
+
+```
+understudy inspect speech.bin --table-offset 0x3C1C --phrases 21 \
+    --base-address 0xC000 --no-end-bound --command-ordered
+
+understudy convert speech.bin -o speech-5220.bin \
+    --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
+    --no-end-bound --command-ordered --dry-run
+```
+
+These take a single assembled image rather than socket dumps, and default to the
+bundled tables. [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md) has a
+five-step procedure for finding a layout, with a worked example.
 
 ## As a library
 
 ```python
 from tms52xx import ChipTables, convert_stream
+from tms52xx.chips import resolve
 
-src = ChipTables.from_json("tables/tms5200.json")
-dst = ChipTables.from_json("tables/tms5220.json")
+src = resolve("tms5200").tables()
+dst = resolve("tsp5220c").tables()
 
-converted, report, stopped = convert_stream(open("speech.bin", "rb").read(), src, dst)
-
+converted, report, stopped = convert_stream(open("speech.bin", "rb").read(),
+                                            src, dst)
 clamped = [r for r in report if r.pitch_clamped]
 print(f"{len(clamped)} of {len(report)} frames could not keep their pitch")
 ```
 
-`parse` and `rebuild` are available separately if you only want to read a stream.
-Rebuilding an untouched parse reproduces the input byte for byte, which is what
-makes the bit map testable rather than merely plausible.
+`patch_rom` fails closed on an unterminated phrase unless you pass
+`allow_unterminated=True`, so a library caller gets the same protection as a
+command-line one.
 
-## Chip tables are not included
+## Where the numbers come from
 
-You supply them, and
-[docs/PROVENANCE.md](docs/PROVENANCE.md#other-projects-carry-these-tables-here-is-what-is-actually-in-them)
-sets out where from. Other projects do publish these tables, and that section
-says what is actually in each: every copy holding the same values traces back to
-MAME and says so, one of them under a permissive tag its own upstream does not
-use, while the one genuinely separate transcription holds **different numbers** —
-BlueWizard's pitch table matches none of MAME's eight variants.
+Conversion of the real Embryon set — assembled from an original ROM set, no ROM
+data from which appears in this repository:
 
-Since the available sets disagree, the tables are an input rather than something
-baked in, and every manifest records the SHA-256 of both table files so a
-conversion is attributable to the exact set that produced it.
+| | |
+|---|---|
+| phrases / frames | 20 / 850 |
+| frame kinds preserved | 850 of 850 |
+| frames at the TMS5220 pitch floor | 17 (2.0%) |
+| f0 error on the rest | median 1.07 Hz, max 3.40 Hz |
+| bytes changed outside the phrase extents | 0 |
+| simulated board boots on the converted ROMs | yes |
 
-The test suite ships synthetic tables, so it runs with nothing supplied.
+Every figure is printed by the tool and recorded in its manifest, so the same
+table can be produced from any ROM. The manifest from that run is checked in at
+[examples/embryon.manifest.json](examples/embryon.manifest.json); it holds
+offsets, counts and hashes only.
 
-## Scope
+## Documentation
 
-One board, two chips: Bally Squawk & Talk, TMS5200 to TMS5220.
+| | |
+|---|---|
+| [docs/CHIPS.md](docs/CHIPS.md) | which parts substitute for which, and the limits of that claim |
+| [docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md) | the board, finding a layout, ROM sourcing, device handling |
+| [docs/PITCH_CEILING.md](docs/PITCH_CEILING.md) | the one unfixable limitation |
+| [docs/PROVENANCE.md](docs/PROVENANCE.md) | the coefficient tables: format, sources, and what is in each |
+| [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) | everything else we know is imperfect |
+| [docs/PRIOR_ART.md](docs/PRIOR_ART.md) | the projects this builds on and sits beside |
+| [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) | how to report a real-board test |
+| [docs/CONTRIBUTING_PROFILES.md](docs/CONTRIBUTING_PROFILES.md) | adding a game, without sending ROM data |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | working on the code |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | the bundled tables' licence and provenance |
 
-It does not analyse audio into LPC. That is a different and harder problem and
-several good tools already solve it — see [docs/PRIOR_ART.md](docs/PRIOR_ART.md),
-and start there if you have a recording rather than a ROM.
+## Tests
 
-It does not handle the TMS5100, TMS5110 or TMS5220C. It does not discover the
-phrase layout for you. It does not update ROM checksums. It runs no emulator:
-each converted phrase is re-parsed with the target tables and checked frame by
-frame, which is a structural check and not an acoustic one. [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) is the full
-list.
+```
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
+Standard library only, no fixtures, no network, no ROM data.
 
 ## Licence
 
-Zero-Clause BSD. Use it for anything, no attribution required. A link back is
-welcome and not expected.
+Understudy's code and documentation are **Zero-Clause BSD** — use them for
+anything, no attribution required.
 
----
+The **bundled coefficient tables are not ours**: they are BSD-3-Clause, from
+MAME, and that licence requires its notice to travel with them. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Built by [Flashback Fleet LLC](https://github.com/flippin-balls).
+No ROM images are included or distributed.

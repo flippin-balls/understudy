@@ -16,7 +16,7 @@ from .bitstream import (ENERGY_SILENCE, ENERGY_STOP, K_FIELDS, BitReader,
 from .convert import FrameConversion, convert_frames, convert_stream, nearest_index
 from .tables import SAMPLE_RATE, ChipTables, load_pair
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "BitReader", "ChipTables", "ENERGY_SILENCE", "ENERGY_STOP", "Frame",

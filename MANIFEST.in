@@ -1,0 +1,24 @@
+# What goes into the source archive.
+#
+# Without this, setuptools ships the test FILES but not the helpers they import,
+# so the README's test command fails immediately in the published sdist -- and
+# the documentation the provenance narrative asks a reviewer to read is absent
+# from the canonical source artifact.
+
+include README.md CONTRIBUTING.md CHANGELOG.md CITATION.cff
+include RELEASE_READINESS.md
+include THIRD_PARTY_NOTICES.md ACKNOWLEDGEMENTS.md
+include LICENSE MANIFEST.in
+
+recursive-include LICENSES *.txt
+recursive-include docs *.md
+recursive-include tools *.py
+recursive-include examples *.json
+recursive-include tests *.py
+recursive-include .github *.yml *.md
+
+# The bundled data and its licence materials, which must reach every form of
+# redistribution and not only the wheel.
+recursive-include src/tms52xx/data *.json *.txt *.md
+
+global-exclude __pycache__ *.py[cod] *.bin *.rom *.wav

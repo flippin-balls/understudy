@@ -19,7 +19,7 @@ more general problem, and it is **not** what this project does.
 - **[python_wizard](https://github.com/ptwz/python_wizard)** (Peter Turczak) — a
   Python port of BlueWizard. Command-line and scriptable. Its `lpcplayer`
   package carries coefficient tables for both the TMS5200 and the TMS5220; see
-  [PROVENANCE.md](PROVENANCE.md#other-projects-carry-these-tables-here-is-what-is-actually-in-them)
+  [PROVENANCE.md](PROVENANCE.md#where-else-these-tables-exist)
   for what is in them and where they came from.
 - **[TMS Express](https://github.com/tornupnegatives/TMS-Express)** — LPC encoder
   targeting both real TMS5220 hardware and Arduino Talkie.
@@ -36,7 +36,7 @@ more general problem, and it is **not** what this project does.
 - **PinMAME / MAME TMS52xx** — an open implementation of the chip's behaviour: `src/sound/tms5220.c` holds the interpolation and excitation
   logic, `src/sound/tms5220r.c` the per-variant coefficient tables. The
   pitch-ceiling result in [PITCH_CEILING.md](PITCH_CEILING.md) was derived
-  against it, and it is where `from_pinmame.py` reads the tables from.
+  against it, and it is where `tools/extract_tables.py` reads the tables from.
 
 ## Where this project fits
 

@@ -1,6 +1,7 @@
 """End-to-end CLI behaviour, including the refusals."""
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,9 +17,17 @@ from test_rom import RomFixture                 # noqa: E402
 
 
 def run(*args, cwd):
+    """Invoke the CLI as a subprocess, portably.
+
+    The environment is inherited rather than replaced. An earlier version set
+    PATH to a POSIX-only value, which cannot work on Windows -- and Windows is
+    a first-class target here, because that is where most EPROM programmer
+    software runs.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
     return subprocess.run([sys.executable, "-m", "tms52xx.cli", *args],
-                          cwd=cwd, capture_output=True, text=True,
-                          env={"PYTHONPATH": str(ROOT / "src"), "PATH": "/usr/bin:/bin"})
+                          cwd=str(cwd), capture_output=True, text=True, env=env)
 
 
 class TestCli(RomFixture):
@@ -126,7 +135,7 @@ class TestCli(RomFixture):
                          "--table-offset", "0", "--phrases", "2", *args,
                          cwd=self.dir)
             self.assertEqual(result.returncode, 2, result.stdout)
-            self.assertIn("is the input ROM", result.stderr)
+            self.assertIn("is an input to this run", result.stderr)
             self.assertEqual(self.rom_path.read_bytes(), self.rom)
 
     def test_refuses_when_the_manifest_would_land_on_the_input(self):
@@ -139,7 +148,7 @@ class TestCli(RomFixture):
                      "--table-offset", "0", "--phrases", "2", "--force",
                      cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("is the input ROM", result.stderr)
+        self.assertIn("is an input to this run", result.stderr)
         self.assertEqual(rom_path.read_bytes(), self.rom)
 
     def test_a_temporary_file_cannot_land_on_the_input(self):
@@ -177,7 +186,7 @@ class TestCli(RomFixture):
                      "--table-offset", "0", "--phrases", "2", "--force",
                      cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("is the input ROM", result.stderr)
+        self.assertIn("is an input to this run", result.stderr)
         self.assertEqual(self.rom_path.read_bytes(), self.rom)
 
     def test_leaves_no_temporary_files_behind(self):
@@ -254,6 +263,25 @@ class TestCli(RomFixture):
                      cwd=self.dir)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("the wrong way round", result.stdout)
+
+    def test_half_a_layout_is_a_clean_error(self):
+        """Neither number can be guessed, so half of one is a mistake.
+
+        It used to crash with a TypeError after printing the file's hash, or
+        silently ignore the half that was given.
+        """
+        for args in (["--phrases", "2"], ["--table-offset", "0"]):
+            result = run("inspect", str(self.rom_path), *args, cwd=self.dir)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertIn("both --table-offset and --phrases", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_no_layout_at_all_is_fine_and_reports_the_hash(self):
+        """A technician with an unknown ROM wants the hash and nothing else."""
+        result = run("inspect", str(self.rom_path), cwd=self.dir)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("sha256", result.stdout)
+        self.assertIn("No layout given", result.stdout)
 
     def test_bad_layout_fails_loudly(self):
         """Loudly means it says what is wrong, not merely that it exited 2."""
