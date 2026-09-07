@@ -4,18 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "understudy"
-version = "0.1.0"
-description = "Convert TMS5200 LPC speech data to run on TMS5220 chips"
+version = "0.3.0"
+description = "Convert Bally Squawk & Talk TMS5200 speech ROMs to run on TMS5220-family replacements"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "0BSD" }
 authors = [{ name = "Flashback Fleet LLC" }]
-keywords = ["tms5200", "tms5220", "lpc", "speech", "pinball", "retrocomputing"]
+keywords = ["tms5200", "tms5220", "tms5220c", "tsp5220c", "lpc", "speech",
+            "pinball", "bally", "squawk-and-talk", "retrocomputing",
+            "preservation", "rom-hacking"]
 classifiers = [
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
   "Topic :: System :: Hardware",
+  "Development Status :: 4 - Beta",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
 ]
 dependencies = []
 
@@ -25,5 +31,11 @@ understudy = "tms52xx.cli:main"
 [project.urls]
 Source = "https://github.com/flippin-balls/understudy"
 
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# The bundled coefficient tables and game profiles MUST ship in the wheel;
+# without them an installed Understudy cannot convert anything without setup.
+"tms52xx" = ["data/*.json", "data/profiles/*.json"]

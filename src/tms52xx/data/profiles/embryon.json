@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "profile_id": "embryon",
+  "profile_version": 1,
+  "title": "Embryon",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+
+  "devices": [
+    {
+      "socket": "U4",
+      "label": "841-01",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 57344,
+      "mirrored": true,
+      "holds_speech": true,
+      "sha256": "8495958b46c73f98840adff7d1ffe9076cc7c9ffdca5aeb8e6744501eefb7475",
+      "crc32": "e8b234e3",
+      "note": "A 2 KB device in a 4 KB socket. The firmware addresses its speech through the $E800 mirror, not the $E000 copy, so conversion rewrites the upper half."
+    },
+    {
+      "socket": "U5",
+      "label": "841-02",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "f24559ad001b4cbb1ef4442a9f06502cfe1f8685b8ae7ae0ebfe0622866caf82",
+      "crc32": "9cd8c04e",
+      "note": "Carries the pointer table at $FC1C as well as speech. A 2532 and a 2732 are not pin-compatible; the board has jumper options for both, so confirm which is fitted before reading or burning."
+    }
+  ],
+
+  "layout": {
+    "table_offset": 15388,
+    "base_address": 49152,
+    "phrases": 21,
+    "address_ordered": false,
+    "has_end_bound": false,
+    "truncate_last_byte": []
+  },
+
+  "chip_commands_observed": ["0x60"],
+
+  "status": "emulator-verified",
+
+  "evidence": {
+    "layout": "Pointer table at CPU $FC1C (file 0x3C1C in the assembled window), 21 entries, command-ordered, no end bound. All 21 phrases parse and every one terminates in a stop frame, which a wrong offset does not produce 21 times over.",
+    "speech_addressing": "Phrase pointers resolve to $E800-$F9DA, i.e. U4 is reached through its mirror.",
+    "conversion": "871 frames converted; all 871 kept their frame kind when the output was re-parsed with the target tables; 17 frames (2.0%) sat below the TMS5220 pitch floor and were clamped; median f0 error on the rest 1.07 Hz, maximum 3.40 Hz; 3520 bytes changed, none outside the phrase extents; the pointer table was not modified.",
+    "chip_commands": "The board's own firmware was driven through all 64 commands its MPU can send. It issues exactly one TMS command byte, 0x60 SPEAK EXTERNAL, and never an opcode in the SET RATE range that a TMS5220C interprets differently from a TMS5220.",
+    "not_verified": "No converted ROM from this profile has been played on a real Squawk & Talk board. Everything above is static analysis and emulation."
+  },
+
+  "notes": [
+    "Command order, not address order: entry N is the phrase command N plays, and consecutive entries are not consecutive in memory.",
+    "No end-bound entry, so the last phrase's end is implicit. It is taken to run to the pointer table, which sits above the speech in this set.",
+    "GAME_LAYOUTS in the research toolkit records 16 directly addressable phrases (internal commands 0x28-0x37); entries 16-20 are used by composite sequences."
+  ],
+
+  "contributors": ["Flashback Fleet LLC"]
+}

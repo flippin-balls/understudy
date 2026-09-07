@@ -31,6 +31,18 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _tables_or_bundled(path, default_chip: str) -> ChipTables:
+    """A table file if one was named, otherwise the bundled set for that part.
+
+    Bundling means a first conversion needs no setup. Naming a file still
+    overrides it, which is what the research path and unsupported variants use.
+    """
+    if path:
+        return ChipTables.from_json(path)
+    from .chips import CHIPS
+    return CHIPS[default_chip].tables()
+
+
 def _truncation_choice(value):
     """Turn the --truncate-last-byte argument into what patch_rom expects.
 
@@ -91,8 +103,8 @@ def cmd_inspect(args) -> int:
     print("\n%d phrases from a pointer table at 0x%X" % (len(table.phrases),
                                                          args.table_offset))
     verdicts = {}
-    if args.source_tables:
-        source = ChipTables.from_json(args.source_tables)
+    if args.source_tables or not args.no_tables:
+        source = _tables_or_bundled(args.source_tables, "tms5200")
         verdicts = diagnose_last_byte(rom, table, source)
 
     header = ("  %-5s %-8s %-8s %-7s %s" % ("#", "start", "end", "bytes",
@@ -186,8 +198,8 @@ def cmd_convert(args) -> int:
             return 2
 
     rom = rom_path.read_bytes()
-    source = ChipTables.from_json(args.source_tables)
-    target = ChipTables.from_json(args.target_tables)
+    source = _tables_or_bundled(args.source_tables, "tms5200")
+    target = _tables_or_bundled(args.target_tables, "tms5220")
     table = _load_layout(args, rom)
 
     try:
@@ -360,6 +372,292 @@ def _add_layout_args(parser, required: bool) -> None:
                              "end-bound pointer")
 
 
+def _read_dump(path: Path) -> bytes:
+    data = Path(path).read_bytes()
+    if not data:
+        raise ValueError("%s is empty" % path)
+    return data
+
+
+def _sockets_from_args(args, profile) -> dict:
+    """Map the files the user gave us onto the profile's sockets.
+
+    Either `--socket U4=file` explicitly, or by matching each file's size and
+    hash against the profile. Size alone is never enough when two sockets hold
+    the same size device, so an ambiguous set is refused rather than guessed.
+    """
+    from .profiles import sha256 as _sha
+    dumps = {}
+    if args.socket:
+        for item in args.socket:
+            if "=" not in item:
+                raise ValueError("--socket wants SOCKET=PATH, got %r" % item)
+            socket, path = item.split("=", 1)
+            if profile.device_for(socket) is None:
+                raise ValueError("socket %r is not in the %s profile"
+                                 % (socket, profile.id))
+            dumps[socket] = _read_dump(Path(path))
+        return dumps
+
+    files = {Path(f): _read_dump(Path(f)) for f in args.dumps}
+    digests = {p: _sha(d) for p, d in files.items()}
+    for device in profile.devices:
+        if device.sha256:
+            hit = [p for p, d in digests.items() if d == device.sha256]
+            if len(hit) == 1:
+                dumps[device.socket] = files[hit[0]]
+                continue
+        candidates = [p for p, d in files.items()
+                      if len(d) == device.size and p not in
+                      [Path(x) for x in []]]
+        candidates = [p for p in candidates
+                      if files[p] not in [dumps.get(s) for s in dumps]]
+        if len(candidates) == 1:
+            dumps[device.socket] = files[candidates[0]]
+        elif not candidates:
+            raise ValueError(
+                "nothing supplied matches socket %s (%s, %d bytes) of the %s "
+                "profile" % (device.socket, device.device_type, device.size,
+                             profile.id))
+        else:
+            raise ValueError(
+                "cannot tell which file belongs in socket %s: %d files are %d "
+                "bytes and none matches the profile's hash. Name them "
+                "explicitly with --socket %s=PATH."
+                % (device.socket, len(candidates), device.size, device.socket))
+    return dumps
+
+
+def cmd_chips(args) -> int:
+    from .chips import describe
+    print(describe())
+    return 0
+
+
+def cmd_profiles(args) -> int:
+    from . import profiles as profile_mod
+    found = profile_mod.available()
+    if not found:
+        print("no profiles bundled")
+        return 0
+    print("%-12s %-28s %-18s %s" % ("id", "title", "status", "phrases"))
+    for profile in found:
+        print("%-12s %-28s %-18s %d"
+              % (profile.id, profile.label, profile.status, profile.phrases))
+    print("\nA profile is chosen only on an exact hash match of every "
+          "speech-bearing\ndevice. Anything less is reported and refused -- see "
+          "`understudy identify`.")
+    return 0
+
+
+def cmd_identify(args) -> int:
+    from . import profiles as profile_mod
+
+    files = {}
+    for name in args.dumps:
+        path = Path(name)
+        files[str(path)] = _read_dump(path)
+
+    print("Supplied dumps")
+    for name, data in files.items():
+        print("  %-34s %6d bytes  sha256 %s"
+              % (Path(name).name, len(data), profile_mod.sha256(data)[:32]))
+
+    matches = profile_mod.identify(files)
+    print()
+    if not matches:
+        print("No bundled profile recognises any of these.")
+        print()
+        print("That is not a failure -- it means this set is not one of the")
+        print("revisions shipped with this version. Use the manual path:")
+        print("  understudy inspect <image> --table-offset ... --phrases ...")
+        print("and see docs/SQUAWK_AND_TALK.md for how to find the layout.")
+        print("If you work it out, please contribute a profile:")
+        print("  docs/CONTRIBUTING_PROFILES.md")
+        return 1
+
+    complete = [m for m in matches if m.complete]
+    for match in matches:
+        profile = match.profile
+        mark = "MATCH  " if match.complete else "partial"
+        print("%s %s  (profile %s v%d, status %s)"
+              % (mark, profile.label, profile.id, profile.version,
+                 profile.status))
+        for socket, name in sorted(match.matched.items()):
+            print("           %-4s <- %s" % (socket, Path(name).name))
+        for socket in match.missing:
+            device = profile.device_for(socket)
+            print("           %-4s -- no supplied file matches (%s, %d bytes)"
+                  % (socket, device.device_type, device.size))
+
+    print()
+    if len(complete) == 1:
+        profile = complete[0].profile
+        print("Identified: %s" % profile.label)
+        print()
+        print("Convert it with:")
+        print("  understudy convert-set %s --game %s --target tsp5220c -o out/"
+              % (" ".join(Path(f).name for f in files), profile.id))
+        if profile.status != "silicon-verified":
+            print()
+            print("Note: this profile is %r. No converted ROM from it has been"
+                  % profile.status)
+            print("played on a real board yet. See docs/HARDWARE_VALIDATION.md.")
+        return 0
+    if len(complete) > 1:
+        print("REFUSING TO CHOOSE: %d profiles match completely (%s)."
+              % (len(complete), ", ".join(m.profile.id for m in complete)))
+        print("Name the one you want with --game.")
+        return 2
+    print("No profile matches completely, so none will be used automatically.")
+    print("A partial match usually means a different revision, or a device")
+    print("that was read with the wrong type selected. Check the read first;")
+    print("if the set really is a new revision, the manual path still works.")
+    return 1
+
+
+def cmd_convert_set(args) -> int:
+    from . import profiles as profile_mod
+    from .chips import resolve as resolve_chip
+    from .workflow import ConversionRefused, convert_set, output_name
+
+    if args.game:
+        profile = profile_mod.get(args.game)
+    else:
+        files = {str(Path(f)): _read_dump(Path(f)) for f in args.dumps}
+        matches = [m for m in profile_mod.identify(files) if m.complete]
+        if len(matches) != 1:
+            print("error: could not identify this set (%d complete matches). "
+                  "Run `understudy identify` to see why, or name the profile "
+                  "with --game." % len(matches), file=sys.stderr)
+            return 2
+        profile = matches[0].profile
+        print("identified   %s (profile %s v%d)"
+              % (profile.label, profile.id, profile.version))
+
+    target = resolve_chip(args.target)
+    if target.role not in ("target", "both"):
+        print("error: %s is not a replacement part" % target.id, file=sys.stderr)
+        return 2
+
+    dumps = _sockets_from_args(args, profile)
+    try:
+        result = convert_set(
+            dumps, profile, target,
+            source_tables=Path(args.source_tables) if args.source_tables else None,
+            target_tables=Path(args.target_tables) if args.target_tables else None,
+            allow_unterminated=args.allow_unterminated)
+    except ConversionRefused as error:
+        print("refusing to convert: %s" % error, file=sys.stderr)
+        return 2
+
+    outdir = Path(args.output)
+    written = []
+    if not args.dry_run:
+        outdir.mkdir(parents=True, exist_ok=True)
+        for entry in result.outputs:
+            device = profile.device_for(entry["socket"])
+            source_name = next(
+                (Path(f).name for f in (args.dumps or [])
+                 if _read_dump(Path(f)) == dumps[entry["socket"]]),
+                "%s_%s" % (profile.id, entry["socket"]))
+            name = output_name(source_name, device, target)
+            path = outdir / name
+            if path.exists() and not args.force:
+                print("refusing to overwrite %s (pass --force)" % path,
+                      file=sys.stderr)
+                return 2
+            if _same_file(Path(source_name), path):
+                print("refusing to write over an input dump (%s)" % path,
+                      file=sys.stderr)
+                return 2
+            _atomic_write(path, entry["data"])
+            entry["path"] = str(path)
+            written.append((path, entry))
+
+    _print_set_summary(result, profile, target, written, args)
+
+    if not args.dry_run:
+        result.manifest["outputs"] = [
+            dict(o, path=str(outdir / Path(o.get("path", "")).name))
+            if o.get("path") else o
+            for o in result.manifest["outputs"]]
+        for entry, (path, raw) in zip(result.manifest["outputs"], written):
+            entry["path"] = str(path)
+        manifest_path = outdir / ("%s.manifest.json" % profile.id)
+        if manifest_path.exists() and not args.force:
+            print("refusing to overwrite %s (pass --force)" % manifest_path,
+                  file=sys.stderr)
+            return 2
+        _atomic_write(manifest_path,
+                      json.dumps(result.manifest, indent=2).encode("utf-8"))
+        print("manifest     %s" % manifest_path)
+    return 0
+
+
+def _print_set_summary(result, profile, target, written, args) -> None:
+    """The block a technician reads before burning anything."""
+    stats = result.stats
+    print()
+    print("=" * 68)
+    print("  CHECK THIS BEFORE YOU BURN ANYTHING")
+    print("=" * 68)
+    print("profile      %s  (%s v%d, status %s)"
+          % (profile.label, profile.id, profile.version, profile.status))
+    print("chips        %s  ->  %s" % (result.source_chip.id, target.id))
+    tables = result.manifest["tables"]
+    print("tables       source %s / target %s  (%s)"
+          % (tables["source"]["sha256"][:12], tables["target"]["sha256"][:12],
+             "bundled" if tables["target"]["bundled"] else "custom"))
+    print()
+    print("input dumps")
+    for entry in result.inputs.values():
+        flag = "" if entry["matches_profile"] is not False else "  MISMATCH"
+        print("  %-4s %-8s %6d bytes  sha256 %s%s"
+              % (entry["socket"], entry["device_type"], entry["bytes"],
+                 entry["sha256"][:24], flag))
+    print()
+    print("conversion")
+    print("  phrases                %d" % stats["phrases"])
+    print("  frames                 %d" % stats["frames"])
+    print("  frame kinds preserved  %d of %d"
+          % (stats["frame_kinds_preserved"], stats["frames"]))
+    print("  clamped to pitch floor %d (%.1f%%)"
+          % (stats["frames_clamped"], stats["clamped_percent"]))
+    if "f0_error_hz" in stats:
+        err = stats["f0_error_hz"]
+        print("  f0 error, unclamped    median %.2f Hz, max %.2f Hz"
+              % (err["median"], err["max"]))
+    print("  bytes changed          %d" % stats["bytes_changed"])
+    print()
+    print("output devices")
+    for entry in result.outputs:
+        note = ""
+        if entry["taken_from_mirror"]:
+            note = "  (taken from the mirror half)"
+        if not entry["changed"]:
+            note = "  (unchanged - holds no speech)"
+        print("  %-4s %-8s %6d bytes  %d changed%s"
+              % (entry["socket"], entry["device_type"], entry["bytes"],
+                 entry["changed_bytes"], note))
+        if entry.get("path"):
+            print("       burn into %s: %s"
+                  % (entry["device_type"], entry["path"]))
+    device_total = sum(e["changed_bytes"] for e in result.outputs)
+    print()
+    print("  reconciliation         %d changed across devices == %d in the image"
+          % (device_total, stats["bytes_changed"]))
+    if result.warnings:
+        print()
+        print("warnings")
+        for warning in result.warnings:
+            print("  - %s" % warning)
+    if args.dry_run:
+        print()
+        print("dry run: nothing written")
+    print("=" * 68)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="understudy",
@@ -370,17 +668,20 @@ def main(argv=None) -> int:
     inspect = sub.add_parser("inspect", help="report on a ROM; writes nothing")
     inspect.add_argument("rom")
     inspect.add_argument("--source-tables", default=None,
-                         help="report each phrase's final-byte convention, "
-                              "which needs the source chip's tables to parse "
-                              "the frames")
+                         help="tables used to parse frames for the final-byte "
+                              "report; defaults to the bundled TMS5200 set")
+    inspect.add_argument("--no-tables", action="store_true",
+                         help="skip the final-byte report entirely")
     _add_layout_args(inspect, required=False)
     inspect.set_defaults(func=cmd_inspect)
 
     convert = sub.add_parser("convert", help="write a converted copy of a ROM")
     convert.add_argument("rom")
     convert.add_argument("-o", "--output", required=True)
-    convert.add_argument("--source-tables", required=True)
-    convert.add_argument("--target-tables", required=True)
+    convert.add_argument("--source-tables", default=None,
+                         help="table file; defaults to the bundled TMS5200 set")
+    convert.add_argument("--target-tables", default=None,
+                         help="table file; defaults to the bundled TMS5220 set")
     convert.add_argument("--truncate-last-byte", nargs="?", const="all",
                          metavar="ALL|N,N,...",
                          help="phrases whose final ROM byte the player never "
@@ -399,6 +700,44 @@ def main(argv=None) -> int:
                               "layout, not an unterminated phrase")
     _add_layout_args(convert, required=True)
     convert.set_defaults(func=cmd_convert)
+
+    # -- the short path ---------------------------------------------------
+    identify = sub.add_parser(
+        "identify", help="say which game a set of socket dumps is, if known")
+    identify.add_argument("dumps", nargs="+",
+                          help="one file per ROM device, in any order")
+    identify.set_defaults(func=cmd_identify)
+
+    convert_set_p = sub.add_parser(
+        "convert-set",
+        help="convert a whole ROM set: socket dumps in, replacement device "
+             "images out")
+    convert_set_p.add_argument("dumps", nargs="*",
+                               help="one file per ROM device, in any order")
+    convert_set_p.add_argument("--game", default=None,
+                               help="profile id; omit to identify by hash")
+    convert_set_p.add_argument("--target", default="tms5220",
+                               help="replacement part (see `understudy chips`)")
+    convert_set_p.add_argument("-o", "--output", default="understudy-out",
+                               help="directory for the converted devices")
+    convert_set_p.add_argument("--socket", action="append", metavar="SOCKET=PATH",
+                               help="name a file's socket explicitly; repeatable")
+    convert_set_p.add_argument("--source-tables", default=None,
+                               help="override the bundled source tables")
+    convert_set_p.add_argument("--target-tables", default=None,
+                               help="override the bundled target tables")
+    convert_set_p.add_argument("--allow-unterminated", action="store_true",
+                               help="convert phrases with no stop frame")
+    convert_set_p.add_argument("--dry-run", action="store_true")
+    convert_set_p.add_argument("--force", action="store_true",
+                               help="allow overwriting existing output files")
+    convert_set_p.set_defaults(func=cmd_convert_set)
+
+    chips = sub.add_parser("chips", help="list the parts this tool knows")
+    chips.set_defaults(func=cmd_chips)
+
+    profiles_p = sub.add_parser("profiles", help="list the bundled game profiles")
+    profiles_p.set_defaults(func=cmd_profiles)
 
     args = parser.parse_args(argv)
     try:

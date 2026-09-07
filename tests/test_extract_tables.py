@@ -1,9 +1,8 @@
-"""The table extractor, against a synthetic C file rather than PinMAME.
+"""The table extractor, against a synthetic C file rather than a real tree.
 
-WHY A FIXTURE AND NOT THE REAL FILE. `from_pinmame.py` is the step every user
-runs, and testing it against a real PinMAME checkout would mean either shipping
-that file -- exactly what this project declines to do -- or a test that silently
-skips for everyone who has not cloned PinMAME.
+WHY A FIXTURE AND NOT THE REAL FILE. Testing the extractor against a real MAME
+or PinMAME checkout would mean either vendoring that file or a test that
+silently skips for everyone who has not cloned one.
 
 So the fixture below is written here, from scratch, with invented numbers. It is
 not TMS5200 or TMS5220 data. What it reproduces is the SHAPE of the real file,
@@ -26,9 +25,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "docs"))
+sys.path.insert(0, str(ROOT / "tools"))
 
-import from_pinmame                                      # noqa: E402
+import extract_tables as from_pinmame                                      # noqa: E402
 
 #: Small enough to read, shaped like the real thing. Widths are the genuine
 #: TMS52xx field widths because the extractor validates against them; every
@@ -252,7 +251,7 @@ class TestExtractorEndToEnd(unittest.TestCase):
             with contextlib.redirect_stdout(buffer):
                 self.assertEqual(
                     from_pinmame.main(["from_pinmame.py", str(root), str(out)]), 0)
-            self.assertIn("Check the licence header", buffer.getvalue())
+            self.assertIn("Read the licence header", buffer.getvalue())
 
             for name in ("tms5200", "tms5220"):
                 table = ChipTables.from_json(out / ("%s.json" % name))
@@ -271,7 +270,7 @@ class TestExtractorEndToEnd(unittest.TestCase):
             buffer = io.StringIO()
             with contextlib.redirect_stdout(buffer):
                 from_pinmame.main(["x", str(root), str(Path(tmp) / "out")])
-            self.assertIn("not the revision this extractor was verified",
+            self.assertIn("NOT a revision this extractor has been checked",
                           buffer.getvalue())
 
     def test_nothing_is_written_if_the_second_table_fails_to_validate(self):
@@ -300,7 +299,7 @@ class TestExtractorEndToEnd(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(SystemExit) as caught:
                 from_pinmame.main(["from_pinmame.py", tmp, tmp])
-            self.assertIn("point this at a PinMAME checkout",
+            self.assertIn("no known coefficient file",
                           str(caught.exception))
 
 

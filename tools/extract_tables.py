@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""Extract TMS5200 and TMS5220 coefficient tables from a PinMAME checkout.
+"""Extract TMS5200 and TMS5220 coefficient tables from a MAME or PinMAME tree.
 
-    python docs/from_pinmame.py /path/to/pinmame tables/
+    python tools/extract_tables.py /path/to/mame src/tms52xx/data/
 
-Check the licence header on `src/sound/tms5220r.c` in your own checkout and
-satisfy yourself it suits your use before relying on the output. PinMAME is
-migrating to 3-Clause BSD per file and not every file has been converted; that
-is why this project does not ship the tables itself.
+This is a MAINTAINER tool. Understudy ships the tables it needs in
+`src/tms52xx/data/`, so ordinary users never run this. It exists so the bundled
+data can be regenerated and independently checked against upstream.
+
+Two source trees are understood, chosen by which file is present:
+
+    MAME     src/devices/sound/tms5110r.hxx   preferred: BSD-3-Clause by its own
+                                              header, and decap-verified
+    PinMAME  src/sound/tms5220r.c             kept for comparison
+
+MAME has no `tms5200_coeff`. Its TMS5200 table is `T0285_2501E_coeff`, named for
+the CD2501E/TMC0285 the part is equivalent to; the section comment above it
+reads "TMS5200/CD2501E". PinMAME carries both names, and they agree.
 
 Not a one-line regex, for three reasons. The tables are fields of
 `struct tms5100_coeffs` instances rather than named arrays, so they are read
-positionally in declaration order; a superseded `tms5220_coeff` sits in an
-`#if 0` block, so a parser that ignores the preprocessor picks the dead one; and
-the live tables are macro references with backslash-continued bodies. Every
-extracted table is checked against the width its own struct declares, so a
-misparse fails here rather than producing quiet nonsense downstream.
+positionally in declaration order; a superseded table sits in an `#if 0` block,
+so a parser that ignores the preprocessor picks the dead one; and some tables
+are macro references with backslash-continued bodies. Every extracted table is
+checked against the width its own struct declares, so a misparse fails here
+rather than producing quiet nonsense downstream.
 """
 from __future__ import annotations
 
@@ -29,7 +38,37 @@ from pathlib import Path
 # initialisers are positional.
 SUBTYPE, NUM_K, ENERGY_BITS, PITCH_BITS, KBITS, ENERGY, PITCH, KTABLE = range(8)
 
-VARIANTS = {"tms5200": "tms5200_coeff", "tms5220": "tms5220_coeff"}
+#: Source trees we know how to read, in preference order. `structs` maps the
+#: name Understudy uses to the C identifier holding that variant's table.
+SOURCES = [
+    {"id": "mame",
+     "path": ("src", "devices", "sound", "tms5110r.hxx"),
+     "repo": "https://github.com/mamedev/mame",
+     "structs": {"tms5200": "T0285_2501E_coeff", "tms5220": "tms5220_coeff"}},
+    {"id": "pinmame",
+     "path": ("src", "sound", "tms5220r.c"),
+     "repo": "https://github.com/vpinball/pinmame",
+     "structs": {"tms5200": "tms5200_coeff", "tms5220": "tms5220_coeff"}},
+]
+
+
+def find_source(root):
+    """Which of the known source trees is this, and where is its table file?"""
+    for source in SOURCES:
+        candidate = Path(root).joinpath(*source["path"])
+        if candidate.exists():
+            return source, candidate
+    raise SystemExit(
+        "no known coefficient file under %s -- expected one of:\n  %s"
+        % (root, "\n  ".join("/".join(s["path"]) for s in SOURCES)))
+
+
+def licence_header(text):
+    """MAME-style `// license:` / `// copyright-holders:` tags, if present."""
+    licence = re.search(r"^//\s*license:\s*(.+)$", text, re.M)
+    holders = re.search(r"^//\s*copyright-holders:\s*(.+)$", text, re.M)
+    return (licence.group(1).strip() if licence else None,
+            holders.group(1).strip() if holders else None)
 
 
 def strip_comments(text: str) -> str:
@@ -174,59 +213,93 @@ def build(text: str, struct_name: str, our_name: str) -> dict:
             "energy": energy, "pitch": pitch, "k": k}
 
 
-#: The revision this parser was written against and verified on. A different
-#: file is not necessarily a problem -- but it has not been checked, and the
-#: shape of the C is what this parser depends on.
-VERIFIED_SHA256 = ("21e3e4c16f044f2a380dbbb630ed375061"
-                   "218936256d413802c3f73883afbdc0")
+#: Revisions this extractor has been run against and checked. A file that is not
+#: one of these is not necessarily wrong, but it has not been seen.
+KNOWN_SOURCES = {
+    "43b114437812a94073804617f78a4fd72e9874292dc9be44660cf7b8904f6480":
+        "MAME src/devices/sound/tms5110r.hxx @ 2d5bb2dc (2017-05-26)",
+    "21e3e4c16f044f2a380dbbb630ed375061218936256d413802c3f73883afbdc0":
+        "PinMAME src/sound/tms5220r.c @ 9ac98e75 (2026-09-06)",
+}
 
 
-def main(argv) -> int:
+def extract(root):
+    """Return (tables, provenance) for a source tree."""
+    source, source_file = find_source(root)
+    body = source_file.read_bytes()
+    digest = hashlib.sha256(body).hexdigest()
+    text_raw = body.decode("utf-8", errors="replace")
+    licence, holders = licence_header(text_raw)
+
+    raw = strip_comments(text_raw)
+    # Drop dead branches BEFORE collecting macros: a definition inside `#if 0`
+    # could otherwise shadow the live one.
+    text = drop_dead_blocks(raw)
+    text = expand_macros(text, collect_macros(text))
+
+    # Extract and validate every variant before returning any of them.
+    tables = {name: build(text, struct, name)
+              for name, struct in source["structs"].items()}
+
+    provenance = {
+        "source_id": source["id"],
+        "repository": source["repo"],
+        "path": "/".join(source["path"]),
+        "sha256": digest,
+        "known_revision": KNOWN_SOURCES.get(digest),
+        "license_tag": licence,
+        "copyright_holders": holders,
+        "structs": dict(source["structs"]),
+    }
+    return tables, provenance
+
+
+def main(argv):
     if len(argv) < 3:
         print(__doc__)
         return 2
     root, outdir = Path(argv[1]), Path(argv[2])
-    source_file = root / "src" / "sound" / "tms5220r.c"
-    if not source_file.exists():
-        raise SystemExit("%s not found -- point this at a PinMAME checkout"
-                         % source_file)
+    if not root.exists():
+        raise SystemExit("%s does not exist -- point this at a source checkout"
+                         % root)
 
-    body = source_file.read_bytes()
-    digest = hashlib.sha256(body).hexdigest()
-    if digest != VERIFIED_SHA256:
-        print("note: %s is not the revision this extractor was verified "
-              "against.\n      found    %s\n      verified %s\n"
-              "      The tables below may still be correct -- the validation "
-              "below catches a\n      changed table SHAPE -- but a reordering "
-              "of the struct's fields, or a\n      conditional this parser "
-              "does not model, could produce a wrongly sized-\n      correct "
-              "result. Compare a few values by eye before relying on it.\n"
-              % (source_file, digest, VERIFIED_SHA256))
+    tables, prov = extract(root)
 
-    raw = strip_comments(body.decode("utf-8", errors="replace"))
-    # Drop dead branches BEFORE collecting macros. Collecting from the raw text
-    # would pick up definitions inside `#if 0`, and if a name is defined in both
-    # arms the dead one can win by being later in the file.
-    text = drop_dead_blocks(raw)
-    text = expand_macros(text, collect_macros(text))
-
-    # Build and validate BOTH variants before writing either. Writing as we go
-    # would leave a new tms5200.json beside a stale tms5220.json if the second
-    # extraction failed, and nothing about the pair would show it.
-    extracted = {our_name: build(text, struct_name, our_name)
-                 for our_name, struct_name in VARIANTS.items()}
+    if prov["known_revision"]:
+        print("source   %s" % prov["known_revision"])
+    else:
+        print("source   %s\n         sha256 %s\n"
+              "         NOT a revision this extractor has been checked against. "
+              "The width validation\n         catches a changed table shape, not "
+              "a reordering of the struct's fields.\n"
+              "         Compare a few values by eye before relying on it."
+              % (prov["path"], prov["sha256"]))
+    print("licence  %s" % (prov["license_tag"] or "no per-file tag found"))
+    if prov["copyright_holders"]:
+        print("holders  %s" % prov["copyright_holders"])
+    print()
 
     outdir.mkdir(parents=True, exist_ok=True)
-    for our_name, data in extracted.items():
-        path = outdir / ("%s.json" % our_name)
+    for name in sorted(tables):
+        data = dict(tables[name])
+        data["_provenance"] = {
+            "repository": prov["repository"],
+            "path": prov["path"],
+            "struct": prov["structs"][name],
+            "source_sha256": prov["sha256"],
+            "license": prov["license_tag"],
+            "copyright_holders": prov["copyright_holders"],
+        }
+        path = outdir / ("%s.json" % name)
         tmp = path.with_name(path.name + ".partial")
         tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
         os.replace(tmp, path)
-        longest = max(p for p in data["pitch"] if p)
-        print("%-16s -> %s   lowest f0 %.1f Hz"
-              % (VARIANTS[our_name], path, 8000 / longest))
+        longest = max(v for v in data["pitch"] if v)
+        print("%-18s -> %s   lowest f0 %.1f Hz"
+              % (prov["structs"][name], path, 8000 / longest))
 
-    print("\nCheck the licence header on %s before relying on these." % source_file)
+    print("\nRead the licence header on %s yourself before relying on these."
+          % prov["path"])
     return 0
 
 
