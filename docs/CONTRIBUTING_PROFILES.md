@@ -67,8 +67,16 @@ Follow that habit.
 Point Understudy at your working directory rather than editing the installed
 copy:
 
+```bash
+export UNDERSTUDY_PROFILE_DIR=/path/to/your/profiles       # bash / zsh
 ```
-export UNDERSTUDY_PROFILE_DIR=/path/to/your/profiles     # Windows: set
+
+```powershell
+$env:UNDERSTUDY_PROFILE_DIR = 'C:\path\to\profiles'      # PowerShell
+```
+
+```bat
+set UNDERSTUDY_PROFILE_DIR=C:\path\to\profiles           # cmd.exe
 ```
 
 Then:

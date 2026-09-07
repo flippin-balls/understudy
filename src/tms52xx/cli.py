@@ -23,12 +23,34 @@ import sys
 import tempfile
 from pathlib import Path
 
+from . import __version__
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
+
+#: The manual `convert` command's manifest. Versioned separately from
+#: `convert-set`'s, because they describe different things: one image and a
+#: declared layout, versus a whole ROM set and the profile that identified it.
+MANUAL_MANIFEST_SCHEMA_VERSION = 1
 from .tables import ChipTables
 
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _table_file(path, default_chip: str) -> Path:
+    """The file the tables actually came from, bundled or named."""
+    if path:
+        return Path(path)
+    from .chips import CHIPS
+    return CHIPS[default_chip].table_path
+
+
+def _table_origin(path, default_chip: str) -> str:
+    return str(path) if path else "bundled:%s" % default_chip
+
+
+def _table_hash(path, default_chip: str) -> str:
+    return _sha256(_table_file(path, default_chip).read_bytes())
 
 
 def _tables_or_bundled(path, default_chip: str) -> ChipTables:
@@ -315,7 +337,10 @@ def cmd_convert(args) -> int:
         return 2
 
     manifest = {
+        "schema_version": MANUAL_MANIFEST_SCHEMA_VERSION,
         "tool": "understudy",
+        "understudy_version": __version__,
+        "path": "manual",
         "input": {"path": str(rom_path), "sha256": _sha256(rom),
                   "bytes": len(rom)},
         "output": {"path": str(out_path), "sha256": _sha256(out),
@@ -325,10 +350,12 @@ def cmd_convert(args) -> int:
         # otherwise produce indistinguishable manifests, which defeats the point
         # of writing one.
         "tables": {"source": source.name, "target": target.name,
-                   "source_file": str(args.source_tables),
-                   "target_file": str(args.target_tables),
-                   "source_sha256": _sha256(Path(args.source_tables).read_bytes()),
-                   "target_sha256": _sha256(Path(args.target_tables).read_bytes()),
+                   "source_file": _table_origin(args.source_tables, "tms5200"),
+                   "target_file": _table_origin(args.target_tables, "tms5220"),
+                   "source_sha256": _table_hash(args.source_tables, "tms5200"),
+                   "target_sha256": _table_hash(args.target_tables, "tms5220"),
+                   "source_bundled": args.source_tables is None,
+                   "target_bundled": args.target_tables is None,
                    "source_lowest_f0_hz": round(source.lowest_f0_hz, 2),
                    "target_lowest_f0_hz": round(target.lowest_f0_hz, 2)},
         "layout": {"table_offset": args.table_offset,
@@ -406,6 +433,10 @@ def _sockets_from_args(args, profile):
     from .profiles import sha256 as _sha
 
     dumps, sources = {}, {}
+    if args.socket and args.dumps:
+        raise ValueError(
+            "give either positional dumps or --socket, not both. Mixing them "
+            "silently ignored the positional files.")
     if args.socket:
         for item in args.socket:
             if "=" not in item:
@@ -464,12 +495,34 @@ def _sockets_from_args(args, profile):
                 "bytes and none matches the profile's hash. Name it explicitly "
                 "with --socket %s=PATH."
                 % (device.socket, len(candidates), device.size, device.socket))
+
+    # Every file the user named must have gone somewhere. Silently dropping one
+    # converts less than they asked for and leaves it out of the manifest, which
+    # is the record of what was done.
+    unused = [n for n in files if n not in taken]
+    if unused:
+        raise ValueError(
+            "these files were given but fit no socket in the %s profile: %s. "
+            "Remove them, or name each file's socket with --socket."
+            % (profile.id, ", ".join(Path(n).name for n in unused)))
     return dumps, sources
 
 
 def cmd_chips(args) -> int:
     from .chips import describe
     print(describe())
+    return 0
+
+
+def cmd_notices(args) -> int:
+    """The bundled data is BSD-3-Clause; its notice must be reachable."""
+    from .chips import notices
+    text = notices()
+    if not text:
+        print("no third-party notice found beside the bundled data -- this "
+              "install is incomplete", file=sys.stderr)
+        return 2
+    print(text)
     return 0
 
 
@@ -591,48 +644,70 @@ def cmd_convert_set(args) -> int:
         return 2
 
     outdir = Path(args.output)
+    manifest_path = outdir / ("%s.manifest.json" % profile.id)
+
+    # PREFLIGHT EVERYTHING BEFORE WRITING ANYTHING.
+    #
+    # Two failures this prevents, both of which were real. The manifest's name
+    # is derived from the profile id, so it is a path a user can already hold --
+    # and with --force it was written over an input dump, atomically, returning
+    # success. And writing device files one at a time meant a refusal on the
+    # second could leave the first behind, so a technician could burn a mixture
+    # of new and stale images.
+    #
+    # So: compute every destination, check them all against every input and
+    # against each other, then write. No destination is created until all of
+    # them are known to be safe.
+    plan = []
+    for entry in result.outputs:
+        device = profile.device_for(entry["socket"])
+        # Name each output after the file it came from, looked up by SOCKET.
+        # Matching on contents would name two sockets holding identical bytes
+        # after the same input.
+        origin = sources.get(entry["socket"])
+        source_name = (Path(origin).name if origin
+                       else "%s_%s" % (profile.id, entry["socket"]))
+        plan.append((outdir / output_name(source_name, device, target), entry))
+
+    destinations = [path for path, _ in plan] + [manifest_path]
+
+    inputs = [Path(origin) for origin in sources.values()]
+    for destination in destinations:
+        for supplied in inputs:
+            if _same_file(supplied, destination):
+                print("refusing to convert: %s would be written over an input "
+                      "dump (%s). Choose a different --output directory."
+                      % (destination, supplied), file=sys.stderr)
+                return 2
+    for i, first in enumerate(destinations):
+        for second in destinations[i + 1:]:
+            if _same_file(first, second):
+                print("refusing to convert: two outputs resolve to the same "
+                      "path (%s)" % first, file=sys.stderr)
+                return 2
+    if not args.force:
+        existing = [d for d in destinations if d.exists()]
+        if existing:
+            print("refusing to overwrite %s (pass --force)"
+                  % ", ".join(str(d) for d in existing), file=sys.stderr)
+            return 2
+
     written = []
     if not args.dry_run:
         outdir.mkdir(parents=True, exist_ok=True)
-        for entry in result.outputs:
-            device = profile.device_for(entry["socket"])
-            # Name each output after the file it came from. Looked up by SOCKET,
-            # not by comparing contents: two sockets can legitimately hold
-            # identical bytes, and matching on contents would give them both the
-            # same output name so one would overwrite the other.
-            origin = sources.get(entry["socket"])
-            source_name = (Path(origin).name if origin
-                           else "%s_%s" % (profile.id, entry["socket"]))
-            name = output_name(source_name, device, target)
-            path = outdir / name
-            if path.exists() and not args.force:
-                print("refusing to overwrite %s (pass --force)" % path,
-                      file=sys.stderr)
-                return 2
-            if origin and _same_file(Path(origin), path):
-                print("refusing to write over an input dump (%s)" % path,
-                      file=sys.stderr)
-                return 2
+        for path, entry in plan:
+            entry["path"] = str(path)
+        for entry, manifest_entry in zip(result.outputs,
+                                         result.manifest["outputs"]):
+            manifest_entry["path"] = entry.get("path")
+        for path, entry in plan:
             _atomic_write(path, entry["data"])
-            entry["path"] = str(path)
             written.append((path, entry))
-
-    _print_set_summary(result, profile, target, written, args)
-
-    if not args.dry_run:
-        result.manifest["outputs"] = [
-            dict(o, path=str(outdir / Path(o.get("path", "")).name))
-            if o.get("path") else o
-            for o in result.manifest["outputs"]]
-        for entry, (path, raw) in zip(result.manifest["outputs"], written):
-            entry["path"] = str(path)
-        manifest_path = outdir / ("%s.manifest.json" % profile.id)
-        if manifest_path.exists() and not args.force:
-            print("refusing to overwrite %s (pass --force)" % manifest_path,
-                  file=sys.stderr)
-            return 2
         _atomic_write(manifest_path,
                       json.dumps(result.manifest, indent=2).encode("utf-8"))
+
+    _print_set_summary(result, profile, target, written, args)
+    if not args.dry_run:
         print("manifest     %s" % manifest_path)
     return 0
 
@@ -705,6 +780,8 @@ def main(argv=None) -> int:
         prog="understudy",
         description="Convert TMS5200 speech data in a Squawk & Talk ROM so it "
                     "plays on a TMS5220.")
+    parser.add_argument("--version", action="version",
+                        version="understudy %s" % __version__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     inspect = sub.add_parser("inspect", help="report on a ROM; writes nothing")
@@ -780,6 +857,10 @@ def main(argv=None) -> int:
 
     profiles_p = sub.add_parser("profiles", help="list the bundled game profiles")
     profiles_p.set_defaults(func=cmd_profiles)
+
+    notices = sub.add_parser(
+        "notices", help="print the third-party licence notice for bundled data")
+    notices.set_defaults(func=cmd_notices)
 
     args = parser.parse_args(argv)
     try:

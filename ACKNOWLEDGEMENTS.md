@@ -11,8 +11,9 @@ chips:
 
 - **digshadow**, who decapped and imaged the TMS5200NL (March 2013), the
   TMS5220NL and the TMS5220CNL (April 2013). The verification that the 5220C's
-  LPC table exactly matches the 5220's is what lets this tool treat the TSP5220C
-  as a drop-in target, and that part is the most findable replacement today.
+  LPC table exactly matches the 5220's is what lets this tool emit the same
+  converted data for all three targets — which matters, because the TSP5220C is
+  the most findable of them today.
 - **PlgDavid**, for the PROMOUT dumps that independently corroborate them.
 - **Sean Riddle** and **Jarek Burczynski**, for related decaps and dumps
   recorded in the same file.

@@ -53,9 +53,25 @@ jobs:
           assert "embryon" in ids, ids
           print("bundled data present after install:", ids)
           PY
+          # The BSD-3-Clause notice must survive packaging: a wheel is a
+          # binary redistribution, and files beside the repository do not
+          # survive pip install.
+          python - <<'PY'
+          from tms52xx import chips
+          text = chips.notices()
+          assert "BSD-3-Clause" in text, "notice missing from the install"
+          assert "mamedev/mame" in text, "notice does not name the upstream"
+          for table in ("tms5200", "tms5220"):
+              prov = chips.bundled_provenance(table)
+              assert prov["source_sha256"] in text, table
+          assert (chips.LICENSE_DIR / "BSD-3-Clause.txt").exists()
+          print("third-party licence materials present after install")
+          PY
+          understudy --version
           understudy --help > /dev/null
           understudy chips > /dev/null
           understudy profiles > /dev/null
+          understudy notices > /dev/null
           understudy identify --help > /dev/null
           understudy convert-set --help > /dev/null
           echo "console script works"
@@ -86,6 +102,11 @@ jobs:
               assert prov["struct"] in notices, prov["struct"]
           print("bundled data provenance is consistent with the notices")
           PY
+      - name: licence materials are in sync with their packaged copies
+        run: |
+          python tools/sync_notices.py
+          git diff --exit-code -- src/tms52xx/data/licenses \
+            || (echo "packaged licence materials are stale; run tools/sync_notices.py" && exit 1)
       - name: no ROM data anywhere in the repository
         run: |
           python - <<'PY'

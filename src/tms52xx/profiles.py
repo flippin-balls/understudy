@@ -279,7 +279,19 @@ def available(directory=None) -> List[Profile]:
     directory = Path(directory) if directory else profile_dir()
     if not directory.exists():
         return []
-    return [load_file(p) for p in sorted(directory.glob("*.json"))]
+    found = [load_file(p) for p in sorted(directory.glob("*.json"))]
+    # Two files claiming one id would make `get()` resolve by filename order,
+    # silently picking a layout the caller did not ask for -- and `--game` is
+    # what users are told to reach for when identification is ambiguous.
+    seen = {}
+    for profile in found:
+        if profile.id in seen:
+            raise ProfileError(
+                "two profiles claim the id %r: %s and %s. Profile ids must be "
+                "unique; there is no way to ask for one by version."
+                % (profile.id, seen[profile.id].source, profile.source))
+        seen[profile.id] = profile
+    return found
 
 
 def get(profile_id: str, directory=None) -> Profile:
@@ -328,11 +340,18 @@ def identify(files: Dict[str, bytes], directory=None) -> List[Match]:
     matches = []
     for profile in available(directory):
         match = Match(profile)
+        # One supplied file satisfies one socket. Two sockets can legitimately
+        # hold identical bytes, and without this a single dump would mark both
+        # matched -- reporting a complete set from half of one, and showing two
+        # physical devices as sourced from one physical file.
+        taken = set()
         for device in profile.devices:
             if not device.sha256:
                 continue
-            hit = [n for n, d in digests.items() if d == device.sha256]
+            hit = [n for n, d in digests.items()
+                   if d == device.sha256 and n not in taken]
             if hit:
+                taken.add(hit[0])
                 if device.holds_speech:
                     match.matched[device.socket] = hit[0]
                 else:

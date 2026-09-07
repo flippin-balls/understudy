@@ -147,6 +147,119 @@ class TestRefusals(WorkflowFixture):
         self.assertIn("allow_unterminated", result.overrides)
 
 
+class TestDestinationPreflight(unittest.TestCase):
+    """Nothing is written until every destination is known to be safe.
+
+    The manifest's name is derived from the profile id, so it is a path a user
+    can already hold. With --force it was written over an input dump,
+    atomically, returning success -- destroying the only copy of a speech ROM.
+    """
+
+    def setUp(self):
+        self.dumps, self.raw = build()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.profiles = self.dir / "profiles"
+        write_profile(self.profiles, self.raw)
+        self.env = {"UNDERSTUDY_PROFILE_DIR": str(self.profiles)}
+        self.u5 = self.dir / "u5.bin"
+        self.u5.write_bytes(self.dumps["U5"])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_manifest_cannot_overwrite_an_input_even_with_force(self):
+        victim = self.dir / "synthgame.manifest.json"     # the derived name
+        victim.write_bytes(self.dumps["U4"])
+        before = victim.read_bytes()
+        for args in ([], ["--force"]):
+            result = run("convert-set", "--game", "synthgame",
+                         "--socket", "U4=%s" % victim,
+                         "--socket", "U5=%s" % self.u5,
+                         "--target", "tms5220", "-o", str(self.dir), *args,
+                         cwd=self.dir, extra_env=self.env)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertIn("written over an input dump", result.stderr)
+            self.assertEqual(victim.read_bytes(), before,
+                             "the input dump was modified")
+
+    def test_converting_into_the_directory_holding_the_inputs_is_safe(self):
+        """The obvious thing a technician does: `-o .`
+
+        Device output names always gain a socket and target suffix, so they
+        cannot collide with the input they came from. The manifest name does
+        not, which is what made the collision above reachable. Both inputs must
+        survive here, and the new files must be additions.
+        """
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        before = {p.name: p.read_bytes()
+                  for p in self.dir.iterdir() if p.is_file()}
+
+        result = run("convert-set", str(u4), str(self.u5), "--game", "synthgame",
+                     "--target", "tms5220", "-o", str(self.dir),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name, content in before.items():
+            self.assertEqual((self.dir / name).read_bytes(), content,
+                             "%s was modified" % name)
+        added = {p.name for p in self.dir.iterdir() if p.is_file()} - set(before)
+        self.assertEqual(len(added), 3, added)     # two devices + manifest
+
+    def test_a_refusal_leaves_no_partial_output_set(self):
+        """A half-written set invites burning a mixture of new and stale files."""
+        out = self.dir / "out"
+        out.mkdir()
+        (out / "synthgame.manifest.json").write_text("older manifest")
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+
+        result = run("convert-set", str(u4), str(self.u5), "--game", "synthgame",
+                     "--target", "tms5220", "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("refusing to overwrite", result.stderr)
+        self.assertEqual(sorted(p.name for p in out.iterdir()),
+                         ["synthgame.manifest.json"])
+        self.assertEqual((out / "synthgame.manifest.json").read_text(),
+                         "older manifest")
+
+    def test_a_clean_run_writes_the_whole_set(self):
+        out = self.dir / "out"
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        result = run("convert-set", str(u4), str(self.u5), "--game", "synthgame",
+                     "--target", "tms5220", "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        names = sorted(p.name for p in out.iterdir())
+        self.assertEqual(len(names), 3, names)
+        self.assertIn("synthgame.manifest.json", names)
+
+
+class TestProfileMustAuthenticate(WorkflowFixture):
+    """A profile that cannot verify its input must not produce burn images."""
+
+    def test_a_profile_without_device_hashes_is_refused(self):
+        raw = copy.deepcopy(self.raw)
+        for device in raw["devices"]:
+            device.pop("sha256", None)
+        profile = Profile(raw, "<x>")
+        self.assertFalse(profile.identifiable)
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dict(self.dumps), profile, self.target)
+        self.assertIn("cannot verify", str(caught.exception))
+
+    def test_even_with_allow_unterminated(self):
+        """--allow-unterminated must not become a way round authentication."""
+        raw = copy.deepcopy(self.raw)
+        for device in raw["devices"]:
+            device.pop("sha256", None)
+        with self.assertRaises(ConversionRefused):
+            convert_set(dict(self.dumps), Profile(raw, "<x>"), self.target,
+                        allow_unterminated=True)
+
+
 class TestDoubleConversion(WorkflowFixture):
     """Converting an already-converted set is caught, on both paths.
 
@@ -416,6 +529,34 @@ class TestCommandLine(unittest.TestCase):
         dumps, sources = _sockets_from_args(Args(), Profile(raw, "<x>"))
         self.assertEqual(sorted(dumps), ["U4", "U5"])
         self.assertEqual(Path(sources["U4"]).name, "u4.bin")
+
+    def test_a_file_that_fits_no_socket_is_refused(self):
+        """Silently dropping a supplied file converts less than was asked for,
+        and leaves it out of the manifest -- which is the record of what was
+        done to an irreplaceable ROM."""
+        extra = self.dir / "extra.bin"
+        extra.write_bytes(b"\x7F" * 64)
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = None
+            dumps = [str(self.u4), str(self.u5), str(extra)]
+
+        with self.assertRaises(ValueError) as caught:
+            _sockets_from_args(Args(), Profile(self.raw, "<x>"))
+        self.assertIn("extra.bin", str(caught.exception))
+
+    def test_mixing_positional_dumps_with_socket_is_refused(self):
+        """Positional files were silently ignored whenever --socket appeared."""
+        from tms52xx.cli import _sockets_from_args
+
+        class Args:
+            socket = ["U4=%s" % self.u4]
+            dumps = [str(self.u5)]
+
+        with self.assertRaises(ValueError) as caught:
+            _sockets_from_args(Args(), Profile(self.raw, "<x>"))
+        self.assertIn("not both", str(caught.exception))
 
     def test_a_socket_named_twice_is_refused(self):
         from tms52xx.cli import _sockets_from_args

@@ -1,17 +1,26 @@
 # understudy
 
 **Your Bally Squawk & Talk has a dead TMS5200 and you cannot get another one.**
-This converts the speech data in its ROMs so the board works with a TMS5220,
-TMS5220C or TSP5220C instead.
+This converts the speech data in its ROMs into the coefficient tables a
+TMS5220, TMS5220C or TSP5220C uses, so the data means the same thing to the
+replacement part that it meant to the original.
+
+What that does *not* do is establish that any of those parts drops into your
+board electrically. Nobody has yet run a converted ROM on real hardware — see
+[Silicon validation](#silicon-validation) — and pinout, supply and clock are
+yours to check against the datasheet.
 
 An open-source preservation project from
 [Flashback Fleet LLC](https://github.com/flippin-balls), who run these machines
 on location and would rather they kept talking.
 
-> **Status: pre-1.0.** Everything below has been verified in emulation and
-> against real ROM data. **No converted ROM from this tool has yet been played
-> on a real Squawk & Talk board.** Until that happens this is a research
-> preview — see [Silicon validation](#silicon-validation).
+> **Status: pre-1.0.** The reference Embryon conversion was checked against
+> real ROM data and rendered through an emulator during development. Each
+> conversion you run is **structurally checked** — the output is re-parsed and
+> every frame's kind compared — but no emulator runs, and
+> **no converted ROM from this tool has ever been played on a real Squawk &
+> Talk board.** Until that happens this is a research preview: see
+> [Silicon validation](#silicon-validation).
 
 ---
 
@@ -21,8 +30,10 @@ on location and would rather they kept talking.
 
 - your machine's sound ROMs, read out of their sockets (one file per device);
 - a blank EPROM of the same type for each device that holds speech;
-- a replacement chip: **TSP5220C** is usually the easiest to find. TMS5220 and
-  TMS5220C also work — see [docs/CHIPS.md](docs/CHIPS.md);
+- a replacement chip. All three targets produce identical converted bytes,
+  because their LPC tables are identical; the TSP5220C is usually the easiest
+  to find. Electrical substitution is **not** something this project has
+  verified — see [docs/CHIPS.md](docs/CHIPS.md);
 - Python 3.9 or newer.
 
 You do **not** need MAME, PinMAME, coefficient tables, or any knowledge of how
@@ -153,10 +164,16 @@ and what was tried.
 
 ## Silicon validation
 
-**None yet.** Every result here comes from static analysis and emulation. The
-tool re-parses its own output and checks that every frame kept its kind, which
-is a structural check, not an acoustic one, and no physical TMS5200 or TMS5220
-has been measured for this project.
+**None yet.** No physical TMS5200, TMS5220 or TSP5220C has been fitted or
+measured for this project, and no converted ROM has been played on a board.
+
+Be precise about what has been done, because the three are different things:
+
+| | |
+|---|---|
+| every conversion you run | re-parsed and checked frame by frame — **structural only** |
+| the Embryon reference conversion | additionally rendered through PinMAME during development |
+| any conversion, on hardware | **never** |
 
 If you fit a converted set to a real board, please tell us how it went:
 [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) is a template for

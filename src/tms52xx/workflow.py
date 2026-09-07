@@ -70,6 +70,19 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
                 target_tables: Optional[Path] = None,
                 allow_unterminated: bool = False) -> SetResult:
     """Convert one identified ROM set. Returns a SetResult; writes nothing."""
+    # A profile whose speech devices carry no hashes cannot authenticate the
+    # dumps it is handed. `--game` would then apply a layout to arbitrary
+    # correct-sized bytes, and a stop frame is not authentication -- 0xF occurs
+    # in ordinary data. The burnable-image path requires identifiable profiles;
+    # the manual `convert` command remains for research on unhashed layouts.
+    if not profile.identifiable:
+        missing = [d.socket for d in profile.speech_devices if not d.sha256]
+        raise ConversionRefused(
+            "profile %r cannot verify what it is given: socket(s) %s carry no "
+            "sha256, so nothing distinguishes the right ROM from a wrong one "
+            "of the same size. Add hashes to the profile, or use the manual "
+            "`convert` path." % (profile.id, ", ".join(missing)))
+
     result = SetResult()
     result.profile = profile
     result.source_chip = source or resolve(profile.source_chip)

@@ -68,6 +68,42 @@ class TestChipRegistry(unittest.TestCase):
             self.assertEqual(len(prov["source_sha256"]), 64)
             self.assertTrue(prov["copyright_holders"])
 
+    def test_the_licence_materials_ship_beside_the_data(self):
+        """BSD-3-Clause requires its notice to accompany redistribution.
+
+        Files sitting beside the repository do not survive `pip install`, so
+        they live inside the package.
+        """
+        for name in ("BSD-3-Clause.txt", "THIRD_PARTY_NOTICES.md"):
+            path = chips.LICENSE_DIR / name
+            self.assertTrue(path.exists(), path)
+            self.assertTrue(path.read_text(encoding="utf-8").strip(), name)
+        text = chips.notices()
+        self.assertIn("BSD-3-Clause", text)
+        self.assertIn("mamedev/mame", text)
+
+    def test_the_packaged_notice_matches_the_repository_copy(self):
+        """Two copies can drift; the packaged one is what users receive."""
+        root = Path(ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+        packaged = (chips.LICENSE_DIR / "THIRD_PARTY_NOTICES.md").read_text(
+            encoding="utf-8")
+        self.assertEqual(root, packaged,
+                         "THIRD_PARTY_NOTICES.md and its packaged copy differ; "
+                         "run tools/sync_notices.py")
+        root_licence = Path(ROOT / "LICENSES" / "BSD-3-Clause.txt").read_text(
+            encoding="utf-8")
+        self.assertEqual(root_licence,
+                         (chips.LICENSE_DIR / "BSD-3-Clause.txt").read_text(
+                             encoding="utf-8"))
+
+    def test_the_notice_records_the_hash_of_the_data_actually_shipped(self):
+        """The notice must describe THIS data, not a version of it."""
+        text = chips.notices()
+        for table in ("tms5200", "tms5220"):
+            prov = chips.bundled_provenance(table)
+            self.assertIn(prov["source_sha256"], text, table)
+            self.assertIn(prov["struct"], text, table)
+
     def test_a_source_part_is_not_offered_as_a_target(self):
         self.assertEqual(chips.resolve("tms5200").role, "source")
         self.assertNotIn("tms5200", [c.id for c in chips.TARGETS])
@@ -283,6 +319,51 @@ class TestIdentification(SynthProfile):
         write_profile(self.dir, raw)
         matches = profiles.identify(self._files(), self.dir)
         self.assertEqual([m.profile.id for m in matches], ["synthgame"])
+
+    def test_two_profiles_claiming_one_id_are_rejected(self):
+        """`--game` is what users are told to use when a match is ambiguous.
+
+        With duplicate ids it resolved by filename order, silently applying a
+        layout nobody asked for.
+        """
+        other = copy.deepcopy(self.raw)
+        other["profile_version"] = 2
+        (self.dir / "zz-other.json").write_text(json.dumps(other))
+        with self.assertRaises(ProfileError) as caught:
+            profiles.available(self.dir)
+        self.assertIn("claim the id", str(caught.exception))
+
+    def test_one_file_cannot_satisfy_two_sockets(self):
+        """Two sockets can hold identical bytes; one dump is still one dump."""
+        raw = copy.deepcopy(self.raw)
+        raw["profile_id"] = "twins"
+        digest = sha256(self.dumps["U4"])
+        for device in raw["devices"]:
+            device["sha256"] = digest
+        import shutil
+        shutil.rmtree(self.dir)
+        write_profile(self.dir, raw)
+
+        matches = profiles.identify({"only-one.bin": self.dumps["U4"]}, self.dir)
+        self.assertEqual(len(matches), 1)
+        self.assertFalse(matches[0].complete,
+                         "one file was counted as both sockets")
+        self.assertEqual(len(matches[0].matched), 1)
+        self.assertEqual(len(matches[0].missing), 1)
+
+    def test_two_copies_of_that_file_do_satisfy_both(self):
+        raw = copy.deepcopy(self.raw)
+        raw["profile_id"] = "twins"
+        digest = sha256(self.dumps["U4"])
+        for device in raw["devices"]:
+            device["sha256"] = digest
+        import shutil
+        shutil.rmtree(self.dir)
+        write_profile(self.dir, raw)
+        matches = profiles.identify({"a.bin": self.dumps["U4"],
+                                     "b.bin": self.dumps["U4"]}, self.dir)
+        self.assertTrue(matches[0].complete)
+        self.assertNotEqual(matches[0].matched["U4"], matches[0].matched["U5"])
 
     def test_a_broken_profile_file_raises_rather_than_being_skipped(self):
         """A profile silently vanishing is how the wrong one gets picked."""

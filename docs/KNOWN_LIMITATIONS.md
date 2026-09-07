@@ -61,12 +61,20 @@ You supply `--table-offset` and `--phrases`. Automatic candidate-table discovery
 is feasible and unimplemented. See
 [SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md).
 
-## Scope is one board and two chips
+## Scope is one board and one chip family
 
-Squawk & Talk, TMS5200 to TMS5220. The TMS5100, TMS5110 and TMS5220C are
-related and are **not** handled: the 51xx parts use a 5-bit pitch field and a
-different frame layout, and the converter refuses chips whose field widths do
-not match rather than producing plausible nonsense.
+Squawk & Talk, TMS5200 to the TMS5220 family — which for the purposes of the
+converted data means the TMS5220, TMS5220C and TSP5220C alike, since their LPC
+tables are identical. See [CHIPS.md](CHIPS.md), including what that claim does
+not cover.
+
+The **TMS5100 and TMS5110 are not handled**. They use a 5-bit pitch field and a
+different frame layout, and the converter refuses tables whose field widths are
+not the 52xx grammar rather than producing plausible nonsense.
+
+Only **one board** is understood: the Bally Squawk & Talk. Other TMS52xx-bearing
+hardware would need its own layout work, and probably its own profile schema
+fields.
 
 ## No checksum handling
 

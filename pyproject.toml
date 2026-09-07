@@ -9,6 +9,8 @@ description = "Convert Bally Squawk & Talk TMS5200 speech ROMs to run on TMS5220
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "0BSD" }
+# The project's own code is 0BSD. Bundled third-party data is not; see
+# THIRD_PARTY_NOTICES.md, which ships inside the package as well.
 authors = [{ name = "Flashback Fleet LLC" }]
 keywords = ["tms5200", "tms5220", "tms5220c", "tsp5220c", "lpc", "speech",
             "pinball", "bally", "squawk-and-talk", "retrocomputing",
@@ -38,4 +40,14 @@ where = ["src"]
 [tool.setuptools.package-data]
 # The bundled coefficient tables and game profiles MUST ship in the wheel;
 # without them an installed Understudy cannot convert anything without setup.
-"tms52xx" = ["data/*.json", "data/profiles/*.json"]
+#
+# The licence materials must ship too. The tables are MAME's under
+# BSD-3-Clause, and that licence requires its notice to travel with binary
+# redistribution -- a wheel is binary redistribution, and files sitting beside
+# the repository do not survive `pip install`.
+"tms52xx" = [
+  "data/*.json",
+  "data/profiles/*.json",
+  "data/licenses/*.txt",
+  "data/licenses/*.md",
+]

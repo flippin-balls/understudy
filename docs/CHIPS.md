@@ -1,8 +1,13 @@
 # Which chip can replace which
 
-Short answer: a **TMS5220, TMS5220C or TSP5220C** can stand in for a TMS5200 in
-a Squawk & Talk, provided the speech ROM data is converted — which is what this
-tool does. The TSP5220C is usually the easiest of the three to find.
+**What this project can tell you:** the converted speech data is identical for
+a TMS5220, a TMS5220C and a TSP5220C, because their LPC coefficient tables are
+identical. Pick whichever you can get; the conversion does not change.
+
+**What it cannot tell you:** whether the part you buy drops into your board.
+No physical chip has been fitted or measured for this project. Pinout, supply
+current, clock and output level are between you, the datasheet and the
+schematic. Everything below is about the data.
 
 ```
 understudy chips

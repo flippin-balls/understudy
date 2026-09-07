@@ -34,8 +34,12 @@ one of the 64 commands its MPU can send produces exactly one TMS command byte,
 measurement of one game, not a guarantee about the family, and it is recorded
 per profile rather than assumed.
 
-Nothing here says anything about pinout, supply current, clock or audio output
-level. Check the datasheet for the part you actually intend to fit.
+SO THE CLAIM IS ABOUT DATA, NOT ABOUT PARTS. Understudy emits the same
+converted bytes for all three target ids because their LPC tables are reported
+identical. It says nothing about pinout, supply current, clock or audio output
+level, and no physical chip has been fitted or measured for this project.
+Whether a given part substitutes electrically in a given board is between the
+reader, the datasheet and the schematic.
 """
 from __future__ import annotations
 
@@ -46,6 +50,15 @@ from typing import Dict, List, Optional
 from .tables import ChipTables
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
+#: Ships inside the package, because the tables' BSD-3-Clause licence requires
+#: its notice to accompany them and a wheel is a binary redistribution.
+LICENSE_DIR = DATA_DIR / "licenses"
+
+
+def notices() -> str:
+    """The third-party notice text, as installed. Used by `understudy chips`."""
+    path = LICENSE_DIR / "THIRD_PARTY_NOTICES.md"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 class Chip:
@@ -90,8 +103,9 @@ CHIPS: Dict[str, Chip] = {
         "that never sends it."),
     "tsp5220c": Chip(
         "tsp5220c", ["TSP5220C"], "tms5220", "target",
-        "The same die as the TMS5220C under TI's TSP part number, and often "
-        "the most findable replacement today."),
+        "MAME records TSP5220C as another name for the TMS5220C, so the "
+        "converted data is the same. Often the most findable part today. "
+        "Electrical substitution is not something this project has verified."),
 }
 
 #: Ids accepted where a replacement part is wanted.
@@ -133,6 +147,14 @@ def describe() -> str:
         lines.append("  %-9s %s" % (chip.id, ", ".join(chip.names)))
         lines.append("            %s" % chip.note)
     lines.append("")
+    prov = bundled_provenance("tms5220") or {}
+    if prov:
+        lines.append("Bundled tables: %s, %s, from %s"
+                     % (prov.get("license"), prov.get("copyright_holders"),
+                        prov.get("path")))
+        lines.append("Full notice: %s"
+                     % (LICENSE_DIR / "THIRD_PARTY_NOTICES.md"))
+        lines.append("")
     lines.append("tms5220, tms5220c and tsp5220c share one decap-verified LPC")
     lines.append("table, so a conversion targeting any of them is the same")
     lines.append("conversion. They differ in control behaviour, not in these")
