@@ -265,8 +265,17 @@ def extract(path, cpu_addr, size, holds_speech):
     if len(changed) > 1:
         # Both halves changed. That is allowed: the two windows are the same
         # 2 KB device, and a set may reach some phrases through one and some
-        # through the other. Merge them, and refuse only where they DISAGREE
-        # about a byte, because that is one physical byte with two values.
+        # through the other. Merge them, taking whichever half changed, and
+        # refuse where both changed to DIFFERENT values -- one physical byte
+        # cannot hold two.
+        #
+        # This is weaker than what `convert-set` does, and the gap is worth
+        # knowing. If one window's phrase converts a byte while the OTHER
+        # window's phrase covers the same byte and happens to leave it
+        # unchanged, they still disagree -- but only one of them looks like a
+        # change, so the rule below merges instead of refusing. Telling those
+        # apart needs to know which phrases cover which offsets, which this
+        # script does not have and the tool does.
         (alo, _), (blo, _) = halves
         merged = bytearray(before[alo:alo + size])
         for i in range(size):
@@ -309,6 +318,14 @@ through each — Eight Ball Deluxe does. The halves merge. What cannot be merged
 is one offset converted two different ways through the two windows: that is a
 single physical byte with two values, so only one conversion could survive into
 the burned device and the other phrase would be read as corrupt.
+
+The script above catches that only when both windows visibly changed the byte.
+`convert-set` catches it whenever the offset lies inside a phrase in each
+window, including when one of the two conversions happens to leave the byte as
+it was — a disagreement in which only one side looks like a change. It can do
+that because it knows which phrases cover which offsets, and a script working
+from two ROM images cannot. If your set reaches phrases through both windows,
+that is a reason to get a profile written rather than to work by hand.
 
 **Check before you burn.** Each output must be exactly the size of the original,
 and the differing byte counts must add up to what conversion reported:

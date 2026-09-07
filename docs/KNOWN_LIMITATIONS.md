@@ -51,9 +51,11 @@ also depends on the target part, the coefficient tables, any override you pass,
 and the version of this tool. Run the same release against the same set with the
 same target and the bundled tables and no overrides, and the result is the one
 that was simulated. Change the target, supply `--source-tables` or
-`--target-tables`, or pass `--allow-unterminated`, and it is not — the manifest
-records each of those precisely so the difference is visible rather than
-assumed.
+`--target-tables`, or pass `--allow-unterminated`, and that guarantee no longer
+applies — the output may well still be identical (all three supported targets
+share one coefficient table, so today they produce the same bytes), but nothing
+here establishes it. The manifest records each of those inputs precisely, so
+what a given run actually used is visible rather than assumed.
 
 If you used the manual `convert` path, on an unsupported revision or a layout of
 your own, none of this applies: it has had no simulation at all. Either way,
