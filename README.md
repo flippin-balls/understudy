@@ -131,28 +131,30 @@ mid-run, check the hashes in the manifest against the files before burning.
 | Bally **Mysterian** (prototype, 1982) | `board-simulated` | 36 | 1 |
 | Bally **Spectrum** (1982) | `board-simulated` | 31 | 4 |
 | Bally **Vector** (1982) | `board-simulated` | 50 | 4 |
+| Bally **Big Bat** (1984) | `board-simulated` | 24 | 1 |
 | Bally **Beat the Clock** (1985) | `board-simulated` | 62 | 2 |
 | Bally **Eight Ball Champ** (1985) | `board-simulated` | 62 | 1 |
 
 **Coverage is counted in sound ROM sets, not game revisions.** The 49 Squawk &
 Talk drivers PinMAME knows collapse to **19 distinct sound ROM sets** — most of
-the rest are game-ROM revisions sharing their sound ROMs. These 15 profiles
-serve **44 of the 49 game revisions**, and `identify` will name yours whichever
+the rest are game-ROM revisions sharing their sound ROMs. These 16 profiles
+serve **45 of the 49 game revisions**, and `identify` will name yours whichever
 revision it is.
 
-The other four sets are not gaps that more work would close:
+The other three sets are not gaps that more work would close here:
 
 | set | drivers | why not |
 |---|---|---|
 | **Rapid Fire** | 2 | Only the firmware ROM is fitted (`U5`); the three speech sockets are empty. Driven through all 256 commands the MPU can send, the firmware writes to the TMS **zero** times while writing the DAC 128,144 times — it makes sound, but never speech. Its ROM does contain the standard TMS byte-write routine, at `$F365`; no direct call to it appears anywhere — no `JSR`, no `JMP`, no literal occurrence of its address — though that is not a proof of unreachability, since the firmware dispatches through a computed jump and a target can be built without its address appearing. No profile can ship for it regardless: the trace yields no streams, so the third acceptance criterion has nothing to be satisfied against, and a profile could only rest on self-consistency. |
 | **Cosmic Flash** | 1 | Same single-socket arrangement, and no dump on hand to confirm it. |
-| **Big Bat** | 1 | No dump on hand. |
 | **Black Belt** (`blackbl2`) | 1 | No identifiable dump on hand: the PinMAME driver records no CRC or SHA-1 for its sound ROMs, so a dump could not be *hash*-verified as the right file, and a renamed one already in a collection could not be ruled out. |
 
-The last three are an acquisition problem rather than an engineering one — the
-archives here were searched by hash, and by filename for the one whose driver
-records no hash. If you have a dump of any of them, that is the fastest way to
-make this list shorter.
+The last two are an acquisition problem rather than an engineering one. Big Bat
+was on that list until its ROMs turned up in a second archive tree, filed under
+descriptive names ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN") rather than
+the driver's, so a search by filename had missed them; all three match the
+driver's SHA-1 exactly. If you have a dump of Cosmic Flash or Black Belt, that
+is the fastest way to make this list shorter still.
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
@@ -193,8 +195,8 @@ keep your originals.
 ## Will this work for my game?
 
 **If your game is not in the table above, this tool will not convert it
-automatically, and that is deliberate.** Understudy covers 15 of the 19 distinct
-sound ROM sets, and the four it does not are accounted for above rather than
+automatically, and that is deliberate.** Understudy covers 16 of the 19 distinct
+sound ROM sets, and the three it does not are accounted for above rather than
 merely absent. It does not guess: an unrecognised set is reported and refused,
 not converted on a hunch.
 
@@ -256,7 +258,7 @@ inside a phrase the profile converts.
 
 Be clear about the limit of that. It establishes that nothing the game plays was
 missed. It does not confirm table entries no command reached: eight of the
-fifteen sets have some, and each profile lists them in
+sixteen sets have some, and each profile lists them in
 `evidence.not_established_by_the_trace` rather than leaving you to assume
 otherwise. Every profile also carries the traced addresses, so you can re-derive
 the list yourself from your own dumps.
@@ -327,8 +329,8 @@ Be precise about what has been done, because the three are different things:
 | | |
 |---|---|
 | every conversion you run | re-parsed and checked frame by frame — **structural only** |
-| all 15 bundled profiles | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them, issuing the same speech commands as the originals — **structure and control flow, not sound** |
-| all 15 bundled profiles | every stream the firmware plays was captured and shown to fall inside a converted phrase — **coverage, still not sound** |
+| all 16 bundled profiles | the converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them, issuing the same speech commands as the originals — **structure and control flow, not sound** |
+| all 16 bundled profiles | every stream the firmware plays was captured and shown to fall inside a converted phrase — **coverage, still not sound** |
 | any conversion, listened to | **never** |
 | any conversion, on hardware | **never** |
 

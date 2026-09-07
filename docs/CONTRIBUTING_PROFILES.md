@@ -151,7 +151,7 @@ ships:
 1. **every phrase found and terminating** — `inspect --source-tables` shows it.
    If one does not, that is normally a wrong layout. It can also be a ROM whose
    player supplies the terminator: one phrase of Mr. and Mrs. Pac-Man is, and
-   nothing else in the fifteen sets. Establish which before naming it in
+   nothing else in the sixteen sets. Establish which before naming it in
    `unterminated_phrases`, and expect to be held to it — a named phrase that
    does terminate is refused;
 2. **speech coverage that looks like a whole ROM.** `convert-set` prints the

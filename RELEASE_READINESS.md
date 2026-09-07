@@ -15,7 +15,7 @@ Prepared 2026-09-06. Repository private at
 |---|---|
 | **Bundled chip tables** | TMS5200 and TMS5220 coefficient tables ship in `src/tms52xx/data/`. No extraction step, no PinMAME clone. |
 | **TMS5220C / TSP5220C** | Added as conversion targets, scoped to LPC-table equivalence. |
-| **Game profiles** | Versioned schema of layout facts and device hashes. No ROM contents. Fifteen of the nineteen distinct sound ROM sets, covering 44 of 49 game revisions. |
+| **Game profiles** | Versioned schema of layout facts and device hashes. No ROM contents. Sixteen of the nineteen distinct sound ROM sets, covering 45 of 49 game revisions. |
 | **Layout forms** | Three facts a table can carry that could not previously be stated: `entry_form=start_end_pairs` (both bounds per phrase in a 4-byte record), `silent_phrases` (a deliberate "say nothing" entry), and `unterminated_phrases` (the player, not the ROM, supplies the terminator). Each is a checked claim, not a switch. |
 | **Two-command path** | `understudy identify` and `understudy convert-set`: socket dumps in, burnable device images out. |
 | **Manifest v2** | Versioned, with tool version, profile identity and hash, chip and table identity and hashes, per-device input/output hashes, layout, per-phrase rows, warnings, overrides. |
@@ -68,8 +68,9 @@ ROMs, so one profile serves several.
 | `mysteria` | `board-simulated` | 36 | 1392 | 1 |
 | `spectrum` | `board-simulated` | 31 | 1478 | 4 |
 | `vector` | `board-simulated` | 50 | 2287 | 4 |
+| `bigbat` | `board-simulated` | 24 | 1012 | 1 |
 
-**15 of 19 sound ROM sets; 44 of 49 game revisions.** Each cleared all four
+**16 of 19 sound ROM sets; 45 of 49 game revisions.** Each cleared all four
 acceptance criteria: every phrase either terminating in a stop frame or
 declared and checked as one the player terminates instead (one phrase of
 `m_mpac`, and nothing else in the fifteen), healthy per-device speech coverage,
@@ -94,7 +95,7 @@ ROM and trimmed at its own stop frame, and the result must fall inside a
 converted phrase. That is what rules out a layout which misses speech, and it
 is what caught both defects below.
 
-It does **not** confirm every phrase a profile declares. Eight of the fifteen
+It does **not** confirm every phrase a profile declares. Eight of the sixteen
 sets have table entries no command reached in that sweep:
 
 | profile | distinct phrases declared | confirmed by the trace | resting on the table alone |
@@ -107,7 +108,7 @@ sets have table entries no command reached in that sweep:
 | `flashgdn` | 9 | 8 | 1 |
 | `m_mpac` | 26 | 25 | 1 |
 | `medusa` | 27 | 26 | 1 |
-| the other seven | — | all | 0 |
+| the other eight | — | all | 0 |
 
 For those entries the evidence is the pointer table — the same kind of evidence
 that was wrong in Fathom v1. They are converted because they are entries in a
@@ -139,7 +140,7 @@ Re-checking the already-shipped profiles that way found two of the five wrong:
 Both are corrected. Every other profile accounts for every stream its firmware
 played — subject to the limits stated above.
 
-### The four sets not covered
+### The three sets not covered
 
 These are accounted for, not merely absent:
 
@@ -147,26 +148,35 @@ These are accounted for, not merely absent:
 |---|---|---|
 | `rapidfir` | 2 | Only the firmware ROM is fitted (`U5`, `BY61_SOUNDROMxxx0`); the three speech sockets are empty. Across all 256 commands the MPU can send it makes **zero** writes to the TMS while writing the DAC 128,144 times. Its ROM does carry the standard TMS byte-write routine at `$F365` — checked rather than assumed — and no direct call to it appears anywhere: no `JSR`, no `JMP`, no literal occurrence of its address. That is an observation, **not** a proof of unreachability; the firmware dispatches through a computed jump, and a target can be constructed without its address appearing literally. The exclusion does not rest on it. It rests on criterion 3: the trace yields no streams, so there is nothing for a phrase list to be checked against, and the layout the auto-detector proposes is executed code (§8b). |
 | `cosflash` | 1 | Same single-socket arrangement, and no dump on hand to confirm it. |
-| `bigbat` | 1 | No dump on hand. |
 | `blackbl2` | 1 | No *identifiable* dump on hand — the PinMAME driver carries no CRC or SHA-1 for its sound ROMs, so a search can only ask whether the expected filenames are present, and a renamed dump sitting in the collection could not be ruled out. |
 
-"No dump on hand" was checked rather than assumed: the 1,141 archives available
-here were searched by SHA-1 for every ROM the drivers record, and — for
-`blackbl2`, whose driver records no hash at all, so a hash search could never
-find it — by filename as well. `bigbat` and `cosflash` produce no hash match;
-`blackbl2`'s `blb_u2.snd` … `blb_u5.snd` appear nowhere. The one near miss is a
-Squawk & Talk set filed under Midnight Marauders, which is not one of the 49
-drivers and whose two ROMs match nothing in Big Bat.
+"No dump on hand" was checked rather than assumed, and the checking is worth
+recording because it moved a set off this list. The first search covered the
+1,141 archives in one tree, by SHA-1 against every hash the drivers record and —
+for `blackbl2`, whose driver records no hash at all, so a hash search could never
+find it — by filename too. That search reported three sets missing.
 
-These three are an acquisition problem before they are an engineering one. A
-dump does not by itself make a sixteenth set: it would still need its layout
+It was searching the wrong place for one of them. Widening to every archive on
+the machine found all three of Big Bat's sound ROMs in a separate `files/` tree,
+under descriptive names ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN")
+rather than the driver's `u3.bin`, which is why a filename search had missed
+them and a hash search of the wrong tree could not find them. All three match
+the driver's SHA-1 exactly. Big Bat is now covered.
+
+`cosflash` still produces no hash match anywhere, and `blackbl2`'s expected
+filenames appear in no archive — though with no hash in its driver, that search
+cannot exclude a renamed dump. The lesson is the obvious one: a negative result
+is only as wide as the search that produced it, and this one was too narrow.
+
+The remaining two are an acquisition problem before they are an engineering one. A
+dump does not by itself make a seventeenth set: it would still need its layout
 worked out, a trace captured, a profile written and the whole acceptance bar
 cleared, which is the same work every set here took. What a dump changes is that
 the work becomes possible. For `blackbl2` there is an extra step — with no hash
 in the driver, the dump would have to be authenticated some other way, most
 naturally by the traced phrase list criterion 3 already requires.
 
-`rapidfir` is the reason coverage stops at 15 rather than 16. It was expected to
+`rapidfir` is the reason coverage stops at 16 rather than 17. It was expected to
 be convertible and is not.
 
 Be exact about the strength of that. What is established: no speech ROM is
@@ -268,8 +278,8 @@ What has been done, precisely:
 | | |
 |---|---|
 | every conversion | re-parsed with the target tables, every frame's kind compared, changed bytes reconciled — structural |
-| all 15 bundled profiles | the board's own firmware, in emulation, boots and drives the **converted** ROMs: same SPEAK EXTERNAL commands, same number of TMS writes, and a DAC stream identical value for value and in order — structure and control flow, **not sound** |
-| all 15 bundled profiles | every stream the firmware plays, captured and shown to fall inside a converted phrase — coverage, still **not sound**. It does not confirm table entries no command reached; see §3 |
+| all 16 bundled profiles | the board's own firmware, in emulation, boots and drives the **converted** ROMs: same SPEAK EXTERNAL commands, same number of TMS writes, and a DAC stream identical value for value and in order — structure and control flow, **not sound** |
+| all 16 bundled profiles | every stream the firmware plays, captured and shown to fall inside a converted phrase — coverage, still **not sound**. It does not confirm table entries no command reached; see §3 |
 | any conversion, heard | never |
 | any conversion, on hardware | never |
 
@@ -318,7 +328,7 @@ and on ROM images. Its findings are.
 
 ## 8b. Rapid Fire: a boot is not a check
 
-The set expected to be the sixteenth plays no speech under any command the MPU
+Rapid Fire plays no speech under any command the MPU
 can send (§3 is precise about what that does and does not establish). Trying to
 convert it anyway is the sharpest demonstration in this project of why criterion
 4 cannot stand alone.
@@ -341,7 +351,7 @@ The check now compares the DAC as an ORDERED stream of values — conversion has
 nothing to do with the DAC, so every write to it must survive byte for byte and
 in order — alongside the SPEAK EXTERNAL count and the total number of TMS
 writes. The bytes sent to the TMS are deliberately not compared: changing them
-is what conversion is. All 15 bundled profiles pass, and each records its own
+is what conversion is. All 16 bundled profiles pass, and each records its own
 figures in `evidence.emulation`.
 
 ## 9. Known limitations
@@ -352,7 +362,7 @@ figures in `evidence.emulation`.
   is labelled as such.
 - Nearest-value coefficient mapping is an auditable baseline, not a perceptual
   optimum.
-- Fifteen sound ROM sets have profiles; four do not, for stated reasons (§3).
+- Sixteen sound ROM sets have profiles; three do not, for stated reasons (§3).
   The corpus sweep (§8a) shows automatically detected layouts are wrong often
   enough that they must not be shipped, and none is.
 - ROM checksum behaviour on Squawk & Talk is **not established**. If a board

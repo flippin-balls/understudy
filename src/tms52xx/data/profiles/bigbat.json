@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "profile_id": "bigbat",
+  "profile_version": 1,
+  "title": "Big Bat",
+  "manufacturer": "Bally",
+  "year": 1984,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "bigbat"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "u3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "d8120187ca19641d938595e648219da328f7b23fb31198c5b03e9ae8b1fb0ef7",
+      "crc32": "b87a9335"
+    },
+    {
+      "socket": "U4",
+      "label": "u4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "e72c31d34b64e1e7feaf5442b2691bf7d1c1bb37c727994422493d2a265bac99",
+      "crc32": "4ab75b31"
+    },
+    {
+      "socket": "U5",
+      "label": "u5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "ebf8abfc7221b21a754128a2e31414b8bfbba90899d6405436dc25784abfb48f",
+      "crc32": "0aec8204"
+    }
+  ],
+  "layout": {
+    "table_offset": 13759,
+    "base_address": 49152,
+    "phrases": 24,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "unterminated_phrases": [],
+    "address_ordered": true,
+    "has_end_bound": true
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F5BF, 24 phrases, address-ordered, with a final end bound.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 24 streams from 24 distinct addresses spanning $D000-$E1E1. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1012 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 8 SPEAK EXTERNAL commands, 3976 writes to the TMS, and 0 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "provenance": "This set's ROMs were not in the archive tree the other fifteen came from. They were found in a separate `files/` tree under descriptive names (\"Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN\"), which is why a search by the driver's filenames missed them; all three match the PinMAME driver's SHA-1 exactly."
+  },
+  "notes": [
+    "This sound ROM set is shared by 1 game revisions: bigbat."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

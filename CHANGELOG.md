@@ -9,13 +9,13 @@ features.
 
 ### Added
 
-- **Eleven more sound ROM sets**, taking coverage from 4 to **15 of the 19
-  distinct Squawk & Talk sound ROM sets**, and from 17 to **44 of the 49 game
+- **Twelve more sound ROM sets**, taking coverage from 4 to **16 of the 19
+  distinct Squawk & Talk sound ROM sets**, and from 17 to **45 of the 49 game
   revisions**, each carrying the addresses the firmware was seen to play
   (`evidence.traced_phrase_starts`) and an explicit statement of which of its
   declared phrases the trace did **not** confirm
   (`evidence.not_established_by_the_trace`): Beat the Clock, Centaur, Eight
-  Ball Champ, Eight Ball Deluxe,
+  Ball Champ, Eight Ball Deluxe, Big Bat,
   Fireball II, Flash Gordon (French), Medusa, Mr. and Mrs. Pac-Man, Mysterian
   and Vector, alongside the corrected Fathom and Flash Gordon.
 - **`entry_form: "start_end_pairs"`** — some tables store both bounds of every
@@ -47,7 +47,7 @@ features.
   this is what a pointer into a gap — or one entry past the end of a table —
   looks like, and it is the shape of the Fathom defect. No threshold is
   involved: a real phrase says something, so its first frame is never the one
-  that ends it, and none of the 499 phrases the bundled profiles declare begins
+  that ends it, and none of the 523 phrases the bundled profiles declare begins
   with one. This guard runs before `silent_phrases` is consulted, so no claim in a
   profile can excuse it.
 - **A mirrored device's two windows must agree where they overlap.** Reaching
@@ -73,8 +73,14 @@ features.
   conversion, so every write to it must survive byte for byte and in order —
   alongside the SPEAK EXTERNAL count and the number of TMS writes. The bytes
   sent to the TMS are deliberately not compared: changing them is what
-  conversion is. All 15 bundled profiles pass, each recording its figures in
+  conversion is. All 16 bundled profiles pass, each recording its figures in
   `evidence.emulation`.
+- **Big Bat**, whose ROMs were believed unobtainable. They were in a second
+  archive tree the first search never walked, filed under descriptive names
+  ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN") rather than the driver's
+  `u3.bin` — so neither a hash search of the wrong tree nor a filename search
+  could find them. All three match the driver's SHA-1 exactly. A negative result
+  is only as wide as the search behind it.
 
 ### Fixed
 

@@ -37,7 +37,7 @@ what it wrote and confirms every frame kept its kind and the stream its length.
 That is not an acoustic check, and it is not an emulator run — the tool does not
 invoke one.
 
-For each of the fifteen bundled profiles, the converted devices were
+For each of the sixteen bundled profiles, the converted devices were
 additionally loaded into a simulation of the Squawk & Talk board, which booted
 and drove them, issuing the same speech commands as the originals. That
 exercises the board's firmware and control flow against the converted data, and
