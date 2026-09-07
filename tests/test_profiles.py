@@ -6,6 +6,7 @@ wrong, so identification is by exact hash and everything short of that is
 refused rather than resolved.
 """
 import copy
+import hashlib
 import json
 import sys
 import tempfile
@@ -58,6 +59,55 @@ class TestChipRegistry(unittest.TestCase):
                                37.91, places=1)
         self.assertAlmostEqual(chips.resolve("tms5220").tables().lowest_f0_hz,
                                50.31, places=1)
+
+    #: Digests of the COEFFICIENTS ONLY -- not the file, not the provenance
+    #: block, not the formatting. Pinned here so that changing the numbers has
+    #: to change this file too. Without an independent expected value, the
+    #: provenance tests are circular: a coordinated edit to the JSON and the
+    #: notice would pass every "does the metadata agree with itself" check
+    #: while shipping different coefficients.
+    #:
+    #: These are the values validated end to end against an original Bally
+    #: Embryon ROM set, and byte-compared against both MAME and PinMAME.
+    COEFFICIENT_DIGESTS = {
+        "tms5200": "4fa12f1327a02822cb7b9e392b633c3b"
+                   "f1dacbff88dbd42153a36518ad8367f0",
+        "tms5220": "728aa528ea0ffeeb806a76c1d31f11ba"
+                   "2a3006e7e96dc1f893ee812588bdca5e",
+    }
+
+    @staticmethod
+    def _coefficient_digest(table):
+        canon = json.dumps({"pitch_bits": table.pitch_bits,
+                            "k_widths": list(table.k_widths),
+                            "energy": list(table.energy),
+                            "pitch": list(table.pitch),
+                            "k": [list(v) for v in table.k]},
+                           sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+    def test_the_bundled_coefficients_are_the_ones_that_were_validated(self):
+        """The numbers themselves, against a pinned expectation.
+
+        Every other provenance test asks whether the metadata agrees with
+        itself. This asks whether the data is the data.
+        """
+        for name, expected in self.COEFFICIENT_DIGESTS.items():
+            got = self._coefficient_digest(chips.resolve(name).tables())
+            self.assertEqual(got, expected,
+                             "%s coefficients differ from the validated set" % name)
+
+    def test_the_two_parts_differ_where_they_are_supposed_to(self):
+        """A concrete structural fact, not a hash: the pitch ceilings differ."""
+        src = chips.resolve("tms5200").tables()
+        dst = chips.resolve("tms5220").tables()
+        self.assertEqual(max(src.pitch), 211)
+        self.assertEqual(max(dst.pitch), 159)
+        self.assertEqual(list(src.energy), list(dst.energy),
+                         "the energy tables are identical on real 52xx parts")
+        self.assertEqual(len(src.pitch), 64)
+        self.assertEqual(src.pitch_bits, 6)
+        self.assertEqual(dst.pitch_bits, 6)
 
     def test_bundled_tables_carry_provenance(self):
         for table in ("tms5200", "tms5220"):
@@ -182,11 +232,19 @@ class TestProfileValidation(SynthProfile):
         self.assertIn("holds_speech", str(caught.exception))
 
     def test_a_malformed_hash_is_rejected(self):
+        """Right length is not enough; it has to be hex."""
+        for bad in ("abc", "z" * 64, "g" * 64, "-" * 64, 12345, None.__class__):
+            raw = copy.deepcopy(self.raw)
+            raw["devices"][0]["sha256"] = bad
+            with self.assertRaises(ProfileError) as caught:
+                Profile(raw, "<x>")
+            self.assertIn("sha256", str(caught.exception), repr(bad))
+
+    def test_an_uppercase_hash_is_accepted_and_normalised(self):
         raw = copy.deepcopy(self.raw)
-        raw["devices"][0]["sha256"] = "abc"
-        with self.assertRaises(ProfileError) as caught:
-            Profile(raw, "<x>")
-        self.assertIn("sha256", str(caught.exception))
+        raw["devices"][0]["sha256"] = raw["devices"][0]["sha256"].upper()
+        self.assertEqual(Profile(raw, "<x>").devices[0].sha256,
+                         self.raw["devices"][0]["sha256"])
 
     def test_truncate_indexes_must_be_real_phrases(self):
         raw = copy.deepcopy(self.raw)
@@ -317,15 +375,31 @@ class TestAssembly(SynthProfile):
         self.assertTrue(got.from_mirror)
         self.assertEqual(got.data[0], self.dumps["U4"][0] ^ 0xFF)
 
-    def test_both_mirror_halves_changing_is_refused(self):
+    def test_mirror_halves_changing_to_DIFFERENT_contents_is_refused(self):
+        """One device cannot hold two different things."""
         image = bytearray(self.profile.assemble(self.dumps))
         original = bytes(image)
         image[0xE000 - 0xC000] ^= 0xFF
-        image[0xE800 - 0xC000] ^= 0xFF
+        image[0xE800 - 0xC000] ^= 0x0F        # a different change
         with self.assertRaises(ProfileError) as caught:
             self.profile.extract(bytes(image), self.profile.device_for("U4"),
                                  original)
-        self.assertIn("both mirror halves", str(caught.exception))
+        self.assertIn("different contents", str(caught.exception))
+
+    def test_mirror_halves_changing_IDENTICALLY_is_accepted(self):
+        """A layout may address phrases through both windows.
+
+        The device can represent that result, so refusing it would reject a
+        legitimate layout. What must be refused is the halves diverging.
+        """
+        image = bytearray(self.profile.assemble(self.dumps))
+        original = bytes(image)
+        image[0xE000 - 0xC000] ^= 0xFF
+        image[0xE800 - 0xC000] ^= 0xFF        # the same change
+        got = self.profile.extract(bytes(image), self.profile.device_for("U4"),
+                                   original)
+        self.assertTrue(got.changed)
+        self.assertEqual(got.data[0], self.dumps["U4"][0] ^ 0xFF)
 
 
 class TestIdentification(SynthProfile):
@@ -459,6 +533,20 @@ class TestBundledEmbryonProfile(unittest.TestCase):
         self.assertTrue(u4.mirrored)
         self.assertEqual(u4.size, 2048)
         self.assertEqual(u4.device_type, "2716")
+
+    def test_the_profile_identity_is_portable(self):
+        """A manifest must not record one workstation's filesystem layout."""
+        self.assertEqual(self.profile.identity, "data/profiles/embryon.json")
+        self.assertNotIn("/home", self.profile.identity)
+
+    def test_a_custom_profile_reports_where_it_was_loaded_from(self):
+        import tempfile
+        from synthetic_game import build as build_game, write_profile as write
+        with tempfile.TemporaryDirectory() as tmp:
+            _dumps, raw = build_game()
+            path = write(tmp, raw)
+            loaded = profiles.load_file(path)
+            self.assertEqual(loaded.identity, str(path))
 
     def test_status_is_not_overclaimed(self):
         """Nothing may claim silicon verification until it has happened."""

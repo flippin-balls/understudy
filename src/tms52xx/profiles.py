@@ -79,10 +79,23 @@ class Device:
             raise ProfileError("%s: device %s has size %d"
                                % (where, self.socket, self.size))
         if self.sha256 is not None:
-            if not isinstance(self.sha256, str) or len(self.sha256) != 64:
-                raise ProfileError("%s: device %s has a malformed sha256"
-                                   % (where, self.socket))
+            if not isinstance(self.sha256, str) or \
+                    not re.match(r"^[0-9a-fA-F]{64}$", self.sha256):
+                raise ProfileError(
+                    "%s: device %s has a malformed sha256 (%r): it must be 64 "
+                    "hex characters" % (where, self.socket, self.sha256))
             self.sha256 = self.sha256.lower()
+        for key, value in (("socket", self.socket),
+                           ("type", self.device_type)):
+            if not value.strip():
+                raise ProfileError("%s: device %s must not be empty"
+                                   % (where, key))
+        if self.label is not None and not isinstance(self.label, str):
+            raise ProfileError("%s: device %s label must be a string"
+                               % (where, self.socket))
+        if self.cpu_address < 0:
+            raise ProfileError("%s: device %s cpu_address must not be negative"
+                               % (where, self.socket))
 
     def as_dict(self) -> dict:
         return {"socket": self.socket, "type": self.device_type,
@@ -245,8 +258,33 @@ class Profile:
 
     @property
     def identifiable(self) -> bool:
-        """Can every speech device be matched by hash?"""
+        """Can EVERY device be matched by hash?
+
+        Not only the speech-bearing ones. A device carrying no speech is still
+        emitted as a burn image, so it has to be authenticated too; otherwise
+        arbitrary same-sized bytes come back out named for that socket.
+        """
+        return bool(self.devices) and all(d.sha256 for d in self.devices)
+
+    @property
+    def speech_identifiable(self) -> bool:
+        """Whether identification can recognise a set -- speech devices only."""
         return all(d.sha256 for d in self.speech_devices)
+
+    @property
+    def identity(self) -> str:
+        """A stable, portable name for where this profile came from.
+
+        Bundled profiles report a package-relative path; anything else reports
+        the path it was loaded from, which is what a user needs in order to
+        find their own file again.
+        """
+        try:
+            relative = Path(self.source).resolve().relative_to(
+                BUNDLED_PROFILE_DIR.resolve())
+        except (ValueError, OSError):
+            return self.source
+        return "data/profiles/%s" % relative.as_posix()
 
     @property
     def label(self) -> str:
@@ -304,9 +342,17 @@ class Profile:
 
         changed = [w for w in windows if image[w[0]:w[1]] != original[w[0]:w[1]]]
         if len(changed) > 1:
-            raise ProfileError(
-                "socket %s: both mirror halves changed, which one device "
-                "cannot represent -- the layout is wrong" % device.socket)
+            # Both halves changed. That is only a problem if they now DIFFER:
+            # one device cannot hold two contents. If they came out identical,
+            # the device can represent the result and there is nothing wrong --
+            # which is what happens when a layout addresses phrases through
+            # both the real and mirrored windows.
+            contents = {bytes(image[lo:hi]) for lo, hi in changed}
+            if len(contents) > 1:
+                raise ProfileError(
+                    "socket %s: the two mirror halves changed to different "
+                    "contents, which one device cannot represent -- the layout "
+                    "is wrong" % device.socket)
         lo, hi = changed[0] if changed else windows[0]
         return DeviceResult(device=device, data=bytes(image[lo:hi]),
                             window=(lo, hi), changed=bool(changed),

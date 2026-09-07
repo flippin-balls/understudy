@@ -370,6 +370,31 @@ class TestCustomTables(WorkflowFixture):
         self.assertEqual(result.manifest["tables"]["target"]["chip"], "custom")
         self.assertFalse(result.manifest["tables"]["target"]["bundled"])
 
+    def test_the_table_file_is_read_exactly_once(self):
+        """Load and hash must see the same bytes.
+
+        Reading the file twice -- once to parse, once to hash -- lets a file
+        that changes in between produce a manifest identifying tables that did
+        not make the ROM. There is no way to observe that without a concurrent
+        write, so the property asserted is the one that prevents it: one read.
+        """
+        from unittest import mock
+        from tms52xx.workflow import _load_tables
+        from tms52xx import chips as chips_mod
+
+        real = Path.read_bytes
+        seen = []
+
+        def counting(self, *args, **kwargs):
+            seen.append(str(self))
+            return real(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_bytes", counting):
+            _load_tables(chips_mod.resolve("tms5220"), self.custom)
+        self.assertEqual([p for p in seen if p == str(self.custom)],
+                         [str(self.custom)],
+                         "the table file was read %d times" % len(seen))
+
     def test_it_records_the_table_s_own_name_and_hash(self):
         result = self.convert(target_tables=self.custom)
         identity = result.manifest["tables"]["target"]
@@ -407,6 +432,72 @@ class TestCustomTables(WorkflowFixture):
         name = output_name("u4.bin", device, chips.resolve("tms5220"))
         self.assertIn(device.socket, name)
         self.assertIn(device.device_type, name)
+
+
+class TestPublishBackupNaming(unittest.TestCase):
+    """The publisher's own temporary names must not collide with user files."""
+
+    def test_a_file_named_like_the_backup_path_is_not_destroyed(self):
+        """A derived backup name is a path a user can hold.
+
+        `<dest>.replaced` was unlinked before each replace, which destroyed
+        exactly the kind of file the publisher exists to protect. Backup names
+        now come from mkstemp.
+        """
+        from tms52xx.cli import _publish
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "out.bin").write_bytes(b"EXISTING")
+            for name in ("out.bin.replaced", "out.bin.backup", "out.bin.part",
+                         "out.bin.tmp"):
+                victim = d / name
+                victim.write_bytes(b"PRECIOUS")
+                _publish([(d / "out.bin", b"NEW")])
+                self.assertTrue(victim.exists(), name)
+                self.assertEqual(victim.read_bytes(), b"PRECIOUS", name)
+                victim.unlink()
+            self.assertEqual((d / "out.bin").read_bytes(), b"NEW")
+
+    def test_no_temporary_files_survive_a_clean_publish(self):
+        from tms52xx.cli import _publish
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "a.bin").write_bytes(b"OLD")
+            _publish([(d / "a.bin", b"NEW"), (d / "b.bin", b"B")])
+            self.assertEqual(sorted(p.name for p in d.iterdir()),
+                             ["a.bin", "b.bin"])
+
+
+class TestAllDevicesAuthenticated(WorkflowFixture):
+    """Every emitted device must be authenticated, speech or not.
+
+    A device carrying no speech is still copied out as a burn image. Unhashed,
+    it is accepted on size alone, so a technician could be handed a file named
+    for a socket and sized for its device holding whatever was passed in.
+    """
+
+    def test_an_unhashed_non_speech_device_is_refused(self):
+        raw = copy.deepcopy(self.raw)
+        raw["devices"].append({
+            "socket": "U2", "type": "2532", "size": 0x1000,
+            "cpu_address": 0xC000, "mirrored": False, "holds_speech": False})
+        dumps = dict(self.dumps, U2=b"\xFF" * 0x1000)
+        with self.assertRaises(ConversionRefused) as caught:
+            convert_set(dumps, Profile(raw, "<x>"), self.target)
+        self.assertIn("U2", str(caught.exception))
+        self.assertIn("cannot verify", str(caught.exception))
+
+    def test_hashing_it_makes_the_profile_usable_again(self):
+        raw = copy.deepcopy(self.raw)
+        blank = b"\xFF" * 0x1000
+        raw["devices"].append({
+            "socket": "U2", "type": "2532", "size": 0x1000,
+            "cpu_address": 0xC000, "mirrored": False, "holds_speech": False,
+            "sha256": sha256(blank)})
+        result = convert_set(dict(self.dumps, U2=blank), Profile(raw, "<x>"),
+                             self.target)
+        u2 = next(e for e in result.outputs if e["socket"] == "U2")
+        self.assertFalse(u2["changed"])
 
 
 class TestDoubleConversion(WorkflowFixture):

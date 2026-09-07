@@ -107,6 +107,39 @@ jobs:
           python tools/sync_notices.py
           git diff --exit-code -- src/tms52xx/data/licenses \
             || (echo "packaged licence materials are stale; run tools/sync_notices.py" && exit 1)
+      - name: bundled tables match upstream MAME at the pinned commit
+        # The other provenance checks ask whether our metadata agrees with
+        # itself. This one asks upstream. It needs network, so it is allowed to
+        # be skipped on a fork without one -- but not to pass quietly if the
+        # data has drifted.
+        run: |
+          set -euo pipefail
+          COMMIT=$(python - <<'PY'
+          import pathlib, re
+          text = pathlib.Path("THIRD_PARTY_NOTICES.md").read_text()
+          print(re.search(r"`([0-9a-f]{40})`", text).group(1))
+          PY
+          )
+          echo "pinned MAME commit: $COMMIT"
+          git clone --filter=blob:none --no-checkout             https://github.com/mamedev/mame mame-src
+          git -C mame-src fetch --depth 1 origin "$COMMIT"
+          git -C mame-src checkout --quiet "$COMMIT" --             src/devices/sound/tms5110r.hxx
+          python tools/extract_tables.py mame-src /tmp/regenerated
+          python - <<'PY'
+          import json, pathlib, sys
+          bad = []
+          for name in ("tms5200", "tms5220"):
+              ours = json.loads(pathlib.Path(
+                  "src/tms52xx/data/%s.json" % name).read_text())
+              theirs = json.loads(pathlib.Path(
+                  "/tmp/regenerated/%s.json" % name).read_text())
+              for key in ("pitch_bits", "k_widths", "energy", "pitch", "k"):
+                  if ours[key] != theirs[key]:
+                      bad.append("%s: %s differs from upstream" % (name, key))
+          if bad:
+              sys.exit("\n".join(bad))
+          print("bundled coefficients match upstream MAME at the pinned commit")
+          PY
       - name: no ROM data anywhere in the repository
         run: |
           python - <<'PY'

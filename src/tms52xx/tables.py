@@ -1,9 +1,10 @@
-"""Chip coefficient tables -- loaded, never bundled.
+"""Chip coefficient tables: the format, and loading one from anywhere.
 
-A TMS5200 or TMS5220 stream is meaningless without the chip's coefficient
-tables, and this project does not distribute them: you supply them.
-docs/PROVENANCE.md explains why, sets out the limits of that position, and
-docs/from_pinmame.py will extract them from a checkout you already have.
+Understudy BUNDLES the TMS5200 and TMS5220 tables -- see `chips.py` and
+`data/` -- so nothing has to be extracted before a first conversion. This module
+is the format and the loader; it is what reads the bundled files and equally
+what reads one you supply with `--source-tables`. docs/PROVENANCE.md records
+where the bundled data came from and how to check it.
 
     pitch_bits   6 on both 52xx parts. Present because the earlier TMS5100 and
                  TMS5110 use 5, and assuming that width for a 52xx stream
@@ -133,6 +134,15 @@ class ChipTables:
         return SAMPLE_RATE / max(periods)
 
     @classmethod
+    def from_bytes(cls, raw: bytes, where="<bytes>") -> "ChipTables":
+        """Parse tables from bytes already in hand.
+
+        `from_json` re-reads the file; callers that must hash exactly what they
+        parsed use this so the two cannot disagree.
+        """
+        return cls._parse(raw, Path(where))
+
+    @classmethod
     def from_json(cls, path) -> "ChipTables":
         """Load a table file, naming what is wrong with it if it is wrong.
 
@@ -141,9 +151,14 @@ class ChipTables:
         `KeyError` or a `TypeError` escaping from here reaches the user as a
         traceback, which tells them nothing they can act on.
         """
-        where = Path(path)
+        return cls._parse(Path(path).read_bytes(), Path(path))
+
+    @classmethod
+    def _parse(cls, body: bytes, where: Path) -> "ChipTables":
         try:
-            raw = json.loads(where.read_text(encoding="utf-8"))
+            raw = json.loads(body.decode("utf-8"))
+        except UnicodeDecodeError as error:
+            raise ValueError("%s is not UTF-8 text: %s" % (where, error))
         except json.JSONDecodeError as error:
             raise ValueError("%s is not valid JSON: %s" % (where, error))
 
@@ -198,7 +213,9 @@ def load_pair(directory) -> Dict[str, ChipTables]:
         path = directory / ("%s.json" % name)
         if not path.exists():
             raise FileNotFoundError(
-                "%s not found. This project does not ship chip tables; see "
-                "docs/PROVENANCE.md for how to produce them." % path)
+                "%s not found. Understudy's own tables are bundled -- use "
+                "`tms52xx.chips.resolve(\"%s\").tables()` for those. This "
+                "function is for loading a directory of your own."
+                % (path, name))
         out[name] = ChipTables.from_json(path)
     return out

@@ -51,16 +51,26 @@ class SetResult:
         self.after: bytes = b""
 
 
+def _load_tables(chip: Chip, custom: Optional[Path]):
+    """Read a table file ONCE, and hash the bytes that were actually parsed.
+
+    Loading and then hashing separately reads the file twice, so a file changed
+    in between would give a manifest describing something other than what
+    produced the ROM.
+    """
+    path = Path(custom) if custom else chip.table_path
+    raw = path.read_bytes()
+    return ChipTables.from_bytes(raw, path), raw, path
+
+
 def _table_identity(chip: Chip, custom: Optional[Path],
-                    loaded: ChipTables) -> dict:
+                    loaded: ChipTables, raw: bytes, path: Path) -> dict:
     """Which coefficient tables were used, and how to recognise them again.
 
     When a custom file is supplied, `chip` is only what the user ASKED for.
     Nothing checks that the file describes that part, so both are recorded: the
     requested id, and the name the table gives itself.
     """
-    path = Path(custom) if custom else chip.table_path
-    raw = path.read_bytes()
     identity = {
         "requested_chip": chip.id,
         "table_name": loaded.name,
@@ -89,8 +99,12 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     # correct-sized bytes, and a stop frame is not authentication -- 0xF occurs
     # in ordinary data. The burnable-image path requires identifiable profiles;
     # the manual `convert` command remains for research on unhashed layouts.
+    # EVERY device, not just the speech-bearing ones. A device with no speech
+    # is still copied out as a burn image, and an unhashed one is accepted on
+    # size alone -- so a technician could be handed a file named for a socket,
+    # sized for its device, containing whatever they happened to pass in.
     if not profile.identifiable:
-        missing = [d.socket for d in profile.speech_devices if not d.sha256]
+        missing = [d.socket for d in profile.devices if not d.sha256]
         raise ConversionRefused(
             "profile %r cannot verify what it is given: socket(s) %s carry no "
             "sha256, so nothing distinguishes the right ROM from a wrong one "
@@ -102,10 +116,9 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     result.source_chip = source or resolve(profile.source_chip)
     result.target_chip = target
 
-    src_tables = (ChipTables.from_json(source_tables) if source_tables
-                  else result.source_chip.tables())
-    dst_tables = (ChipTables.from_json(target_tables) if target_tables
-                  else target.tables())
+    src_tables, src_raw, src_path = _load_tables(result.source_chip,
+                                                 source_tables)
+    dst_tables, dst_raw, dst_path = _load_tables(target, target_tables)
 
     # Every socket the profile knows must be supplied. A missing device is not
     # a warning: its bytes would be filled with 0xFF and a pointer into it would
@@ -290,7 +303,10 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         "understudy_version": __version__,
         "profile": {"id": profile.id, "version": profile.version,
                     "title": profile.label, "status": profile.status,
-                    "source": profile.source},
+                    # A package-relative identity for bundled profiles: an
+                    # absolute path is not portable, leaks a workstation layout,
+                    # and makes a manifest look like a record of one machine.
+                    "source": profile.identity},
         "chips": {
             "source": ("custom" if source_tables else result.source_chip.id),
             "target": ("custom" if target_tables else target.id),
@@ -299,8 +315,9 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         },
         "tables": {
             "source": _table_identity(result.source_chip, source_tables,
-                                      src_tables),
-            "target": _table_identity(target, target_tables, dst_tables),
+                                      src_tables, src_raw, src_path),
+            "target": _table_identity(target, target_tables, dst_tables,
+                                      dst_raw, dst_path),
         },
         "layout": {"table_offset": profile.table_offset,
                    "phrases": profile.phrases,

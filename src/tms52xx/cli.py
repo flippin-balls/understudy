@@ -196,6 +196,23 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
+class PublishRollbackError(OSError):
+    """A write failed AND the rollback could not fully undo it.
+
+    Rare, and the one case where the caller must not tell the user that nothing
+    was changed. Carries the surviving backups so they can be recovered by hand.
+    """
+
+    def __init__(self, lost) -> None:
+        self.lost = list(lost)
+        super().__init__(
+            "the output could not be written and the previous contents could "
+            "not all be restored. These backups still hold the original "
+            "bytes:\n%s"
+            % "\n".join("  %s  ->  should be restored to  %s" % (b, d)
+                         for b, d in self.lost))
+
+
 def _publish(payloads) -> None:
     """Write a whole set of files, or none of them.
 
@@ -228,14 +245,20 @@ def _publish(payloads) -> None:
             _unlink(temporary)
         raise
 
-    published, replaced = [], []
+    published, replaced, lost = [], [], []
     try:
         for temporary, destination in staged:
             if destination.exists():
-                backup = destination.with_name(destination.name + ".replaced")
-                _unlink(backup)
+                # The backup name comes from mkstemp, not from the destination.
+                # A derived name like `<dest>.replaced` is a path a user can
+                # hold, and this unlinks it -- which destroyed exactly the kind
+                # of file this function exists to protect.
+                handle, backup = tempfile.mkstemp(dir=str(destination.parent),
+                                                  prefix=destination.name + ".",
+                                                  suffix=".backup")
+                os.close(handle)
                 os.replace(destination, backup)
-                replaced.append((backup, destination))
+                replaced.append((Path(backup), destination))
             os.replace(temporary, destination)
             published.append(destination)
     except BaseException:
@@ -245,9 +268,13 @@ def _publish(payloads) -> None:
             try:
                 os.replace(backup, destination)
             except OSError:
-                pass
+                # Say so rather than swallow it. The caller reports "nothing
+                # was left behind", and that must not be a guess.
+                lost.append((backup, destination))
         for temporary, _ in staged:
             _unlink(temporary)
+        if lost:
+            raise PublishRollbackError(lost)
         raise
     for backup, _ in replaced:
         _unlink(backup)
@@ -456,6 +483,10 @@ def cmd_convert(args) -> int:
         _publish([(out_path, out),
                   (manifest_path,
                    json.dumps(manifest, indent=2).encode("utf-8"))])
+    except PublishRollbackError as error:
+        print("failed to write the output, AND could not fully restore what "
+              "was there:\n%s" % error, file=sys.stderr)
+        return 2
     except OSError as error:
         print("failed to write the output: %s\nNothing was left behind."
               % error, file=sys.stderr)
@@ -776,6 +807,10 @@ def cmd_convert_set(args) -> int:
                          json.dumps(result.manifest, indent=2).encode("utf-8")))
         try:
             _publish(payloads)
+        except PublishRollbackError as error:
+            print("failed to write the output set, AND could not fully restore "
+                  "what was there:\n%s" % error, file=sys.stderr)
+            return 2
         except OSError as error:
             print("failed to write the output set: %s\nNothing was left behind; "
                   "no file in %s was created or replaced."

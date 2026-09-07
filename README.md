@@ -106,9 +106,15 @@ Read the reconciliation line. It is the arithmetic check that the bytes changed
 in the image are exactly the bytes changed in the files you are about to burn.
 
 Output filenames carry the socket **and the device type**, because those are the
-two things you need at the programmer. Nothing is written until every file has
-been checked, and then they are written as a set — a failure part-way leaves the
-directory as it was rather than a mixture of new and stale images.
+two things you need at the programmer.
+
+Nothing is written until every destination has been checked, and then the files
+are written as a set: each is staged and flushed to disk before any of them is
+renamed into place, and if a rename fails the ones already done are rolled back.
+So an ordinary failure — a full disk, a permission change, a drive pulled —
+leaves the directory as it was rather than a mixture of new and stale images.
+A power loss during the renames is not covered by that; if the machine dies
+mid-run, check the hashes in the manifest against the files before burning.
 
 ## Supported games
 

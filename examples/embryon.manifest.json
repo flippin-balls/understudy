@@ -7,7 +7,7 @@
     "version": 1,
     "title": "Bally Embryon (1981)",
     "status": "emulator-verified",
-    "source": "/home/melvin2001/repos/understudy/src/tms52xx/data/profiles/embryon.json"
+    "source": "data/profiles/embryon.json"
   },
   "chips": {
     "source": "tms5200",
