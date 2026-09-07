@@ -1359,10 +1359,36 @@ class TestMirrorDoubleCoverage(WorkflowFixture):
             self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
         message = str(caught.exception)
         self.assertIn("mirrored device", message)
-        self.assertIn("BOTH of its windows", message)
+        self.assertIn("two different ways", message)
 
     def test_the_ordinary_mirrored_set_still_converts(self):
         self.assertGreater(self.convert().stats["frames"], 0)
+
+    def test_the_same_phrase_named_through_both_windows_is_allowed(self):
+        """Overlap is not conflict when both windows want the same byte.
+
+        Two table entries can name one physical phrase through the lower window
+        and through the mirror. Same alignment, same extent, so both
+        conversions demand identical output and the device can represent it.
+        Refusing that would refuse a correct layout.
+        """
+        raw = copy.deepcopy(self.raw)
+        device = self.profile.device_for("U5")
+        at = self.profile.table_offset - (device.cpu_address
+                                          - self.profile.window_base)
+        dumps = dict(self.dumps)
+        data = bytearray(dumps["U5"])
+        # Entry 1 is the U4 phrase at 0xE800; entry 3 is the other U4 phrase.
+        # Point entry 3 at the SAME phrase through the lower window, so the two
+        # extents cover the same physical offsets at the same alignment.
+        mirrored = self.profile.device_for("U4")
+        entry_one = int.from_bytes(data[at + 2:at + 4], "big")
+        data[at + 6:at + 8] = (entry_one - mirrored.size).to_bytes(2, "big")
+        dumps["U5"] = bytes(data)
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        result = self.convert(dumps=dumps, profile=Profile(raw, "<x>"))
+        self.assertGreater(result.stats["frames"], 0)
 
 class TestSpeechRunningOffTheEndOfAListedDevice(unittest.TestCase):
     """The case a START test cannot see: a device the profile does not list.

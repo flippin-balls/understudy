@@ -67,6 +67,36 @@ You supply `--table-offset` and `--phrases`. Automatic candidate-table discovery
 is feasible and unimplemented. See
 [SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md).
 
+## A layout that is too SMALL cannot be detected from the ROM
+
+Understudy refuses a great many wrong layouts: a phrase that does not terminate,
+one that converts nothing, one whose speech runs off the end of its device, one
+whose bytes leave the devices marked as holding speech, one that overlaps the
+pointer table. Every one of those is a phrase that looks wrong.
+
+It cannot detect a layout whose phrases all look *right* and of which there are
+simply too few. If a profile declares 20 phrases of a 24-entry table, the 20 it
+declares convert perfectly, terminate properly, stay inside their devices and
+reconcile byte for byte — while four phrases are left encoded for the TMS5200,
+and the machine plays them through the wrong tables. Nothing about the twenty
+says anything about the four.
+
+That is not hypothetical. The Flash Gordon profile shipped this way: its table
+address was real but sat fourteen entries into the table, so it found 5 of 8
+phrases and converted 372 of 677 frames. Everything it did convert was correct.
+
+There is no check inside this tool for that, because the information is not in
+the ROM: the number of phrases IS the layout, and it is an input. The check that
+finds it is external — run the board's firmware, capture what it sends the TMS,
+and require every played stream to fall inside a converted phrase. Step 6 of
+"Working out the layout for your ROM" in [SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md)
+describes it, every bundled profile has cleared it, and each records in
+`evidence.traced_phrase_starts` the addresses it was checked against.
+
+The residue that even that leaves is stated per profile in
+`evidence.not_established_by_the_trace`: table entries no command reached during
+the sweep, which rest on the pointer table alone.
+
 ## Scope is one board and one chip family
 
 Squawk & Talk, TMS5200 to the TMS5220 family — which for the purposes of the

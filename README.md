@@ -166,7 +166,13 @@ Understudy stops rather than write a ROM that might be wrong. It refuses when:
   not the right one for it;
 - **more than one profile matches**, or none does;
 - **a phrase does not end in a stop frame** — the usual sign that the layout is
-  aimed at something that is not speech;
+  aimed at something that is not speech. A profile may name the phrases whose
+  terminator the player supplies rather than the ROM, and is then held to that:
+  a named phrase that *does* terminate is refused too;
+- **a phrase converts nothing** — if its first frame is a stop frame it changes
+  no bytes at all, which is what a pointer into erased space looks like;
+- **a phrase's speech runs off the end of its device**, terminating in unmapped
+  fill rather than inside a device;
 - **a socket the profile says holds speech did not change**, or one it says
   holds none did;
 - **the changed-byte totals do not reconcile** between the image and the
@@ -244,14 +250,15 @@ layout cannot agree with. Every phrase the firmware actually plays must fall
 inside a phrase the profile converts.
 
 Be clear about the limit of that. It establishes that nothing the game plays was
-missed. It does not confirm table entries no command reached: nine of the
+missed. It does not confirm table entries no command reached: eight of the
 fifteen sets have some, and each profile lists them in
 `evidence.not_established_by_the_trace` rather than leaving you to assume
 otherwise. Every profile also carries the traced addresses, so you can re-derive
 the list yourself from your own dumps.
 
 So the assurance for a supported game is: an exact hash match on every device, a
-layout whose every phrase is found and terminates, a conversion checked frame by
+layout whose every phrase is found and terminates — or is named and checked as
+one the player terminates instead — a conversion checked frame by
 frame and reconciled byte for byte, every byte the firmware plays accounted for,
 and the board's own firmware running against the result. The assurance for an
 unsupported game is that you will be told it is unsupported.

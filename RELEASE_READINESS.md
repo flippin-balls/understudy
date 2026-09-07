@@ -70,10 +70,11 @@ ROMs, so one profile serves several.
 | `vector` | `board-simulated` | 50 | 2287 | 4 |
 
 **15 of 19 sound ROM sets; 44 of 49 game revisions.** Each cleared all four
-acceptance criteria: every phrase terminating in a stop frame, healthy
-per-device speech coverage, agreement with an **independent** phrase list, and
-the board's own firmware booting and driving the converted ROMs identically to
-the originals.
+acceptance criteria: every phrase either terminating in a stop frame or
+declared and checked as one the player terminates instead (one phrase of
+`m_mpac`, and nothing else in the fifteen), healthy per-device speech coverage,
+agreement with an **independent** phrase list, and the board's own firmware
+booting and driving the converted ROMs identically to the originals.
 
 ### What the third criterion does and does not establish
 
@@ -84,7 +85,7 @@ ROM and trimmed at its own stop frame, and the result must fall inside a
 converted phrase. That is what rules out a layout which misses speech, and it
 is what caught both defects below.
 
-It does **not** confirm every phrase a profile declares. Nine of the fifteen
+It does **not** confirm every phrase a profile declares. Eight of the fifteen
 sets have table entries no command reached in that sweep:
 
 | profile | distinct phrases declared | confirmed by the trace | resting on the table alone |
@@ -97,7 +98,7 @@ sets have table entries no command reached in that sweep:
 | `flashgdn` | 9 | 8 | 1 |
 | `m_mpac` | 26 | 25 | 1 |
 | `medusa` | 27 | 26 | 1 |
-| the other six | — | all | 0 |
+| the other seven | — | all | 0 |
 
 For those entries the evidence is the pointer table — the same kind of evidence
 that was wrong in Fathom v1. They are converted because they are entries in a
@@ -357,7 +358,8 @@ lose an input, use the wrong profile or table, or misrepresent evidence.
 | 8 | **BLOCKER** — rename half-propagated; two claims stronger than the evidence. |
 | 9 | **Ready.** No blocker; no claim stronger than its evidence. |
 
-| 10 | **No blocker.** Three HIGH findings on the traced-layout work, all fixed and mutation-tested: the relaxed phrase-coverage guard needed a replacement for the case it stopped catching (a phrase that converts nothing is now refused outright); `silent_phrases` could be claimed for a phrase that was merely never found; and the mirrored-device merge tested changed bytes when the invariant is about phrase *coverage*, since a conversion may legitimately leave a byte unchanged. Two MEDIUM findings on evidence wording were fixed by stating what the trace does and does not establish, per profile and in §3. |
+| 10 | Three HIGH findings on the traced-layout work, fixed and mutation-tested: the relaxed phrase-coverage guard needed a replacement for the case it stopped catching (a phrase that converts nothing is now refused outright); `silent_phrases` could be claimed for a phrase that was merely never found; and the mirrored-device merge tested changed bytes when the invariant is about phrase *coverage*, since a conversion may legitimately leave a byte unchanged. Two MEDIUM findings on evidence wording were fixed by stating what the trace does and does not establish, per profile and in §3. |
+| 11 | **No blocker.** Confirmed HIGH 2 and MEDIUM 4 closed. HIGH 1 only partly: the new guard catches a phrase cut off by a missing device, but a profile that simply declares fewer phrases than its table holds is self-contained and no static check can see it — that is now stated as a limitation rather than covered by a claim. HIGH 3's replacement was too strong and refused a harmless duplicate; it now tests whether the two windows *disagree* rather than whether they overlap. Three MEDIUM: a miscount of the affected profiles (nine → eight), a headline criterion that contradicted `m_mpac`'s declared unterminated phrase, and guard ordering that hid the specific diagnosis behind a device-level one. All fixed. |
 
 Every material finding was independently reproduced before being fixed, and
 carries a regression test. Review does not prove correctness — round 2's

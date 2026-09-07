@@ -274,167 +274,6 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
          "final_byte": verdicts.get(r.phrase.index)}
         for r in results]
 
-    # EVERY PHRASE MUST TERMINATE INSIDE A DEVICE.
-    #
-    # This is the case the START test above cannot see. Suppose a set has two
-    # speech devices and a profile lists only one. Every phrase it declares
-    # starts inside the listed device, every byte it changes is inside it, that
-    # device changes, and the reconciliation balances -- so nothing so far
-    # objects, while the second device's speech is never converted at all and
-    # the user is handed a set that is half old tables.
-    #
-    # What gives it away is where the speech STOPS. A phrase whose data really
-    # does continue into the missing device runs off the end of the mapped one
-    # and terminates in the 0xFF that fills unmapped space, because 0xFF is a
-    # stop frame. So the stop frame lands outside every device, which cannot
-    # happen for a phrase whose device is present.
-    #
-    # In most such layouts the overrun bytes CHANGE, and the converted-bytes
-    # check above names them first. This is the backstop for when they happen to
-    # convert to themselves: that changes nothing, so a byte comparison cannot
-    # see it, while the terminator is still sitting in unmapped space.
-    #
-    # This is deliberately about the TERMINATOR and not about the declared
-    # extent. A phrase is bounded by the next pointer or by the table, and that
-    # bound legitimately reaches across unmapped space -- Flash Gordon (French)
-    # has a phrase bounded 10 KB away, whose speech stops after 207 bytes, well
-    # inside its device. Testing the extent refuses that; testing where the
-    # speech ends does not.
-    stranded = []
-    for record in results:
-        if not record.stopped_cleanly:
-            continue                    # already refused, or declared
-        frames, _ = parse(bytes(image[record.phrase.start:record.phrase.end]),
-                          src_tables.pitch_bits, list(src_tables.k_widths))
-        if not frames:
-            continue
-        last = record.phrase.start + (frames[-1].end_bit + 7) // 8 - 1
-        if last not in covered:
-            stranded.append((record.phrase.index, record.phrase.start, last))
-    if stranded:
-        index, start, last = stranded[0]
-        raise ConversionRefused(
-            "phrase %d starts at 0x%X but its speech runs past the end of every "
-            "device and only stops at 0x%X, in unmapped space -- %d phrase(s) "
-            "do. Unmapped space is 0xFF, which is a stop frame, so this is what "
-            "a phrase whose device the profile does not list looks like. Some "
-            "of this set's speech would be left unconverted."
-            % (index, start, last, len(stranded)))
-
-    # A MIRRORED DEVICE MUST NOT BE CONVERTED THROUGH BOTH OF ITS WINDOWS AT
-    # THE SAME OFFSET.
-    #
-    # A 2 KB part answers at two addresses, and a set is free to reach some
-    # phrases through the lower window and others through the mirror -- Eight
-    # Ball Deluxe does, and the two groups land on different offsets of the same
-    # physical ROM. `extract` merges the halves for exactly that reason.
-    #
-    # What must not happen is one physical byte being declared by a phrase in
-    # each window. Then two phrases describe the same bytes at different bit
-    # alignments, only one of the two conversions can survive into the burned
-    # device, and the other phrase would be read as corrupt. The merge cannot
-    # detect this from the bytes alone: a conversion may legitimately leave a
-    # byte unchanged, so "changed in one window only" does not mean "covered by
-    # one window only". Coverage is the thing to test, so it is tested here,
-    # where the phrase extents are known.
-    for device in profile.devices:
-        if not device.mirrored:
-            continue
-        at = device.cpu_address - profile.window_base
-        halves = []
-        for base in (at, at + device.size):
-            reached = set()
-            for phrase in table.phrases:
-                lo = max(phrase.start, base)
-                hi = min(phrase.end, base + device.size)
-                reached.update(range(lo - base, hi - base))
-            halves.append(reached)
-        both = halves[0] & halves[1]
-        if both:
-            first = min(both)
-            raise ConversionRefused(
-                "socket %s is a mirrored device and offset 0x%X is inside a "
-                "phrase in BOTH of its windows (0x%04X and 0x%04X); %d offset(s) "
-                "are. Those are the same physical byte, so the two phrases "
-                "describe one region twice and only one conversion could "
-                "survive into the burned device. The layout is wrong."
-                % (device.socket, first, profile.window_base + at + first,
-                   profile.window_base + at + device.size + first, len(both)))
-
-    # Split back out, and cross-check each device against what the profile says
-    # it should be.
-    total_changed = 0
-    for device in profile.devices:
-        extracted = profile.extract(patched, device, image)
-        changed_bytes = sum(1 for a, b in zip(dumps[device.socket],
-                                              extracted.data) if a != b)
-        # Reconciliation counts WINDOWS, not devices. A mirrored device appears
-        # at two addresses, so if a layout converts through both, the image
-        # changes in twice as many places as the single physical device holds.
-        # Comparing the device's own count against the image total would then
-        # fail on a layout that is perfectly valid.
-        at = device.cpu_address - profile.window_base
-        span = device.size * (2 if device.mirrored else 1)
-        window_changed = sum(1 for i in range(at, at + span)
-                             if image[i] != patched[i])
-        total_changed += window_changed
-        if device.holds_speech and not extracted.changed:
-            raise ConversionRefused(
-                "socket %s is marked as holding speech but nothing in it "
-                "changed. The layout is not finding its phrases."
-                % device.socket)
-        if not device.holds_speech and extracted.changed:
-            raise ConversionRefused(
-                "socket %s is marked as holding no speech but it changed. "
-                "Refusing to write." % device.socket)
-        # What FRACTION of a speech-bearing device the layout actually reached.
-        # A layout that finds only a corner of the speech still converts, still
-        # boots, and still leaves most of the ROM unconverted -- one real set
-        # was measured converting 1.5% of its speech while behaving normally in
-        # board simulation. Correct layouts across the sets checked ran 33-70%.
-        # Reported rather than gated: the range is too wide for a threshold,
-        # and a low number is something a technician should see and judge.
-        # Union of the extents, not the sum of them. Duplicate pointers are
-        # legal -- two commands can name one phrase -- and adding their lengths
-        # counted the same bytes twice, which produced coverage above 100% on a
-        # real set and would have read as "more than the whole device".
-        spans = []
-        for phrase in sorted(table.phrases, key=lambda p: p.start):
-            lo = max(phrase.start, at)
-            hi = min(phrase.end, at + span)
-            if hi <= lo:
-                continue
-            if spans and lo <= spans[-1][1]:
-                spans[-1][1] = max(spans[-1][1], hi)
-            else:
-                spans.append([lo, hi])
-        covered = sum(hi - lo for lo, hi in spans)
-        result.outputs.append({
-            "socket": device.socket,
-            "speech_coverage_percent": (round(100.0 * covered / span, 1)
-                                        if span and device.holds_speech
-                                        else None),
-            "device_type": device.device_type,
-            "bytes": len(extracted.data),
-            "sha256": sha256(extracted.data),
-            "changed_bytes": changed_bytes,
-            "window_changed_bytes": window_changed,
-            "changed": extracted.changed,
-            "taken_from_mirror": extracted.from_mirror,
-            "window": [extracted.window[0], extracted.window[1]],
-            "data": extracted.data,
-        })
-
-    # Backstop, like the stray-byte check above: a well-formed profile's devices
-    # span every window a pointer can reach, so this cannot fire today.
-    # `TestBackstops` holds that property. It stays because the consequence is a
-    # byte count that does not describe what was actually burned.
-    if total_changed != result.stats["bytes_changed"]:
-        raise ConversionRefused(
-            "changed bytes do not reconcile: %d across the devices, %d in the "
-            "image. Some change lies outside every device window."
-            % (total_changed, result.stats["bytes_changed"]))
-
     # A phrase whose every byte is the fill value is not speech either, even if
     # it does sit inside a device -- an erased region of a real EPROM reads the
     # same as an unpopulated window.
@@ -527,6 +366,174 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "meant to be silent, name it in layout.silent_phrases."
             % (", ".join(str(i) for i, _ in padded),
                ", ".join("%d frames" % n for _, n in padded)))
+
+    # EVERY PHRASE MUST TERMINATE INSIDE A DEVICE.
+    #
+    # Where the speech STOPS says something the START test cannot. A phrase
+    # whose data continues past the end of the device holding it runs into the
+    # 0xFF that fills unmapped space and terminates there, because 0xFF is a
+    # stop frame -- so its stop frame lands outside every device, which cannot
+    # happen for a phrase whose device is present and correctly sized.
+    #
+    # Be clear about the limit of this. It catches a phrase CUT OFF by a missing
+    # or undersized device. It does not, and no check here can, catch a profile
+    # that simply declares fewer phrases than the table holds: those phrases are
+    # self-contained, so nothing about the ones that ARE declared looks wrong.
+    # Flash Gordon v1 was exactly that, and only the traced phrase list found it.
+    # See docs/KNOWN_LIMITATIONS.md.
+    #
+    # In most such layouts the overrun bytes CHANGE, and the converted-bytes
+    # check above names them first. This is the backstop for when they happen to
+    # convert to themselves: that changes nothing, so a byte comparison cannot
+    # see it, while the terminator is still sitting in unmapped space.
+    #
+    # This is deliberately about the TERMINATOR and not about the declared
+    # extent. A phrase is bounded by the next pointer or by the table, and that
+    # bound legitimately reaches across unmapped space -- Flash Gordon (French)
+    # has a phrase bounded 10 KB away, whose speech stops after 207 bytes, well
+    # inside its device. Testing the extent refuses that; testing where the
+    # speech ends does not.
+    stranded = []
+    for record in results:
+        if not record.stopped_cleanly:
+            continue                    # already refused, or declared
+        frames, _ = parse(bytes(image[record.phrase.start:record.phrase.end]),
+                          src_tables.pitch_bits, list(src_tables.k_widths))
+        if not frames:
+            continue
+        last = record.phrase.start + (frames[-1].end_bit + 7) // 8 - 1
+        if last not in covered:
+            stranded.append((record.phrase.index, record.phrase.start, last))
+    if stranded:
+        index, start, last = stranded[0]
+        raise ConversionRefused(
+            "phrase %d starts at 0x%X but its speech runs past the end of every "
+            "device and only stops at 0x%X, in unmapped space -- %d phrase(s) "
+            "do. Unmapped space is 0xFF, which is a stop frame, so this is "
+            "what a phrase cut off by a missing or undersized device looks "
+            "like. Some of this set's speech would be left unconverted."
+            % (index, start, last, len(stranded)))
+
+    # A MIRRORED DEVICE'S TWO WINDOWS MUST AGREE WHERE THEY OVERLAP.
+    #
+    # A 2 KB part answers at two addresses, and a set is free to reach some
+    # phrases through the lower window and others through the mirror -- Eight
+    # Ball Deluxe does, and the two groups land on different offsets of the same
+    # physical ROM. `extract` merges the halves for exactly that reason.
+    #
+    # Where a physical offset IS reached through both windows, the two
+    # conversions must want the same byte. Two entries naming the same phrase
+    # through both windows are harmless: identical alignment, identical output.
+    # Two phrases at different alignments are not: only one conversion could
+    # survive into the burned device and the other phrase would read as corrupt.
+    #
+    # The test is on the VALUE each window requires, not on which bytes changed
+    # and not on coverage alone. Changed-bytes misses the case where one
+    # conversion leaves a byte as it was while the other rewrites it -- they
+    # disagree, but only one of them looks like a change. Coverage alone would
+    # refuse the harmless duplicate.
+    for device in profile.devices:
+        if not device.mirrored:
+            continue
+        at = device.cpu_address - profile.window_base
+        halves = []
+        for base in (at, at + device.size):
+            reached = set()
+            for phrase in table.phrases:
+                lo = max(phrase.start, base)
+                hi = min(phrase.end, base + device.size)
+                reached.update(range(lo - base, hi - base))
+            halves.append(reached)
+        disputed = [i for i in sorted(halves[0] & halves[1])
+                    if patched[at + i] != patched[at + device.size + i]]
+        if disputed:
+            first = disputed[0]
+            raise ConversionRefused(
+                "socket %s is a mirrored device, and offset 0x%X is inside a "
+                "phrase in both of its windows which convert it two different "
+                "ways (0x%02X at 0x%04X, 0x%02X at 0x%04X); %d offset(s) "
+                "disagree. Those are the same physical byte, so only one of the "
+                "two could survive into the burned device and the other phrase "
+                "would be read as corrupt. The layout is wrong."
+                % (device.socket, first, patched[at + first],
+                   profile.window_base + at + first,
+                   patched[at + device.size + first],
+                   profile.window_base + at + device.size + first,
+                   len(disputed)))
+
+    # Split back out, and cross-check each device against what the profile says
+    # it should be.
+    total_changed = 0
+    for device in profile.devices:
+        extracted = profile.extract(patched, device, image)
+        changed_bytes = sum(1 for a, b in zip(dumps[device.socket],
+                                              extracted.data) if a != b)
+        # Reconciliation counts WINDOWS, not devices. A mirrored device appears
+        # at two addresses, so if a layout converts through both, the image
+        # changes in twice as many places as the single physical device holds.
+        # Comparing the device's own count against the image total would then
+        # fail on a layout that is perfectly valid.
+        at = device.cpu_address - profile.window_base
+        span = device.size * (2 if device.mirrored else 1)
+        window_changed = sum(1 for i in range(at, at + span)
+                             if image[i] != patched[i])
+        total_changed += window_changed
+        if device.holds_speech and not extracted.changed:
+            raise ConversionRefused(
+                "socket %s is marked as holding speech but nothing in it "
+                "changed. The layout is not finding its phrases."
+                % device.socket)
+        if not device.holds_speech and extracted.changed:
+            raise ConversionRefused(
+                "socket %s is marked as holding no speech but it changed. "
+                "Refusing to write." % device.socket)
+        # What FRACTION of a speech-bearing device the layout actually reached.
+        # A layout that finds only a corner of the speech still converts, still
+        # boots, and still leaves most of the ROM unconverted -- one real set
+        # was measured converting 1.5% of its speech while behaving normally in
+        # board simulation. Correct layouts across the sets checked ran 33-70%.
+        # Reported rather than gated: the range is too wide for a threshold,
+        # and a low number is something a technician should see and judge.
+        # Union of the extents, not the sum of them. Duplicate pointers are
+        # legal -- two commands can name one phrase -- and adding their lengths
+        # counted the same bytes twice, which produced coverage above 100% on a
+        # real set and would have read as "more than the whole device".
+        spans = []
+        for phrase in sorted(table.phrases, key=lambda p: p.start):
+            lo = max(phrase.start, at)
+            hi = min(phrase.end, at + span)
+            if hi <= lo:
+                continue
+            if spans and lo <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], hi)
+            else:
+                spans.append([lo, hi])
+        covered = sum(hi - lo for lo, hi in spans)
+        result.outputs.append({
+            "socket": device.socket,
+            "speech_coverage_percent": (round(100.0 * covered / span, 1)
+                                        if span and device.holds_speech
+                                        else None),
+            "device_type": device.device_type,
+            "bytes": len(extracted.data),
+            "sha256": sha256(extracted.data),
+            "changed_bytes": changed_bytes,
+            "window_changed_bytes": window_changed,
+            "changed": extracted.changed,
+            "taken_from_mirror": extracted.from_mirror,
+            "window": [extracted.window[0], extracted.window[1]],
+            "data": extracted.data,
+        })
+
+    # Backstop, like the stray-byte check above: a well-formed profile's devices
+    # span every window a pointer can reach, so this cannot fire today.
+    # `TestBackstops` holds that property. It stays because the consequence is a
+    # byte count that does not describe what was actually burned.
+    if total_changed != result.stats["bytes_changed"]:
+        raise ConversionRefused(
+            "changed bytes do not reconcile: %d across the devices, %d in the "
+            "image. Some change lies outside every device window."
+            % (total_changed, result.stats["bytes_changed"]))
 
     if result.stats["frames_clamped"]:
         result.warnings.append(
