@@ -241,7 +241,7 @@ was. On Embryon that is precisely what happens:
 ```
 U4 lower copy  $E000-$E7FF      0 bytes changed     <- stale
 U4 mirror      $E800-$EFFF   1560 bytes changed     <- the converted data
-U5             $F000-$FFFF   1960 bytes changed
+U5             $F000-$FFFF   1948 bytes changed
 ```
 
 So "take the lower half of a mirrored device" gives you an unconverted ROM that
@@ -334,10 +334,10 @@ and the differing byte counts must add up to what conversion reported:
 ```
 $ ls -l 841-01_4.716 841-01_4_5220.716            # sizes must match
 $ cmp -l 841-01_4.716 841-01_4_5220.716 | wc -l   # 1560
-$ cmp -l 841-02_5.532 841-02_5_5220.532 | wc -l   # 1960
+$ cmp -l 841-02_5.532 841-02_5_5220.532 | wc -l   # 1948
 ```
 
-1560 + 1960 = 3520, which is the `bytes changed` the conversion printed. If the
+1560 + 1948 = 3508, which is the `bytes changed` the conversion printed. If the
 totals do not reconcile, or a socket that holds no speech has changed, stop.
 
 Re-assembling step 1 from the new devices reproduces the converted image exactly
