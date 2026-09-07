@@ -15,7 +15,7 @@ features.
   (`evidence.traced_phrase_starts`) and an explicit statement of which of its
   declared phrases the trace did **not** confirm
   (`evidence.not_established_by_the_trace`): Beat the Clock, Centaur, Eight
-  Ball Champ, Eight Ball Deluxe, Big Bat,
+  Ball Champ, Eight Ball Deluxe, Big Bat, Spectrum,
   Fireball II, Flash Gordon (French), Medusa, Mr. and Mrs. Pac-Man, Mysterian
   and Vector, alongside the corrected Fathom and Flash Gordon.
 - **`entry_form: "start_end_pairs"`** — some tables store both bounds of every

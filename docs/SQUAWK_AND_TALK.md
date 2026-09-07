@@ -7,11 +7,12 @@ generalise.
 ### Where this comes from, and how far to trust it
 
 This is our own analysis, not a citation of a datasheet, and no ROM data is
-reproduced. The sample is the **49 Squawk & Talk ROM sets PinMAME ships** — the
-count `snt_common.discover_games()` returns from its driver — examined with a
-private toolkit that is not part of this repository. So "most tables", "at least
-one set" and "everywhere we have looked" all mean *within those 49*, read
-statically. They are observations at that sample size, not verified facts about
+reproduced. The sample is the **49 Squawk & Talk drivers PinMAME ships** — the
+count `snt_common.discover_games()` returns — which collapse to **19 distinct
+sound ROM sets**, since revisions of one game usually share their sound ROMs.
+They were examined with a private toolkit that is not part of this repository.
+So "most tables", "at least one set" and "everywhere we have looked" all mean
+*within those 19 sets*, read statically. They are observations at that sample size, not verified facts about
 every board Bally built, and only **Embryon has been taken end to end**, through
 conversion and rendering. Where a claim rests on something you can check
 yourself, the check is given alongside it.

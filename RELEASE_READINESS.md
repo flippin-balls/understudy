@@ -4,8 +4,9 @@
 the "nobody has heard this speech" qualification kept where it is. Do not
 present it as a field-validated repair procedure.
 
-Prepared 2026-09-06. Repository private at
-`flippin-balls/understudy`; release branch `release-prep-0.3.0` (PR #4).
+Prepared 2026-09-06. Repository private at `flippin-balls/understudy`. The
+0.3.0 groundwork merged from `release-prep-0.3.0` (PR #4); the traced-layout
+work described here is on `profiles/traced-layouts` and is not yet merged.
 
 ---
 
