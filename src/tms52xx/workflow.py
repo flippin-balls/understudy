@@ -251,8 +251,24 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             raise ConversionRefused(
                 "socket %s is marked as holding no speech but it changed. "
                 "Refusing to write." % device.socket)
+        # What FRACTION of a speech-bearing device the layout actually reached.
+        # A layout that finds only a corner of the speech still converts, still
+        # boots, and still leaves most of the ROM unconverted -- one real set
+        # was measured converting 1.5% of its speech while behaving normally in
+        # board simulation. Correct layouts across the sets checked ran 33-70%.
+        # Reported rather than gated: the range is too wide for a threshold,
+        # and a low number is something a technician should see and judge.
+        covered = 0
+        for phrase in table.phrases:
+            lo = max(phrase.start, at)
+            hi = min(phrase.end, at + span)
+            if hi > lo:
+                covered += hi - lo
         result.outputs.append({
             "socket": device.socket,
+            "speech_coverage_percent": (round(100.0 * covered / span, 1)
+                                        if span and device.holds_speech
+                                        else None),
             "device_type": device.device_type,
             "bytes": len(extracted.data),
             "sha256": sha256(extracted.data),

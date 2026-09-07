@@ -118,6 +118,24 @@ Then run the tests:
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
+## What a profile has to clear
+
+Automatic layout detection is not enough. A sweep over 46 Squawk & Talk sets
+found layouts that convert cleanly, boot the board's firmware, and are still
+wrong — one converted 1.5% of its speech and behaved normally. Before a profile
+ships:
+
+1. **every phrase found and terminating** — `inspect --source-tables` shows it;
+2. **speech coverage that looks like a whole ROM.** `convert-set` prints the
+   percentage of each speech device the layout reached. Correct layouts in that
+   sweep ran 33–70%; the wrong one ran 1.5%. There is no safe threshold, so look
+   at the number and judge it;
+3. **an independent frame count if you can get one** — four sets matched a
+   separately built corpus exactly, and that is the strongest check available
+   short of hardware;
+4. **the board's firmware booting against the converted ROMs**, behaving as it
+   does with the originals. That is what `board-simulated` means.
+
 ## Sending it
 
 Open a pull request with:

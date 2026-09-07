@@ -898,9 +898,12 @@ def _print_set_summary(result, profile, target, written, args) -> None:
             note = "  (taken from the mirror half)"
         if not entry["changed"]:
             note = "  (unchanged - holds no speech)"
-        print("  %-4s %-8s %6d bytes  %d changed%s"
+        coverage = entry.get("speech_coverage_percent")
+        share = ("  %.0f%% of it is speech" % coverage
+                 if coverage is not None else "")
+        print("  %-4s %-8s %6d bytes  %d changed%s%s"
               % (entry["socket"], entry["device_type"], entry["bytes"],
-                 entry["changed_bytes"], note))
+                 entry["changed_bytes"], share, note))
         if entry.get("path"):
             print("       burn into %s: %s"
                   % (entry["device_type"], entry["path"]))
@@ -908,6 +911,20 @@ def _print_set_summary(result, profile, target, written, args) -> None:
     print()
     print("  reconciliation         %d changed across devices == %d in the image"
           % (device_total, stats["bytes_changed"]))
+    low = [e for e in result.outputs
+           if (e.get("speech_coverage_percent") or 100) < 20]
+    if low:
+        print()
+        print("  NOTE: only %s of %s is covered by the declared phrases."
+              % (", ".join("%.0f%%" % e["speech_coverage_percent"] for e in low),
+                 ", ".join(e["socket"] for e in low)))
+        print("  A correct layout usually reaches most of a speech device. A"
+              " small figure here means")
+        print("  the layout is finding a corner of the speech and leaving the"
+              " rest unconverted --")
+        print("  which still boots and still sounds wrong. Check the layout"
+              " before burning.")
+
     if result.warnings:
         print()
         print("warnings")

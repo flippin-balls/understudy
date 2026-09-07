@@ -81,6 +81,7 @@
   "outputs": [
     {
       "socket": "U4",
+      "speech_coverage_percent": 50.0,
       "device_type": "2716",
       "bytes": 2048,
       "sha256": "c75dc8cbafcff408d4496ee89c23111d27733289019c55eba81c96c01a0df304",
@@ -96,6 +97,7 @@
     },
     {
       "socket": "U5",
+      "speech_coverage_percent": 61.6,
       "device_type": "2532",
       "bytes": 4096,
       "sha256": "977ac758d65d1be2e6b7c38397a756a400b6589c5fda368f8a2b3838f024a81e",

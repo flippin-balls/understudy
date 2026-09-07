@@ -711,6 +711,33 @@ class TestManifest(WorkflowFixture):
         self.assertEqual(sorted(example["outputs"][0]),
                          sorted(list(self.manifest["outputs"][0]) + ["path"]))
 
+    def test_it_records_how_much_of_each_device_the_layout_reached(self):
+        """A layout that finds a corner of the speech still converts and boots.
+
+        One real set was measured converting 1.5% of its speech while behaving
+        identically to the original in board simulation; correct layouts across
+        the sets checked ran 33-70%. The figure is recorded so a low one is
+        visible, and reported rather than gated because the range is too wide
+        for a threshold.
+        """
+        for entry in self.manifest["outputs"]:
+            coverage = entry["speech_coverage_percent"]
+            self.assertIsNotNone(coverage, entry["socket"])
+            self.assertGreater(coverage, 0, entry["socket"])
+            self.assertLessEqual(coverage, 100, entry["socket"])
+
+    def test_a_non_speech_device_reports_no_coverage(self):
+        raw = copy.deepcopy(self.raw)
+        blank = b"\xFF" * 0x1000
+        raw["devices"].append({
+            "socket": "U2", "type": "2532", "size": 0x1000,
+            "cpu_address": 0xC000, "mirrored": False, "holds_speech": False,
+            "sha256": sha256(blank)})
+        result = convert_set(dict(self.dumps, U2=blank), Profile(raw, "<x>"),
+                             self.target)
+        u2 = next(e for e in result.outputs if e["socket"] == "U2")
+        self.assertIsNone(u2["speech_coverage_percent"])
+
     def test_it_carries_no_rom_contents(self):
         text = json.dumps(self.manifest)
         self.assertNotIn("data", self.manifest["outputs"][0])

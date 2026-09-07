@@ -166,6 +166,23 @@ listed below. That is a design stance and a set of enumerated checks, not a
 proof that no wrong output is possible — the Embryon defect below is exactly a
 case that passed every check there was at the time.
 
+We tested that claim rather than asserting it. Every Squawk & Talk sound ROM
+set we could obtain — **46 of the 49 PinMAME knows**, each hash-verified against
+its driver record — was put through automatic layout detection, conversion, and
+a boot of the board's own firmware against the converted result. 25 produced
+output that drove the board exactly as the original did.
+
+**That number is not the good news it looks like.** Cross-checked against an
+independently built frame corpus, only 4 of the 12 comparable sets matched
+exactly. One set converted **1.5% of its speech** and still booted, still issued
+the same commands, and would still have sounded wrong. Booting is necessary and
+nowhere near sufficient, which is why `convert-set` now reports how much of each
+device the layout actually reached.
+
+So the bottleneck is not the conversion — where the layout is right, it is right,
+including a 1478-frame set matching the corpus exactly. The bottleneck is
+**knowing the layout**, and that is why profiles are hand-verified and few.
+
 We take that seriously because our own only profile was wrong. Embryon shipped
 briefly reading one pointer too many — an end bound treated as a 21st phrase.
 It parsed. It terminated in a stop frame. It changed nothing outside its own

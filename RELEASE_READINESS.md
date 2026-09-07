@@ -139,6 +139,38 @@ What has been done, precisely:
 That middle row is not decoration. It is what caught the one real defect in
 this release (§10), which every static check had passed.
 
+## 8a. Corpus sweep — how far this was actually tested
+
+Every Squawk & Talk sound ROM set obtainable here, **46 of the 49 PinMAME
+knows**, each file hash-verified against its driver record. Each was put through
+automatic layout detection, conversion, and a boot of the board's own firmware
+against the converted devices.
+
+| | |
+|---|---|
+| sets with complete sound ROMs | 46 of 49 |
+| converted and drove the board identically to the original | 25 |
+| of the 12 with an independent frame corpus, matched it exactly | **4** |
+| worst false pass | one set converted **1.5%** of its speech and still behaved normally |
+
+The 25 figure is the misleading one. Booting proves the ROM is not corrupt; it
+does not prove the layout found the speech. `elektra`, `embryon`, `flashgdn` and
+`spectrum` matched an independently built corpus exactly — including a
+1478-frame set — which says the **conversion** is sound where the layout is
+right. `eballchp` converted 42 frames where the corpus has 550.
+
+Two conclusions, both acted on:
+
+1. **The bottleneck is layout discovery, not conversion.** Profiles stay
+   hand-verified and few, and automatic detection is not used to ship one.
+2. **Coverage is now reported.** `convert-set` prints what fraction of each
+   speech device the layout reached, and calls out anything under 20%. Correct
+   layouts in the sweep ran 33–70%; the false pass ran 1.5%. Reported rather
+   than gated — 24.3% was wrong and 32.7% was right, so no threshold is safe.
+
+The harness is not in the repository: it depends on a private research toolkit
+and on ROM images. Its findings are.
+
 ## 9. Known limitations
 
 - The TMS5220 family cannot reach the TMS5200's lowest pitches. Frames below
@@ -147,7 +179,8 @@ this release (§10), which every static check had passed.
   is labelled as such.
 - Nearest-value coefficient mapping is an auditable baseline, not a perceptual
   optimum.
-- One game profile.
+- One game profile, and a corpus sweep (§8a) showing that automatically
+  detected layouts are wrong often enough that they must not be shipped.
 - ROM checksum behaviour on Squawk & Talk is **not established**. If a board
   validates these ROMs, Understudy does not update any checksum.
 - No layout discovery: an unsupported revision needs the manual path.
