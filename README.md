@@ -116,9 +116,19 @@ mid-run, check the hashes in the manifest against the files before burning.
 
 ## Supported games
 
-| game | status | notes |
-|---|---|---|
-| Bally **Embryon** (1981) | `board-simulated` | 20 phrases, U4 (2716) + U5 (2532) |
+| game | status | phrases | revisions covered |
+|---|---|---|---|
+| Bally **Embryon** (1981) | `board-simulated` | 20 | 6 |
+| Bally **Elektra** (1981) | `board-simulated` | 16 | 2 |
+| Bally **Fathom** (1981) | `board-simulated` | 28 | 3 |
+| Bally **Flash Gordon** (1981) | `board-simulated` | 5 | 2 |
+| Bally **Spectrum** (1982) | `board-simulated` | 31 | 4 |
+
+**Coverage is counted in sound ROM sets, not game revisions.** The 49 Squawk &
+Talk drivers PinMAME knows collapse to **19 distinct sound ROM sets** — most of
+the rest are game-ROM revisions sharing their sound ROMs. So these five profiles
+serve **17 game revisions**, and `identify` will name yours whichever revision
+it is.
 
 `understudy profiles` lists what your copy has. A game not in that list is not
 unsupported — it just has no profile yet, so it needs the
