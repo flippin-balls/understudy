@@ -73,7 +73,7 @@ ROMs, so one profile serves several.
 **16 of 19 sound ROM sets; 45 of 49 game revisions.** Each cleared all four
 acceptance criteria: every phrase either terminating in a stop frame or
 declared and checked as one the player terminates instead (one phrase of
-`m_mpac`, and nothing else in the fifteen), healthy per-device speech coverage,
+`m_mpac`, and nothing else in the sixteen), healthy per-device speech coverage,
 **every stream the firmware plays falling inside a converted phrase** — checked
 against a phrase list captured from the running board, not against another
 static read of the ROM — and the board's own firmware booting and driving the
@@ -159,8 +159,9 @@ find it — by filename too. That search reported three sets missing.
 It was searching the wrong place for one of them. Widening to every archive on
 the machine found all three of Big Bat's sound ROMs in a separate `files/` tree,
 under descriptive names ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN")
-rather than the driver's `u3.bin`, which is why a filename search had missed
-them and a hash search of the wrong tree could not find them. All three match
+rather than the driver's `u3.bin`. A hash search of the wrong tree could not
+find them, and a filename search using the driver's names would not have found
+them either. All three match
 the driver's SHA-1 exactly. Big Bat is now covered.
 
 `cosflash` still produces no hash match anywhere, and `blackbl2`'s expected

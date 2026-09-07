@@ -152,8 +152,8 @@ The other three sets are not gaps that more work would close here:
 The last two are an acquisition problem rather than an engineering one. Big Bat
 was on that list until its ROMs turned up in a second archive tree, filed under
 descriptive names ("Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN") rather than
-the driver's, so a search by filename had missed them; all three match the
-driver's SHA-1 exactly. If you have a dump of Cosmic Flash or Black Belt, that
+the driver's — so a search using the driver's filenames would not have found
+them either. All three match the driver's SHA-1 exactly. If you have a dump of Cosmic Flash or Black Belt, that
 is the fastest way to make this list shorter still.
 
 `understudy profiles` lists what your copy has. A game not in that list is not
@@ -274,8 +274,8 @@ None of that is a claim that anyone has heard the output. Nobody has.
 
 ### The one that proves the point
 
-Rapid Fire is the set that was expected to be the sixteenth and turned out to
-play no speech under any command its MPU can send. It is worth reading, because
+Rapid Fire was expected to yield a profile and turned out to play no speech
+under any command its MPU can send. It is worth reading, because
 it is the cleanest example of why a boot is not a check.
 
 Point automatic layout detection at it and it returns a table at `$F82D` with a
