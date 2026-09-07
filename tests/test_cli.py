@@ -264,6 +264,25 @@ class TestCli(RomFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("the wrong way round", result.stdout)
 
+    def test_half_a_layout_is_a_clean_error(self):
+        """Neither number can be guessed, so half of one is a mistake.
+
+        It used to crash with a TypeError after printing the file's hash, or
+        silently ignore the half that was given.
+        """
+        for args in (["--phrases", "2"], ["--table-offset", "0"]):
+            result = run("inspect", str(self.rom_path), *args, cwd=self.dir)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertIn("both --table-offset and --phrases", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_no_layout_at_all_is_fine_and_reports_the_hash(self):
+        """A technician with an unknown ROM wants the hash and nothing else."""
+        result = run("inspect", str(self.rom_path), cwd=self.dir)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("sha256", result.stdout)
+        self.assertIn("No layout given", result.stdout)
+
     def test_bad_layout_fails_loudly(self):
         """Loudly means it says what is wrong, not merely that it exited 2."""
         result = run("convert", str(self.rom_path), "-o", str(self.dir / "x.bin"),

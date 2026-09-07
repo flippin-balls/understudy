@@ -636,6 +636,37 @@ class TestManifest(WorkflowFixture):
         self.assertEqual(sum(r["changed_bytes"] for r in rows),
                          self.manifest["summary"]["bytes_changed"])
 
+    def test_it_identifies_the_profile_by_content(self):
+        """An id and a version say which profile was MEANT; a hash says which
+        one actually authorised this conversion, even after an edit."""
+        import tempfile
+        from synthetic_game import write_profile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_profile(tmp, self.raw)
+            from tms52xx import profiles as profile_mod
+            loaded = profile_mod.load_file(path)
+            result = convert_set(dict(self.dumps), loaded, self.target)
+            digest = result.manifest["profile"]["sha256"]
+            self.assertEqual(len(digest), 64)
+            self.assertEqual(digest, sha256(path.read_bytes()))
+
+    def test_an_in_memory_profile_reports_no_digest_rather_than_a_wrong_one(self):
+        self.assertIsNone(self.manifest["profile"]["sha256"])
+
+    def test_the_checked_in_example_matches_the_current_schema(self):
+        """A stale example is a manifest that documents a format we no longer
+        write, which is worse than no example."""
+        example = json.loads(
+            (ROOT / "examples" / "embryon.manifest.json").read_text())
+        self.assertEqual(example["schema_version"], MANIFEST_SCHEMA_VERSION)
+        self.assertEqual(sorted(example), sorted(
+            list(self.manifest) + ["note"]))
+        for key in ("profile", "chips", "tables", "summary"):
+            self.assertEqual(sorted(example[key]), sorted(self.manifest[key]),
+                             key)
+        self.assertEqual(sorted(example["outputs"][0]),
+                         sorted(list(self.manifest["outputs"][0]) + ["path"]))
+
     def test_it_carries_no_rom_contents(self):
         text = json.dumps(self.manifest)
         self.assertNotIn("data", self.manifest["outputs"][0])

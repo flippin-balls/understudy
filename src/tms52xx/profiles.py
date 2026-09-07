@@ -272,6 +272,18 @@ class Profile:
         return all(d.sha256 for d in self.speech_devices)
 
     @property
+    def digest(self) -> Optional[str]:
+        """SHA-256 of the profile file, if it came from one.
+
+        Identifies which profile authorised a conversion even after the file
+        has been edited, which an id and a version number cannot do.
+        """
+        try:
+            return hashlib.sha256(Path(self.source).read_bytes()).hexdigest()
+        except (OSError, ValueError):
+            return None
+
+    @property
     def identity(self) -> str:
         """A stable, portable name for where this profile came from.
 

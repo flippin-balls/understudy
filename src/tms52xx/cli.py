@@ -127,11 +127,17 @@ def cmd_inspect(args) -> int:
     print("file      %s" % args.rom)
     print("size      %d bytes" % len(rom))
     print("sha256    %s" % _sha256(rom))
-    if args.phrases is None:
+    if args.phrases is None and args.table_offset is None:
         print("\nNo layout given, so no phrases were read. Pass --table-offset "
               "and --phrases\nto have the pointer table interpreted; see "
               "docs/SQUAWK_AND_TALK.md.")
         return 0
+    if args.phrases is None or args.table_offset is None:
+        missing = "--phrases" if args.phrases is None else "--table-offset"
+        raise ValueError(
+            "a layout needs both --table-offset and --phrases; %s is missing. "
+            "Neither can be guessed from the ROM -- see "
+            "docs/SQUAWK_AND_TALK.md for how to find them." % missing)
     table = _load_layout(args, rom)
     print("\n%d phrases from a pointer table at 0x%X" % (len(table.phrases),
                                                          args.table_offset))

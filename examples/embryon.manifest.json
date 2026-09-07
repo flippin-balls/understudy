@@ -7,6 +7,7 @@
     "version": 1,
     "title": "Bally Embryon (1981)",
     "status": "emulator-verified",
+    "sha256": "13d2dae21697d163723aea1e8fcb436f390a9bf69a24a63871ff6651dabce10d",
     "source": "data/profiles/embryon.json"
   },
   "chips": {
@@ -84,6 +85,7 @@
       "bytes": 2048,
       "sha256": "c75dc8cbafcff408d4496ee89c23111d27733289019c55eba81c96c01a0df304",
       "changed_bytes": 1560,
+      "window_changed_bytes": 1560,
       "changed": true,
       "taken_from_mirror": true,
       "window": [
@@ -98,6 +100,7 @@
       "bytes": 4096,
       "sha256": "e89f77c94afff433b40657c40d058983c799649092dfe70d629356c1c2faef73",
       "changed_bytes": 1960,
+      "window_changed_bytes": 1960,
       "changed": true,
       "taken_from_mirror": false,
       "window": [

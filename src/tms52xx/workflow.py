@@ -313,6 +313,11 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         "understudy_version": __version__,
         "profile": {"id": profile.id, "version": profile.version,
                     "title": profile.label, "status": profile.status,
+                    # By content, not just by name. An id and a version say
+                    # which profile was MEANT; the hash says which one actually
+                    # authorised this conversion, which is what a later bug
+                    # report needs.
+                    "sha256": profile.digest,
                     # A package-relative identity for bundled profiles: an
                     # absolute path is not portable, leaks a workstation layout,
                     # and makes a manifest look like a record of one machine.
