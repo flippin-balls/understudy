@@ -258,12 +258,21 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         # board simulation. Correct layouts across the sets checked ran 33-70%.
         # Reported rather than gated: the range is too wide for a threshold,
         # and a low number is something a technician should see and judge.
-        covered = 0
-        for phrase in table.phrases:
+        # Union of the extents, not the sum of them. Duplicate pointers are
+        # legal -- two commands can name one phrase -- and adding their lengths
+        # counted the same bytes twice, which produced coverage above 100% on a
+        # real set and would have read as "more than the whole device".
+        spans = []
+        for phrase in sorted(table.phrases, key=lambda p: p.start):
             lo = max(phrase.start, at)
             hi = min(phrase.end, at + span)
-            if hi > lo:
-                covered += hi - lo
+            if hi <= lo:
+                continue
+            if spans and lo <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], hi)
+            else:
+                spans.append([lo, hi])
+        covered = sum(hi - lo for lo, hi in spans)
         result.outputs.append({
             "socket": device.socket,
             "speech_coverage_percent": (round(100.0 * covered / span, 1)

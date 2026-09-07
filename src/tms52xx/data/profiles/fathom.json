@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "profile_id": "fathom",
+  "profile_version": 1,
+  "title": "Fathom",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "fathom",
+    "fathoma",
+    "fathomb"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U4",
+      "label": "842-01_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "3397f6aa45f4117ce8d87877edcda0afa7117ac8aca11d904a3fe93e192d3cdc",
+      "crc32": "2ac02093"
+    },
+    {
+      "socket": "U5",
+      "label": "842-02_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "794060d72024a49bbb3a6963248399d009d8011124449cf87a3fa23914750a7d",
+      "crc32": "736800bc"
+    }
+  ],
+  "layout": {
+    "table_offset": 14959,
+    "base_address": 49152,
+    "phrases": 28,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $FA6F, 28 phrases with a final end bound, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "table_between_phrases": "This set puts the pointer table BETWEEN its speech: entries 0-26 run from $E000 up to $F77D, below the table at $FA6F, and entry 27 points at $FAD3, above it. The phrase below the table would otherwise run through it to reach the one above. Understudy clamps every phrase at the table, which is why this layout works.",
+    "independent_check": "Frame count agrees with a separately built corpus: platform_lpc_frames.csv records 1192 frames across 28 streams for fathom, matching this layout exactly. The 28th stream, 9 frames at $FAD3, is the one above the table -- reading only the 27 below it gives 1183 and is how the layout was found to be short.",
+    "conversion": "1192 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and issued the same 8 SPEAK EXTERNAL commands as the original set.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it."
+  },
+  "notes": [
+    "This sound ROM set is shared by 3 game revisions: fathom, fathoma, fathomb.",
+    "Command order, not address order.",
+    "The pointer table sits between the speech, not above or below it."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ]
+}

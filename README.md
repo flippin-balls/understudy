@@ -153,8 +153,8 @@ keep your originals.
 ## Will this work for my game?
 
 **If your game is not in the table above, this tool will not convert it
-automatically, and that is deliberate.** Understudy covers 4 of the 19 distinct
-sound ROM sets. It has no way to know the layout of the other fifteen, and it
+automatically, and that is deliberate.** Understudy covers 5 of the 19 distinct
+sound ROM sets. It has no way to know the layout of the other fourteen, and it
 does not guess: an unrecognised set is reported and refused, not converted on a
 hunch.
 

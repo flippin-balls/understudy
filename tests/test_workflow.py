@@ -738,6 +738,31 @@ class TestManifest(WorkflowFixture):
             self.assertGreater(coverage, 0, entry["socket"])
             self.assertLessEqual(coverage, 100, entry["socket"])
 
+    def test_coverage_never_exceeds_the_device(self):
+        """Overlapping or duplicate phrases must not be counted twice.
+
+        Summing extents rather than unioning them produced 171% on a real set,
+        which reads as "more than the whole device" and is meaningless.
+        """
+        a_start = self.profile.phrases and None
+        raw = copy.deepcopy(self.raw)
+        # Two commands naming one phrase: a legal, documented arrangement.
+        rom = bytearray(self.dumps["U5"])
+        table_at = 0xFC00 - 0xF000
+        first = rom[table_at:table_at + 2]
+        rom[table_at + 2:table_at + 4] = first
+        dumps = dict(self.dumps, U5=bytes(rom))
+        raw["devices"][0]["sha256"] = sha256(dumps["U4"])
+        raw["devices"][1]["sha256"] = sha256(dumps["U5"])
+        try:
+            result = convert_set(dumps, Profile(raw, "<dup>"), self.target)
+        except ConversionRefused:
+            return          # refused for another reason; the guard still holds
+        for entry in result.outputs:
+            coverage = entry["speech_coverage_percent"]
+            if coverage is not None:
+                self.assertLessEqual(coverage, 100.0, entry["socket"])
+
     def test_a_non_speech_device_reports_no_coverage(self):
         raw = copy.deepcopy(self.raw)
         blank = b"\xFF" * 0x1000

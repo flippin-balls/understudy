@@ -89,13 +89,28 @@ class PhraseTable:
                     "check table_offset and base_address"
                     % (i, value, len(rom)))
 
-        # Where the last phrase ends when nothing bounds it. Not simply the
-        # end of the image: the pointer table often sits above the speech, and
-        # its bytes are not speech, so they bound the phrase too.
+        # THE POINTER TABLE BOUNDS EVERY PHRASE, not just the last one.
+        #
+        # Its bytes are never speech, so a phrase can never span it. That
+        # matters in two arrangements, and both occur in real sets:
+        #
+        #   table ABOVE the speech -- the last phrase has no following pointer,
+        #     and running it to the end of the image would swallow the table;
+        #   table BETWEEN phrases -- Fathom's sits at $FA6F with speech both
+        #     below it and above it at $FAD3, so the phrase below would
+        #     otherwise run through the table to reach it.
+        #
+        # Clamping every end at the table start handles both, and leaves a
+        # phrase that ends before the table untouched.
         def implicit_end(start: int) -> int:
             if start < table_offset:
                 return table_offset
             return len(rom)
+
+        def bounded(start: int, end: int) -> int:
+            if start < table_offset < end:
+                return table_offset
+            return end
 
         # Extents need address order; reporting keeps the caller's order. In a
         # command-ordered table entry N is what command N plays, and sorting the
@@ -103,15 +118,17 @@ class PhraseTable:
         if address_ordered:
             bounds = list(pointers)
             phrases = [Phrase(i, bounds[i],
-                              bounds[i + 1] if i + 1 < len(bounds)
-                              else implicit_end(bounds[i]))
+                              bounded(bounds[i],
+                                      bounds[i + 1] if i + 1 < len(bounds)
+                                      else implicit_end(bounds[i])))
                        for i in range(count)]
         else:
             ordered = sorted(set(pointers))
             successor = {value: (ordered[j + 1] if j + 1 < len(ordered)
                                  else implicit_end(value))
                          for j, value in enumerate(ordered)}
-            phrases = [Phrase(i, pointers[i], successor[pointers[i]])
+            phrases = [Phrase(i, pointers[i],
+                              bounded(pointers[i], successor[pointers[i]]))
                        for i in range(count)]
 
         seen = {}

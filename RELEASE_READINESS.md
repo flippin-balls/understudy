@@ -54,10 +54,11 @@ ROMs, so one profile serves several.
 |---|---|---|---|
 | `embryon` | `board-simulated` | 20 | 6 |
 | `elektra` | `board-simulated` | 16 | 2 |
+| `fathom` | `board-simulated` | 28 | 3 |
 | `flashgdn` | `board-simulated` | 5 | 2 |
 | `spectrum` | `board-simulated` | 31 | 4 |
 
-**4 of 19 sound ROM sets; 14 of 49 game revisions.** Each cleared all four
+**5 of 19 sound ROM sets; 17 of 49 game revisions.** Each cleared all four
 acceptance criteria: every phrase terminating, healthy per-device speech
 coverage (48–100%), a frame count matching an independently built corpus, and
 the board's own firmware booting and driving the converted ROMs identically to

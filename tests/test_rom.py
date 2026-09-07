@@ -514,6 +514,73 @@ class TestTableAbovePhrases(unittest.TestCase):
         self.assertIn("overlaps the pointer table", str(caught.exception))
 
 
+class TestTableBetweenPhrases(unittest.TestCase):
+    """A pointer table can sit BETWEEN the speech, not only above or below it.
+
+    Fathom does exactly that: entries 0-26 point below the table at $FA6F and
+    entry 27 points above it at $FAD3. Without clamping every phrase at the
+    table, the phrase below runs through the table to reach the one above --
+    which is refused as an overlap, so the whole layout is unusable and the
+    speech above the table is never converted.
+    """
+
+    def setUp(self):
+        self.src, self.dst = original(), understudy()
+        a = stream(self.src, [(7, 0, 40, list(range(10))), (0xF, 0, 0, [])])
+        b = stream(self.src, [(9, 0, 12, list(range(10))), (0xF, 0, 0, [])])
+        # speech, gap, TABLE, gap, more speech
+        self.low = 4
+        self.table_at = 0x100
+        self.high = 0x180
+        rom = bytearray(b"\x00" * 0x200)
+        rom[self.low:self.low + len(a)] = a
+        rom[self.high:self.high + len(b)] = b
+        for i, value in enumerate([self.low, self.high]):
+            rom[self.table_at + 2 * i:self.table_at + 2 * i + 2] = \
+                value.to_bytes(2, "big")
+        self.rom = bytes(rom)
+
+    def test_a_phrase_below_the_table_stops_at_it(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        low = next(p for p in table.phrases if p.start == self.low)
+        self.assertEqual(low.end, self.table_at,
+                         "the phrase below ran through the pointer table")
+
+    def test_the_phrase_above_the_table_is_still_reachable(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        high = next(p for p in table.phrases if p.start == self.high)
+        self.assertEqual(high.end, len(self.rom))
+
+    def test_the_table_survives_patching(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        out, _results = patch_rom(self.rom, table, self.src, self.dst)
+        self.assertEqual(out[self.table_at:self.table_at + 4],
+                         self.rom[self.table_at:self.table_at + 4])
+
+    def test_both_phrases_actually_convert(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=False,
+                                          has_end_bound=False)
+        out, results = patch_rom(self.rom, table, self.src, self.dst)
+        self.assertEqual(len(results), 2)
+        for r in results:
+            self.assertGreater(r.changed_bytes, 0,
+                               "phrase %d converted nothing" % r.phrase.index)
+
+    def test_address_ordered_layouts_are_clamped_too(self):
+        table = PhraseTable.from_pointers(self.rom, self.table_at, 2,
+                                          address_ordered=True,
+                                          has_end_bound=False)
+        low = next(p for p in table.phrases if p.start == self.low)
+        self.assertEqual(low.end, self.table_at)
+
+
 class TestLastByteConvention(RomFixture):
     """The final-byte convention is per phrase, and is read off the data."""
 
