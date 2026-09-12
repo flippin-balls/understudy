@@ -59,10 +59,9 @@ phrases were therefore rendered and scored separately:
 Phrase 0 was 0.67 dB worse and phrase 6 was 0.07 dB worse on the whole-phrase
 metric.
 
-Those frame corrections are still included. They are the measured outcome of
-the frame-local experiment; dropping them after a second, phrase-level scoring
-pass would introduce a different selection rule after the fact. This mixed
-phrase-level result is also one reason the feature remains opt-in.
+The shipped data keeps the frame-local choices from the measured search.
+Phrase-level scoring is reported as a separate check and is not used to reselect
+individual frames. The mixed result is one reason the feature remains opt-in.
 
 There is **no real-hardware listening result for the optimized ROMs yet**. The
 Embryon hardware result documented elsewhere used the ordinary conversion.
