@@ -643,6 +643,7 @@ def _expand_inputs(names):
     that fails.
     """
     rows = []
+    opened = set()
     total = 0
 
     def take(label, data, guard, named):
@@ -662,6 +663,12 @@ def _expand_inputs(names):
 
     for name in names:
         path = Path(name)
+        # PROTECTION IS EARNED BY BEING OPENED, not by yielding a usable ROW.
+        # This used to be recorded inside take(), so an archive whose members were
+        # all skipped -- a zip holding only README.txt -- was opened, read, and
+        # left unguarded. `convert-set good.zip that-zip -o . --force` then
+        # overwrote it with the manifest and exited 0.
+        opened.add(path)
         if path.is_dir():
             for found in sorted(p for p in path.iterdir() if p.is_file()):
                 # Do not follow a symlink out of the folder we were pointed at.
@@ -669,7 +676,15 @@ def _expand_inputs(names):
                 # to offer is not part of it.
                 if found.is_symlink():
                     continue
+                opened.add(found)
                 if _looks_like_a_dump(found.name):
+                    # Check the size on the filesystem BEFORE reading it in.
+                    if found.stat().st_size > _MAX_ONE_INPUT:
+                        raise ValueError(
+                            "%s is %.1f MB. Speech ROMs on this hardware are at "
+                            "most 8 KB, so this is not one -- check you pointed "
+                            "at the right thing."
+                            % (found, found.stat().st_size / 1048576.0))
                     data = found.read_bytes()
                     if data:
                         take(str(found), data, found, False)
@@ -690,12 +705,16 @@ def _expand_inputs(names):
                         data = archive.read(info)
                         if data:
                             take(info.filename, data, path, False)
-            except zipfile.BadZipFile as exc:
+            except (zipfile.BadZipFile, NotImplementedError, RuntimeError, EOFError) as exc:
                 raise ValueError(
                     "%s looks like a zip but could not be read (%s). Try "
                     "extracting it yourself and pointing at the folder." % (path, exc))
             continue
-        rows.append((str(path), _read_dump(path), path, True))
+        if path.is_file() and path.stat().st_size > _MAX_ONE_INPUT:
+            raise ValueError(
+                "%s is %.1f MB. Speech ROMs on this hardware are at most 8 KB."
+                % (path, path.stat().st_size / 1048576.0))
+        take(str(path), _read_dump(path), path, True)
     if not rows:
         raise ValueError(
             "nothing that looks like a ROM dump was found in: %s\n"
@@ -707,7 +726,7 @@ def _expand_inputs(names):
             "  Files named README, or ending .txt .md .json and similar, are "
             "skipped when scanning. Name a file directly if you mean it."
             % ", ".join(str(n) for n in names))
-    return rows
+    return rows, opened
 
 
 def _labelled_inputs(names):
@@ -719,8 +738,9 @@ def _labelled_inputs(names):
     convert command that failed. A name that does not identify one file cannot
     be matched to a socket, and guessing which one was meant is not available.
     """
-    files, consumed = {}, set()
-    for label, data, guard, _named in _expand_inputs(names):
+    rows, opened = _expand_inputs(names)
+    files, consumed = {}, set(opened)
+    for label, data, guard, _named in rows:
         if label in files:
             raise ValueError(
                 "more than one input is called %r. Rename or separate them: a "
@@ -769,8 +789,8 @@ def _sockets_from_args(args, profile):
     if not args.dumps:
         raise ValueError("no dumps given")
 
-    rows = _expand_inputs(args.dumps)
-    files, consumed, explicit = {}, set(), set()
+    rows, opened = _expand_inputs(args.dumps)
+    files, consumed, explicit = {}, set(opened), set()
     for label, data, guard, was_named in rows:
         if label in files:
             # Two members with the same name, or two archives sharing one. Either
@@ -967,15 +987,26 @@ def cmd_identify(args) -> int:
         # taught everyone that four flags were required, which is the opposite
         # of what the tool does -- and the person reading this is usually
         # holding a soldering iron, not looking for options.
-        # ECHO BACK WHAT THEY TYPED. Printing the file names discovered inside a
-        # folder or zip produces a command that does not run: the names are
-        # relative to the archive, not to where the user is standing. Whatever
-        # they pointed identify at is, by construction, something convert-set
-        # accepts too.
+        # ECHO BACK WHAT THEY TYPED -- unless they named plain files and some of
+        # them are not part of the set.
+        #
+        # Printing the names discovered inside a folder or zip produces a command
+        # that does not run: they are relative to the archive, not to where the
+        # user is standing. But echoing the arguments verbatim has its own trap --
+        # `identify a.bin b.bin cpu.bin` succeeds, because identify only has to
+        # recognise the speech ROMs, and then suggests a convert-set that refuses
+        # cpu.bin. Naming a file is a claim it belongs in the set, and convert-set
+        # holds the user to it. So when every argument is a plain file, suggest
+        # only the ones this match actually used.
+        used = list(match.matched.values()) + list(match.incidental.values())
+        if args.dumps and all(Path(d).is_file() and not zipfile.is_zipfile(Path(d))
+                              for d in args.dumps) and used:
+            suggest = [str(u) for u in used]
+        else:
+            suggest = [str(given) for given in args.dumps]
         print("Convert it with:")
         print("  %s convert-set %s"
-              % (invocation(),
-                 " ".join(shell_quote(str(given)) for given in args.dumps)))
+              % (invocation(), " ".join(shell_quote(x) for x in suggest)))
         if profile.status != "silicon-verified":
             print()
             print("Note: this profile is %r. No converted ROM from it has been"

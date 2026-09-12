@@ -191,6 +191,74 @@ class TestDestinationPreflight(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertEqual(decoy.read_bytes(), before, "a file this run READ was destroyed")
 
+    def test_identify_suggests_a_command_that_actually_runs(self):
+        """identify only has to recognise the SPEECH ROMs; convert-set needs the set.
+
+        `identify a.bin b.bin cpu.bin` succeeds and used to suggest a convert-set
+        with cpu.bin still in it, which convert-set then refuses -- the tool
+        handing you a command it rejects.
+        """
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        stray = self.dir / "cpu.bin"
+        stray.write_bytes(b"\x5a" * 373)
+        result = run("identify", str(u4), str(self.u5), str(stray),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        suggested = [l for l in result.stdout.splitlines() if "convert-set" in l]
+        self.assertTrue(suggested, result.stdout)
+        self.assertNotIn("cpu.bin", suggested[-1])
+
+    def test_an_archive_that_yields_nothing_is_still_protected(self):
+        """Protection is earned by being OPENED, not by yielding a usable row.
+
+        The first fix recorded guards per emitted row, so an archive whose members
+        were all skipped -- one holding only README.txt -- was opened, read, and
+        left unguarded. It was then overwritten by the manifest, exit code 0.
+        """
+        import zipfile
+        good = self.dir / "good.zip"
+        with zipfile.ZipFile(good, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        decoy = self.dir / "synthgame.manifest.json"
+        with zipfile.ZipFile(decoy, "w") as z:
+            z.writestr("README.txt", "nothing a scan will accept")
+        before = decoy.read_bytes()
+        result = run("convert-set", str(good), str(decoy), "-o", str(self.dir),
+                     "--force", cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(decoy.read_bytes(), before,
+                         "an archive that produced no usable row was destroyed")
+
+    def test_an_oversized_loose_file_is_refused_before_it_is_read(self):
+        """Folder files were read fully and measured afterwards."""
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "huge.bin").write_bytes(b"\0" * (9 * 1024 * 1024))
+        result = run("identify", str(roms), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("at most 8 KB", result.stderr)
+
+    def test_an_archive_with_unsupported_compression_is_explained(self):
+        """BadZipFile was caught; NotImplementedError was not."""
+        import zipfile, struct
+        bad = self.dir / "weird.zip"
+        with zipfile.ZipFile(bad, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+        raw = bytearray(bad.read_bytes())
+        # force an unknown compression method on the local + central headers
+        for sig in (b"PK\x03\x04", b"PK\x01\x02"):
+            i = raw.find(sig)
+            if i >= 0:
+                off = 8 if sig == b"PK\x03\x04" else 10
+                struct.pack_into("<H", raw, i + off, 99)
+        bad.write_bytes(bytes(raw))
+        result = run("identify", str(bad), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_an_oversized_member_is_refused_before_it_is_read(self):
         """A crafted archive must not get to spend the memory first."""
         import zipfile

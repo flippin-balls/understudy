@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+*.egg-info/
 
 # The coefficient tables ARE distributed now, under BSD-3-Clause, and live in
 # src/tms52xx/data/ -- see docs/PROVENANCE.md. This ignores the scratch directory
