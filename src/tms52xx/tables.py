@@ -25,6 +25,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Sequence
+from . import reads
 
 #: Synthesis sample rate of the TMS52xx family. Pitch table entries are periods
 #: in samples at this rate, so f0 = SAMPLE_RATE / period. This is not the LPC
@@ -151,7 +152,7 @@ class ChipTables:
         `KeyError` or a `TypeError` escaping from here reaches the user as a
         traceback, which tells them nothing they can act on.
         """
-        return cls._parse(Path(path).read_bytes(), Path(path))
+        return cls._parse(reads.read_bytes(path), Path(path))
 
     @classmethod
     def _parse(cls, body: bytes, where: Path) -> "ChipTables":

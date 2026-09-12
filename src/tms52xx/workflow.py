@@ -23,6 +23,7 @@ from .profiles import Profile, ProfileError, sha256
 from .bitstream import parse
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
 from .tables import ChipTables
+from . import reads
 
 #: Bumped when the manifest's shape changes. Readers should check it.
 #: Bumped to 3: `speech_coverage_percent` changed meaning -- it counted the
@@ -65,7 +66,7 @@ def _load_tables(chip: Chip, custom: Optional[Path]):
     produced the ROM.
     """
     path = Path(custom) if custom else chip.table_path
-    raw = path.read_bytes()
+    raw = reads.read_bytes(path)
     return ChipTables.from_bytes(raw, path), raw, path
 
 
@@ -185,8 +186,11 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         if device.sha256 and device.sha256 != digest:
             raise ConversionRefused(
                 "socket %s does not match the %s profile: expected sha256 %s, "
-                "got %s. This is a different revision or a bad read; convert it "
-                "with the manual path instead of this profile."
+                "got %s.\n"
+                "  Most likely the chip was read with the wrong device type "
+                "selected -- re-read it and try again.\n"
+                "  If it re-reads the same, this is a revision the profile does "
+                "not cover. Run `identify` to see whether another profile fits."
                 % (device.socket, profile.id, device.sha256[:16], digest[:16]))
 
     image = profile.assemble(dumps)

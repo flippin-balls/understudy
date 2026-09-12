@@ -121,7 +121,7 @@ class TestChipRegistry(unittest.TestCase):
     def test_the_licence_materials_ship_beside_the_data(self):
         """BSD-3-Clause requires its notice to accompany redistribution.
 
-        Files sitting beside the repository do not survive `pip install`, so
+        A file at the repository root can be separated from the data it covers, so
         they live inside the package.
         """
         for name in ("BSD-3-Clause.txt", "THIRD_PARTY_NOTICES.md"):
@@ -602,8 +602,21 @@ class TestBundledEmbryonProfile(unittest.TestCase):
             self.assertEqual(loaded.identity, str(path))
 
     def test_status_is_not_overclaimed(self):
-        """Nothing may claim silicon verification until it has happened."""
-        self.assertNotEqual(self.profile.status, "silicon-verified")
+        """`silicon-verified` may only be claimed with a real-board report behind it.
+
+        This guard used to assert that NOTHING was silicon-verified, which was true
+        until 2026-09-11 and is the correct default for a project whose every other
+        claim comes from static analysis and emulation. Embryon has since been fitted
+        to a real AS-2518-61A and listened to, so the guard now enforces the thing it
+        was actually protecting: the rung and the evidence must move together. A
+        profile may not claim the top rung without a `silicon` evidence field, and one
+        that has not been fitted to a board may not claim it at all.
+        """
+        if self.profile.status == "silicon-verified":
+            self.assertIn("silicon", self.profile.evidence,
+                          "%s claims silicon-verified without a real-board report"
+                          % self.profile.id)
+        # Whatever the rung, a profile must still say what it does NOT establish.
         self.assertIn("not_verified", self.profile.evidence)
 
     def test_profiles_declare_the_revisions_they_serve(self):
@@ -638,7 +651,12 @@ class TestBundledEmbryonProfile(unittest.TestCase):
                           "%s ships without an independent frame check" % profile.id)
             self.assertIn("emulation", profile.evidence, profile.id)
             self.assertIn("not_verified", profile.evidence, profile.id)
-            self.assertEqual(profile.status, "board-simulated", profile.id)
+            # Exactly two rungs are shippable. `draft` and `layout-verified` are
+            # states a contribution passes THROUGH, not states we publish from.
+            self.assertIn(profile.status, ("board-simulated", "silicon-verified"),
+                          profile.id)
+            if profile.status == "silicon-verified":
+                self.assertIn("silicon", profile.evidence, profile.id)
 
     def test_every_bundled_profile_parses(self):
         found = profiles.available()

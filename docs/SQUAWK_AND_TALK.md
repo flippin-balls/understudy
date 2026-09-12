@@ -369,7 +369,7 @@ mirrored into `$E800` and U5 at `$F000` — and the layout is:
 | speech | starts at CPU `$E800`, i.e. through U4's mirror |
 
 ```
-python -m tms52xx.cli inspect embryon_snt.bin \
+python understudy.py inspect embryon_snt.bin \
     --table-offset 0x3C1C --phrases 20 --base-address 0xC000 \
     --command-ordered
 ```
@@ -480,7 +480,7 @@ lookup, if you are disassembling.
 ### 5. Check it, and know what the check is worth
 
 ```
-python -m tms52xx.cli inspect speech.bin \
+python understudy.py inspect speech.bin \
     --table-offset 0x3C1C --phrases 21 --base-address 0xC000 \
     --no-end-bound --command-ordered --source-tables tables/tms5200.json
 ```

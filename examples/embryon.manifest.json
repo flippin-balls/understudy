@@ -6,8 +6,8 @@
     "id": "embryon",
     "version": 4,
     "title": "Bally Embryon (1981)",
-    "status": "board-simulated",
-    "sha256": "1e8574bcf6170b76c0502923b2ae386fef656ef516a75adc9ea0c036d1f5b65e",
+    "status": "silicon-verified",
+    "sha256": "1b85712566f61ea8e1e741db4a9447eaeecba3e738417583a3b9aaad8b1bc894",
     "applies_to": [
       "embryon",
       "embryona",
@@ -20,9 +20,9 @@
   },
   "chips": {
     "source": "tms5200",
-    "target": "tsp5220c",
+    "target": "tms5220",
     "requested_source": "tms5200",
-    "requested_target": "tsp5220c"
+    "requested_target": "tms5220"
   },
   "tables": {
     "source": {
@@ -42,12 +42,12 @@
       }
     },
     "target": {
-      "requested_chip": "tsp5220c",
+      "requested_chip": "tms5220",
       "table_name": "tms5220",
       "bundled": true,
       "path": "data/tms5220.json",
       "sha256": "f15418abad1bbe838edc67036961c8675692c2196a8be3d70d2b316c628c983c",
-      "chip": "tsp5220c",
+      "chip": "tms5220",
       "provenance": {
         "repository": "https://github.com/mamedev/mame",
         "path": "src/devices/sound/tms5110r.hxx",
@@ -102,7 +102,7 @@
         10240,
         12288
       ],
-      "path": "out/841-01_4_U4_2716_tsp5220c.716"
+      "path": "out/841-01_4_U4_2716_tms5220.716"
     },
     {
       "socket": "U5",
@@ -119,7 +119,7 @@
         12288,
         16384
       ],
-      "path": "out/841-02_5_U5_2532_tsp5220c.532"
+      "path": "out/841-02_5_U5_2532_tms5220.532"
     }
   ],
   "image": {
@@ -429,8 +429,7 @@
     }
   ],
   "warnings": [
-    "17 frame(s) (2.0%) sit below the tsp5220c pitch floor and were raised; those will sound higher than the original.",
-    "profile status is 'board-simulated': no converted ROM from this profile has been played on a real board."
+    "17 frame(s) (2.0%) sit below the tms5220 pitch floor and were raised; those will sound higher than the original."
   ],
   "overrides": [],
   "note": "Produced by `understudy convert-set` from a Squawk & Talk ROM set assembled from an original Bally Embryon set. Output paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the input hashes let you confirm you have the same devices before comparing results."

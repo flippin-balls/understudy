@@ -7,6 +7,48 @@ features.
 
 ## [Unreleased]
 
+### Validated on silicon
+
+- **Embryon has been played on a real board.** On 2026-09-11 a converted set was
+  fitted to a Bally Squawk & Talk AS-2518-61A with a TMS5220 and listened to —
+  the first time any conversion from this tool has been heard. Three
+  configurations were compared on the same board, one variable at a time: a
+  TMS5200 with the original ROMs, a TMS5220 with the original ROMs, and a
+  TMS5220 with the converted ones. The last was reported as very close to the
+  first, with no phrase broken or missing. The profile moves to
+  `silicon-verified`; the other fifteen remain `board-simulated` and nothing
+  about this transfers to them.
+- The 17 frames clamped at the TMS5220 pitch floor were **not** noticed, where
+  the analysis predicted they would sound audibly higher. The ceiling itself is
+  unchanged — it is a property of the destination coefficient table — but its
+  audible cost at 2% of frames appears smaller than the emulator measurements
+  implied.
+- **Open question:** the TMS5220 was reported as slightly louder than the
+  TMS5200. Not attributable to conversion — the two parts' energy tables are
+  byte-identical and the energy field is never rewritten. Recorded, unexplained.
+
+### Changed
+
+- **Point at a folder or a zip.** `convert-set` and `identify` now accept a
+  directory or a `.zip` as well as a list of files, and ignore anything inside
+  that is not a speech ROM. ROM sets arrive as zips far more often than as tidy
+  file lists, and "point at the folder" is what someone with a machine open
+  actually wants to type. A file the user *names* which fits no socket is still
+  an error; one merely *found* while expanding a folder is not.
+- **`identify` now prints the shortest command that works.** It used to suggest
+  `--game X --target tsp5220c -o out/`, every part of which is a default, which
+  taught everyone that four flags were required.
+
+### Removed
+
+- **Packaging.** `pyproject.toml` and `MANIFEST.in` are gone, along with the
+  wheel and sdist CI jobs. The distribution is the repository: clone or download
+  it and run `understudy.py`. Nothing to install, and `pip install understudy`
+  never referred to this project in the first place — that name belongs to an
+  unrelated package on PyPI.
+- `RELEASE_READINESS.md`, an internal pre-release memo describing a packaged
+  0.3.0 and a private repository. Both statements had stopped being true.
+
 ### Security
 
 - **A custom profile can no longer write outside `--output`.** `socket` and

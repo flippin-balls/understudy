@@ -169,6 +169,299 @@ class TestDestinationPreflight(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_every_file_read_is_protected_from_being_overwritten(self):
+        """Reading a file is what earns it protection, not being selected.
+
+        The guard list was built from the SELECTED sockets, so an input that was
+        read and then discarded had none. Handing convert-set a second archive
+        whose name matched an output destroyed it: found in review, with a zip
+        named like the manifest.
+        """
+        import zipfile
+        good = self.dir / "good.zip"
+        with zipfile.ZipFile(good, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        decoy = self.dir / "synthgame.manifest.json"      # the manifest's own name
+        with zipfile.ZipFile(decoy, "w") as z:
+            z.writestr("unrelated.bin", b"\xaa" * 64)
+        before = decoy.read_bytes()
+        result = run("convert-set", str(good), str(decoy), "-o", str(self.dir),
+                     "--force", cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(decoy.read_bytes(), before, "a file this run READ was destroyed")
+
+    def test_identify_suggests_a_command_that_actually_runs(self):
+        """identify only has to recognise the SPEECH ROMs; convert-set needs the set.
+
+        `identify a.bin b.bin cpu.bin` succeeds and used to suggest a convert-set
+        with cpu.bin still in it, which convert-set then refuses -- the tool
+        handing you a command it rejects.
+        """
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        stray = self.dir / "cpu.bin"
+        stray.write_bytes(b"\x5a" * 373)
+        result = run("identify", str(u4), str(self.u5), str(stray),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        suggested = [l for l in result.stdout.splitlines() if "convert-set" in l]
+        self.assertTrue(suggested, result.stdout)
+        self.assertNotIn("cpu.bin", suggested[-1])
+
+    def test_manual_convert_cannot_overwrite_a_table_it_read(self):
+        """`convert`'s own preflight runs BEFORE anything is read.
+
+        So it could only know the paths the user named, and
+        `convert rom -o <a bundled coefficient table> --force` replaced a table
+        that same run had loaded. The registry check has to run after the reads.
+        """
+        from tms52xx import chips
+        table = Path(chips.__file__).parent / "data" / "tms5220.json"
+        before = table.read_bytes()
+        rom = self.dir / "speech.bin"
+        raw = self.raw
+        mem = raw["memory"]
+        image = bytearray([mem.get("fill", 0xFF)]) * mem["window_size"]
+        for d in raw["devices"]:
+            off = d["cpu_address"] - mem["window_base"]
+            image[off:off + d["size"]] = self.dumps[d["socket"]]
+        rom.write_bytes(bytes(image))
+        layout = raw["layout"]
+        result = run("convert", str(rom),
+                     "--table-offset", str(layout["table_offset"]),
+                     "--phrases", str(layout["phrases"]),
+                     "--base-address", str(mem["window_base"]),
+                     "--no-end-bound", "--command-ordered",
+                     "-o", str(table), "--force",
+                     cwd=self.dir, extra_env=self.env)
+        self.assertIn("file this run reads", result.stderr + result.stdout)
+        self.assertEqual(table.read_bytes(), before,
+                         "a bundled coefficient table was overwritten")
+
+    def test_every_file_the_run_reads_is_protected_including_bundled_data(self):
+        """The guard is sourced from one registry, not assembled per code path.
+
+        Four separate omissions were found this way -- zip members, discarded
+        archives, zero-row archives, then the profile directory and the bundled
+        coefficient tables. All of those are read during an ordinary run, and any
+        of them could be written over by aiming -o at it with --force.
+        """
+        from tms52xx import reads, chips, profiles
+        reads.reset()
+        chips.resolve("tms5220").tables()
+        profiles.available()
+        recorded = {str(p) for p in reads.consumed()}
+        self.assertTrue(any(p.endswith("tms5220.json") for p in recorded),
+                        "the bundled target table was read but not recorded")
+        self.assertTrue(any("profiles" in p for p in recorded),
+                        "profile files were read but not recorded")
+
+    def test_enumeration_is_bounded_before_entries_are_examined(self):
+        """Bounding accepted rows bounds nothing: skipped entries are the cheap ones to make."""
+        crowd = self.dir / "crowd"
+        crowd.mkdir()
+        for i in range(600):
+            (crowd / ("note%d.txt" % i)).write_text("x")
+        result = run("identify", str(crowd), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("files to look at", result.stderr)
+
+    def test_a_non_regular_file_is_refused_rather_than_read(self):
+        """A FIFO reports no meaningful size, so it cannot be bounded."""
+        import os
+        fifo = self.dir / "pipe.bin"
+        try:
+            os.mkfifo(fifo)
+        except (AttributeError, OSError):
+            self.skipTest("no FIFO support here")
+        result = run("convert-set", str(fifo), "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not a regular file", result.stderr)
+
+    def test_an_archive_that_yields_nothing_is_still_protected(self):
+        """Protection is earned by being OPENED, not by yielding a usable row.
+
+        The first fix recorded guards per emitted row, so an archive whose members
+        were all skipped -- one holding only README.txt -- was opened, read, and
+        left unguarded. It was then overwritten by the manifest, exit code 0.
+        """
+        import zipfile
+        good = self.dir / "good.zip"
+        with zipfile.ZipFile(good, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        decoy = self.dir / "synthgame.manifest.json"
+        with zipfile.ZipFile(decoy, "w") as z:
+            z.writestr("README.txt", "nothing a scan will accept")
+        before = decoy.read_bytes()
+        result = run("convert-set", str(good), str(decoy), "-o", str(self.dir),
+                     "--force", cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(decoy.read_bytes(), before,
+                         "an archive that produced no usable row was destroyed")
+
+    def test_an_oversized_loose_file_is_refused_before_it_is_read(self):
+        """Folder files were read fully and measured afterwards."""
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "huge.bin").write_bytes(b"\0" * (9 * 1024 * 1024))
+        result = run("identify", str(roms), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("at most 8 KB", result.stderr)
+
+    def test_an_archive_with_unsupported_compression_is_explained(self):
+        """BadZipFile was caught; NotImplementedError was not."""
+        import zipfile, struct
+        bad = self.dir / "weird.zip"
+        with zipfile.ZipFile(bad, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+        raw = bytearray(bad.read_bytes())
+        # force an unknown compression method on the local + central headers
+        for sig in (b"PK\x03\x04", b"PK\x01\x02"):
+            i = raw.find(sig)
+            if i >= 0:
+                off = 8 if sig == b"PK\x03\x04" else 10
+                struct.pack_into("<H", raw, i + off, 99)
+        bad.write_bytes(bytes(raw))
+        result = run("identify", str(bad), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_an_oversized_member_is_refused_before_it_is_read(self):
+        """A crafted archive must not get to spend the memory first."""
+        import zipfile
+        bomb = self.dir / "bomb.zip"
+        with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("big.bin", b"\0" * (16 * 1024 * 1024))
+        self.assertLess(bomb.stat().st_size, 100 * 1024, "precondition: small on disk")
+        result = run("convert-set", str(bomb), "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("at most 8 KB", result.stderr)
+
+    def test_a_duplicate_member_name_is_refused_by_both_commands(self):
+        """A name that does not identify one file cannot be matched to a socket."""
+        import zipfile
+        dup = self.dir / "dup.zip"
+        with zipfile.ZipFile(dup, "w") as z:
+            z.writestr("U4.bin", b"\x01" * 2048)
+            z.writestr("U4.bin", b"\x02" * 2048)
+        for command in ("identify", "convert-set"):
+            result = run(command, str(dup), cwd=self.dir, extra_env=self.env)
+            self.assertEqual(result.returncode, 2, command)
+            self.assertIn("more than one input is called", result.stderr, command)
+
+    def test_a_symlink_in_a_scanned_folder_is_not_followed(self):
+        """Scanning is a convenience; reading files the user did not offer is not."""
+        outside = self.dir / "outside.bin"
+        outside.write_bytes(b"\x7f" * 2048)
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        try:
+            (roms / "sneaky.bin").symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable here")
+        result = run("identify", str(roms), cwd=self.dir, extra_env=self.env)
+        self.assertNotIn("sneaky.bin", result.stdout + result.stderr)
+
+    def test_pointing_at_a_folder_converts_the_set(self):
+        """The command a board repairer actually wants to type.
+
+        Listing every dump is a programmer's habit. Someone with a machine open
+        has a folder of files read out of sockets, and should be able to point
+        at it.
+        """
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        out = self.dir / "out"
+        result = run("convert-set", str(roms), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(sum(1 for p in out.iterdir() if p.suffix != ".json"), 2)
+
+    def test_a_folder_may_hold_files_that_are_not_speech_roms(self):
+        """A real ROM folder holds the CPU ROMs and a README as well.
+
+        A file the user NAMED and which fits no socket is an error. A file
+        merely FOUND while expanding a folder is not -- otherwise the easy path
+        is the one that fails, which is the opposite of the point.
+        """
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        (roms / "README").write_text("notes about this machine")
+        (roms / "notes.txt").write_text("more notes")
+        (roms / "cpu.bin").write_bytes(b"\xa5" * 373)      # fits no socket
+        out = self.dir / "out"
+        result = run("convert-set", str(roms), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_a_named_file_that_fits_no_socket_is_still_an_error(self):
+        """The guard that folder support must not weaken.
+
+        Naming a file is a claim that it belongs in the set. Converting less
+        than the user asked for, silently, is worse than refusing.
+        """
+        stray = self.dir / "stray.bin"
+        stray.write_bytes(b"\x5a" * 373)
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        result = run("convert-set", str(u4), str(self.u5), str(stray),
+                     "--game", "synthgame", "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not part of the", result.stderr)
+        self.assertIn("stray.bin", result.stderr)
+        # and it must offer the way out, not suggest forcing it into a socket
+        self.assertIn("point at the whole folder", result.stderr)
+        self.assertNotIn("--socket", result.stderr)
+
+    def test_pointing_at_a_zip_converts_the_set(self):
+        """ROM sets arrive as zips far more often than as loose files."""
+        import zipfile
+        archive = self.dir / "game.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+            z.writestr("README", "notes")
+        out = self.dir / "out"
+        result = run("convert-set", str(archive), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        written = sorted(p.name for p in out.iterdir() if p.suffix != ".json")
+        self.assertEqual(len(written), 2, written)
+        # Outputs are named after the ZIP MEMBER, not the archive, or both
+        # devices would be named "game" and collide.
+        self.assertTrue(any(n.startswith("u4") for n in written), written)
+        self.assertTrue(any(n.startswith("u5") for n in written), written)
+
+    def test_a_zip_is_never_overwritten_by_its_own_output(self):
+        """The overwrite guard must follow a member back to its archive.
+
+        A zip member has no path of its own. If the guard were given the member
+        name it would protect nothing, and an output could land on the archive
+        the run is reading.
+        """
+        import zipfile
+        archive = self.dir / "synthgame.manifest.json"    # the derived name
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        before = archive.read_bytes()
+        result = run("convert-set", str(archive), "-o", str(self.dir),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(archive.read_bytes(), before, "the archive was modified")
+
     def test_the_manifest_cannot_overwrite_an_input_even_with_force(self):
         victim = self.dir / "synthgame.manifest.json"     # the derived name
         victim.write_bytes(self.dumps["U4"])
@@ -816,7 +1109,9 @@ class TestCommandLine(unittest.TestCase):
         result = run("identify", str(self.u4), str(self.u5), cwd=self.dir)
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("No bundled profile recognises", result.stdout)
-        self.assertIn("understudy inspect", result.stdout)
+        # Not "understudy inspect": the tool names the invocation the reader
+        # actually used, which here is `python -m tms52xx.cli`.
+        self.assertIn("inspect <image> --table-offset", result.stdout)
 
     def test_identify_reports_hashes_for_a_bug_report(self):
         result = run("identify", str(self.u4), cwd=self.dir)
@@ -826,7 +1121,12 @@ class TestCommandLine(unittest.TestCase):
         result = run("convert-set", str(self.u4), str(self.u5),
                      "-o", str(self.dir / "out"), cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("could not identify", result.stderr)
+        # The message must name a cause the reader can act on, and hand back a
+        # command they can actually run -- it used to suggest `identify` with no
+        # files, which is a usage error.
+        self.assertIn("does not match any game", result.stderr)
+        self.assertIn("identify", result.stderr)
+        self.assertIn("--game", result.stderr)
         self.assertFalse((self.dir / "out").exists())
 
     def test_convert_set_rejects_a_source_part_as_target(self):
@@ -896,7 +1196,7 @@ class TestCommandLine(unittest.TestCase):
             dumps = [str(a), str(b)]
 
         profile = Profile(raw, "<twins>")
-        dumps, sources = _sockets_from_args(Args(), profile)
+        dumps, sources, _guards = _sockets_from_args(Args(), profile)
         self.assertEqual(sorted(dumps), ["U4", "U5"])
         self.assertNotEqual(sources["U4"], sources["U5"],
                             "both sockets were mapped to the same file")
@@ -945,7 +1245,7 @@ class TestCommandLine(unittest.TestCase):
             socket = ["U4=%s" % self.u4, "U5=%s" % self.u5]
             dumps = []
 
-        dumps, sources = _sockets_from_args(Args(), Profile(raw, "<x>"))
+        dumps, sources, _guards = _sockets_from_args(Args(), Profile(raw, "<x>"))
         self.assertEqual(sorted(dumps), ["U4", "U5"])
         self.assertEqual(Path(sources["U4"]).name, "u4.bin")
 
@@ -1721,6 +2021,91 @@ class TestOutputContainmentIsIndependent(WorkflowFixture):
                              ["in", "out", "profiles"])
 
 
+
+class TestRunningFromAClone(unittest.TestCase):
+    """`python understudy.py` is the documented path, so it is tested.
+
+    Nothing is installed and nothing is built: the tool is pure standard
+    library, and the launcher exists only because the code lives under `src/`,
+    which Python does not search unless told to. That makes the launcher the
+    first thing a new user touches and the easiest thing to break silently.
+    """
+
+    def run_launcher(self, *args, cwd=None):
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)          # prove it needs no help
+        env.pop("UNDERSTUDY_PROFILE_DIR", None)
+        return subprocess.run([sys.executable, str(ROOT / "understudy.py"),
+                               *args],
+                              cwd=str(cwd or ROOT), capture_output=True,
+                              text=True, env=env)
+
+    def test_it_runs_with_nothing_installed_and_no_PYTHONPATH(self):
+        result = self.run_launcher("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("understudy", result.stdout)
+
+    def test_the_bundled_profiles_are_found_from_a_clone(self):
+        result = self.run_launcher("profiles")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("embryon", result.stdout)
+
+    def test_it_names_the_invocation_the_reader_actually_used(self):
+        """Telling a clone user to run `understudy` sends them hunting.
+
+        Driven through the unrecognised-set path, which prints a command for
+        the reader to run next -- the place where naming the wrong entry point
+        actually costs them something.
+        """
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            here = Path(directory)
+            (here / "u4.bin").write_bytes(bytes(2048))
+            (here / "u5.bin").write_bytes(bytes(4096))
+            result = self.run_launcher("identify", str(here / "u4.bin"),
+                                       str(here / "u5.bin"), cwd=here)
+        combined = result.stdout + result.stderr
+        self.assertIn("understudy.py", combined,
+                      "the printed command must name the launcher actually "
+                      "used, not a command that is not on the reader's PATH")
+        for line in combined.splitlines():
+            if "inspect <image>" in line:
+                self.assertNotIn("  understudy inspect", line)
+                break
+        else:
+            self.fail("expected the manual path to be suggested")
+
+
+class TestSuggestedCommandIsCopyPasteable(WorkflowFixture):
+    """`identify` prints a command to copy. It has to survive being copied."""
+
+    def test_a_filename_with_spaces_is_quoted(self):
+        """Real dumps carry names like "... EPROM U3 06-20-1984.BIN".
+
+        Unquoted, that becomes four arguments and the command fails on the
+        line after the tool said it had identified the set.
+        """
+        import shlex
+        from tms52xx.cli import shell_quote
+        spaced = "Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN"
+        quoted = shell_quote(spaced)
+        self.assertNotEqual(quoted, spaced, "a spaced name must be quoted")
+        if os.name != "nt":
+            self.assertEqual(shlex.split(quoted), [spaced])
+
+    def test_an_ordinary_filename_is_left_alone(self):
+        from tms52xx.cli import shell_quote
+        for plain in ("841-01_4.716", "u4.bin", "U5.532"):
+            self.assertEqual(shell_quote(plain), plain)
+
+    def test_the_printed_command_round_trips_through_the_shell(self):
+        import shlex
+        from tms52xx.cli import shell_quote
+        if os.name == "nt":
+            self.skipTest("POSIX shell semantics")
+        names = ["Big_Bat_Baseball_Sound EPROM U3 06-20-1984.BIN", "u4.bin"]
+        line = " ".join(shell_quote(n) for n in names)
+        self.assertEqual(shlex.split(line), names)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

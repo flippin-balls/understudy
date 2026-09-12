@@ -55,7 +55,7 @@ device it will emit.
 Get the device hashes with:
 
 ```
-understudy identify U4.bin U5.bin
+python understudy.py identify U4.bin U5.bin
 ```
 
 which prints the SHA-256 of each file whether it recognises them or not.
@@ -120,8 +120,8 @@ set UNDERSTUDY_PROFILE_DIR=C:\path\to\profiles           # cmd.exe
 Then:
 
 ```
-understudy identify U4.bin U5.bin           # should now name your game
-understudy convert-set U4.bin U5.bin --target tsp5220c -o out/ --dry-run
+python understudy.py identify U4.bin U5.bin   # should now name your game
+python understudy.py convert-set U4.bin U5.bin --target tsp5220c -o out/ --dry-run
 ```
 
 The dry run prints the validation block without writing anything. Look for:

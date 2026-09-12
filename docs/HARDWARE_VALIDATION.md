@@ -1,9 +1,15 @@
 # Reporting a real-board test
 
-**This is the most useful thing anyone can contribute.** Understudy has never
-been validated on silicon. Everything it claims comes from static analysis and
-emulation, and until someone fits a converted set to a real Squawk & Talk and
-listens to it, that is all it can claim.
+**This is the most useful thing anyone can contribute.** Exactly one profile --
+Embryon -- has been validated on silicon, on a single board, by ear. Everything
+the other fifteen claim comes from static analysis and emulation, and until
+someone fits a converted set to a real Squawk & Talk and listens to it, that is
+all they can claim.
+
+A second report on a title that already has one is still worth having: the
+Embryon result is one listener's judgement, and it left an unexplained
+observation behind (the replacement part sounded slightly louder than the
+original).
 
 If you do it — whether it works or not — please report it. A failure is worth
 more than silence, and a partial failure ("phrases 1-14 fine, 15 sounds wrong")
@@ -64,7 +70,7 @@ The hashes are in your manifest, under `inputs` and `outputs`.
 
 | | |
 |---|---|
-| Version (`understudy --version` or the manifest) | |
+| Version (`python understudy.py --version`, or the manifest) | |
 | Profile id and version | |
 | Target chip | |
 | Source table SHA-256 | from the manifest, `tables.source.sha256` |
