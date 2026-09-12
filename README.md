@@ -11,6 +11,11 @@ Understudy is an open-source preservation project from
 [Flashback Fleet LLC](https://flashbackfleet.com), who run these machines
 on location and would rather they kept talking.
 
+**Hear it first.** [examples/audio/](examples/audio/) has short clips of ten
+phrases, each in three versions: the original chip, a TMS5220 fed the
+unconverted ROM, and a TMS5220 fed the converted one. The middle one is what a
+straight chip swap sounds like.
+
 > **Pre-1.0:** Embryon has been converted and played on a real Squawk & Talk with
 > a TMS5220. The other 15 bundled profiles have passed structural and board
 > simulation checks but have not been heard on hardware. See
@@ -185,6 +190,35 @@ For detailed failure cases and the checks behind them, see
 
 The [Squawk & Talk notes](docs/SQUAWK_AND_TALK.md) cover board layout, mirroring,
 pointer tables, and the details behind these warnings.
+
+## Optional: `--optimize-audio`
+
+The default conversion picks, for each coefficient, the nearest value the
+replacement chip offers. But the ten coefficients per frame are one filter, not
+ten separate settings, and rounding each on its own is not always where the
+filter as a whole lands closest.
+
+`--optimize-audio` applies per-frame corrections that were measured for that
+game by rendering the alternatives and comparing them against the original chip.
+In that experiment, **39 of 40 representative Embryon frames improved** and one
+was already the best choice.
+
+```
+python understudy.py convert-set . --optimize-audio
+```
+
+Read that as a measurement, not a promise:
+
+- it was measured on one game's frames — yours may gain less, or nothing;
+- **no optimised ROM has been played on real hardware by anyone yet**;
+- it does **not** help the pitch limitation below, and does not try to;
+- it exists only for games it has been measured on, and says so if yours is not
+  one.
+
+The default remains the plain nearest-value conversion, and the manifest records
+which mode produced your ROM either way.
+[AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md) has the method, the controls
+and the checks.
 
 ## Pitch limitation
 

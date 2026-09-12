@@ -58,10 +58,20 @@ from .bitstream import K_FIELDS
 #: Data shipped alongside the profiles, one file per profile id.
 SCHEMA = "understudy-audio-optimization/1"
 
-#: The tested search moved each K index by at most one step. Deltas are checked
-#: against this rather than trusted: a data file is just a file, and one claiming
-#: a jump of three would otherwise be applied as readily as a legitimate one.
-MAX_STEP = 1
+#: How far from the baseline a coefficient may end up.
+#:
+#: The search offers each index only its immediate neighbours, +1 and -1 -- but
+#: it runs TWO passes, and the second pass steps from wherever the first left
+#: off. So a coefficient the search moved twice ends two places from where the
+#: nearest mapping put it, and the neighbourhood being +/-1 does not make the
+#: displacement +/-1. Getting this wrong is not academic: bounding it at one
+#: step silently discarded 40 of Embryon's 456 optimised frames, because 46 of
+#: the 1486 index moves are two.
+#:
+#: Checked rather than trusted. A data file is just a file, and one claiming a
+#: jump of five would otherwise be applied as readily as a legitimate one.
+SEARCH_PASSES = 2
+MAX_STEP = SEARCH_PASSES
 
 #: How much of the guard digest is stored. A frame's ten K indexes are a small
 #: space, so this is a staleness check and not a security boundary; 16 hex
@@ -239,9 +249,11 @@ def optimise_frames(frames: Sequence, phrase_index: int, doc: dict,
             if not isinstance(step, int) or isinstance(step, bool) \
                     or abs(step) > MAX_STEP or step == 0:
                 raise OptimizationError(
-                    "phrase %d frame %d %s: delta %r is not a single step. The "
-                    "measured search moved each index by %+d or %+d."
-                    % (phrase_index, frame_index, name, step, -MAX_STEP,
+                    "phrase %d frame %d %s: delta %r is outside the measured "
+                    "search. It offers each index its neighbours over %d "
+                    "passes, so a coefficient may end at most %d place(s) from "
+                    "the nearest mapping, and never zero places."
+                    % (phrase_index, frame_index, name, step, SEARCH_PASSES,
                        MAX_STEP))
             was = spec.index
             want = was + step

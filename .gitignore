@@ -12,7 +12,9 @@ venv/
 tables/*.json
 
 # Never commit speech data. This project operates on ROMs you already own and
-# does not redistribute any.
+# does not redistribute any. The one exception is examples/audio/: short lossy
+# comparison clips, published as documentation and approved individually. They
+# are not a route back to ROM bytes; see examples/audio/README.md.
 *.wav
 *.snd
 *.rom

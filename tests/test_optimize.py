@@ -104,10 +104,21 @@ class TestBounds(unittest.TestCase):
 
     def test_a_two_step_move_is_refused(self):
         _out, frames, dst = converted_frames()
-        d = doc({"0": {"0": override(frames[0], K1=2)}})
+        d = doc({"0": {"0": override(frames[0], K1=3)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
-        self.assertIn("not a single step", str(caught.exception))
+        self.assertIn("outside the measured search", str(caught.exception))
+
+    def test_two_steps_is_allowed_because_the_search_runs_two_passes(self):
+        """The neighbourhood is +/-1; the DISPLACEMENT is not. The second pass
+        steps from where the first left off, and 46 of Embryon's 1486 moves
+        land two places out -- bounding this at one step drops them."""
+        _out, frames, dst = converted_frames()
+        was = frames[0].fields["K1"].index
+        d = doc({"0": {"0": override(frames[0], K1=2)}})
+        applied = optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+        self.assertEqual(len(applied), 1)
+        self.assertEqual(frames[0].fields["K1"].index, was + 2)
 
     def test_a_one_step_move_is_allowed(self):
         _out, frames, dst = converted_frames()
@@ -156,7 +167,7 @@ class TestGuards(unittest.TestCase):
         d = doc({"0": {"0": override(frames[0], K1=0)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
-        self.assertIn("not a single step", str(caught.exception))
+        self.assertIn("outside the measured search", str(caught.exception))
         self.assertEqual(frames[0].fields["K1"].index, was)
 
     def test_a_frame_past_the_end_is_refused(self):
