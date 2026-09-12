@@ -152,11 +152,11 @@ If you have a Cosmic Flash or Black Belt dump, see
 [CONTRIBUTING_PROFILES.md](docs/CONTRIBUTING_PROFILES.md). Do not post ROM data
 in an issue or pull request.
 
+Run this to list the profiles in your copy:
+
 ```text
 python understudy.py profiles
 ```
-
-lists the profiles in your copy.
 
 ## When Understudy refuses a set
 
@@ -198,7 +198,7 @@ better-scoring local choice for 456 and kept the default mapping for 19. When th
 finished phrases were rendered as wholes, 18 of 20 improved on the scoring
 metric and 2 were slightly worse.
 
-The important limits are straightforward:
+Current limits:
 
 - the optimizer is opt-in; the default conversion is unchanged;
 - only Embryon currently has optimization data;
@@ -207,8 +207,8 @@ The important limits are straightforward:
 - the manifest records whether optimization was used and which measured data was
   applied.
 
-The original 40-frame study improved 39 of 40 frames. The full method, guards,
-and phrase-level results are in
+The original 40-frame study improved 39 of 40 frames on the same scoring metric.
+The full method, guards, and phrase-level results are in
 [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md).
 
 ## Pitch limitation
