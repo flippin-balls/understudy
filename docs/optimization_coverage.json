@@ -606,6 +606,70 @@
       "two_step_moves": 29
     },
     {
+      "eligible_frames": 429,
+      "frames_baseline_retained": 22,
+      "frames_improved": 407,
+      "k_indexes_moved": 1278,
+      "max_frame_gain_db": 9.6924,
+      "mean_frame_gain_db": 2.2704,
+      "median_frame_gain_db": 1.9203,
+      "one_step_moves": 1220,
+      "phrases": {
+        "best_improvement_db": -26.4502,
+        "improved": 14,
+        "mean_baseline_mcd_db": 15.2028,
+        "mean_optimized_mcd_db": 13.5703,
+        "median_delta_db": -0.5207,
+        "total": 20,
+        "unchanged": 0,
+        "worse": 6,
+        "worst_regression_db": 1.0772
+      },
+      "profile": "mdntmrdr",
+      "reason": "6 phrase(s) regress; worst +1.077 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 11.7817,
+          "delta_db": 1.0772,
+          "optimized_mcd_db": 12.859,
+          "phrase": 1
+        },
+        {
+          "baseline_mcd_db": 13.7152,
+          "delta_db": 0.4156,
+          "optimized_mcd_db": 14.1309,
+          "phrase": 6
+        },
+        {
+          "baseline_mcd_db": 10.1028,
+          "delta_db": 0.3452,
+          "optimized_mcd_db": 10.448,
+          "phrase": 9
+        },
+        {
+          "baseline_mcd_db": 12.8283,
+          "delta_db": 0.9693,
+          "optimized_mcd_db": 13.7976,
+          "phrase": 11
+        },
+        {
+          "baseline_mcd_db": 18.6467,
+          "delta_db": 0.8189,
+          "optimized_mcd_db": 19.4656,
+          "phrase": 14
+        },
+        {
+          "baseline_mcd_db": 12.9712,
+          "delta_db": 0.2229,
+          "optimized_mcd_db": 13.1941,
+          "phrase": 16
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 818,
+      "two_step_moves": 58
+    },
+    {
       "eligible_frames": 825,
       "frames_baseline_retained": 49,
       "frames_improved": 776,
@@ -810,17 +874,17 @@
   ],
   "totals": {
     "approved": 1,
-    "eligible_frames": 10151,
+    "eligible_frames": 10580,
     "failed": 0,
-    "frames_improved": 9777,
-    "frames_retained": 374,
-    "k_indexes_moved": 31797,
-    "needs_review": 14,
-    "phrases_improved": 375,
+    "frames_improved": 10184,
+    "frames_retained": 396,
+    "k_indexes_moved": 33075,
+    "needs_review": 15,
+    "phrases_improved": 389,
     "phrases_unchanged": 2,
-    "phrases_worse": 64,
-    "processed": 15,
-    "profiles_total": 16,
+    "phrases_worse": 70,
+    "processed": 16,
+    "profiles_total": 17,
     "skipped": 1,
     "worst_regression": {
       "delta_db": 12.1267,

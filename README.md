@@ -132,13 +132,22 @@ input hashes, conversion settings, and output files without containing ROM data.
 | Bally **Mysterian** (prototype, 1982) | `board-simulated` | 36 | 1 |
 | Bally **Spectrum** (1982) | `board-simulated` | 31 | 4 |
 | Bally **Vector** (1982) | `board-simulated` | 50 | 4 |
+| Bally Midway **Midnight Marauders** (1984) | `layout-verified` | 20 | 1 |
 | Bally **Big Bat** (1984) | `board-simulated` | 24 | 1 |
 | Bally **Beat the Clock** (1985) | `board-simulated` | 62 | 2 |
 | Bally **Eight Ball Champ** (1985) | `board-simulated` | 62 | 1 |
 
-These 16 profiles cover 45 of the 49 Squawk & Talk game revisions known to
-PinMAME. Many revisions share sound ROMs, so those 49 revisions reduce to 19
-distinct sound sets.
+These 17 profiles cover 45 of the 49 Squawk & Talk **pinball** revisions known
+to PinMAME, plus one machine that is not a pinball at all. Many revisions share
+sound ROMs, so those 49 revisions reduce to 19 distinct sound sets.
+
+**Midnight Marauders** is a Bally Midway *gun game* from 1984 running the same
+AS-2518-61 sound board. It is the newest profile and the least proven: its
+layout is verified and every phrase terminates, but no emulation has driven the
+converted ROMs and nobody has heard them. It also clamps **7.5 %** of its frames
+at the TMS5220 pitch floor, against 2 % for Embryon — the highest in the
+library, so expect it to sound more obviously raised in pitch than the pinballs
+do.
 
 The remaining sets are unusual:
 
@@ -193,14 +202,14 @@ corrections on games for which optimization data has been generated.
 python understudy.py convert-set . --optimize-audio
 ```
 
-Across the fifteen measured games the search examined 10,151 eligible voiced
-frames and found a better-scoring local choice for 9,777 of them. Rendering the
-finished phrases as wholes, 375 of 441 improved and 64 were worse.
+Across the sixteen measured games the search examined 10,580 eligible voiced
+frames and found a better-scoring local choice for 10,184 of them. Rendering the
+finished phrases as wholes, 389 of 461 improved and 70 were worse.
 
 Current limits:
 
 - the optimizer is opt-in; the default conversion is unchanged;
-- fifteen of the sixteen profiles have data; `bigbat` has none, and a profile
+- sixteen of the seventeen profiles have data; `bigbat` has none, and a profile
   without data refuses the flag rather than silently ignoring it;
 - **the whole-phrase result varies a lot by game.** Embryon's worst phrase is
   0.67 dB worse; Elektra's is +12.13 dB, and seven other titles exceed 2 dB.

@@ -9,16 +9,31 @@ features.
 
 ### Added
 
-- **Optimization data for fifteen of the sixteen profiles.** The measurement
+- **Midnight Marauders (`mdntmrdr`), the seventeenth profile** — and the first
+  that is not a pinball. A Bally Midway *gun game* from 1984 on the same
+  AS-2518-61 Squawk & Talk board, 20 phrases and 21 seconds of speech. It was
+  missing because the survey that enumerates this platform finds games by their
+  `BY61_SOUNDROM` macro, and this one declares its sound ROMs by hand; it has
+  therefore never appeared in any Squawk & Talk count, including ours.
+- Two things about it are unlike every other profile. Its pointer table lives in
+  a device that holds **no speech at all**, and it uses **both** end-of-phrase
+  conventions — 17 phrases drop their final ROM byte, 3 transmit it — where
+  every other traced set uses one. Phrase 19 is also genuinely unterminated on
+  the stream the chip receives: the FIFO runs dry rather than hitting a stop
+  frame. All three are recorded in the profile's evidence.
+- It clamps **7.5 % of its frames** at the TMS5220 pitch floor, the highest in
+  the library and nearly four times Embryon's, so expect it to sound more
+  obviously raised in pitch than the pinballs do.
+- **Optimization data for sixteen of the seventeen profiles.** The measurement
   behind `--optimize-audio` has been run across the library by the identical
   process — same renderer, metric, eligibility gate, two-pass local K search and
   strict-improvement rule, with no per-game tuning and no game-specific runtime
   code. Embryon was regenerated first and reproduced its shipped result exactly
   (475/456/19, all 456 overrides identical), which is what licensed running the
-  rest. Across the library: 10,151 eligible frames, 9,777 improved (96.3 %),
-  31,797 K indexes moved. `bigbat` has no data because no ROM set was available.
+  rest. Across the library: 10,580 eligible frames, 10,184 improved (96.3 %),
+  33,075 K indexes moved. `bigbat` has no data because no ROM set was available.
 - **Read the coverage table before using it on a new game.** Every game's mean
-  whole-phrase score improves, but 64 of 441 phrases came out worse, and unlike
+  whole-phrase score improves, but 70 of 461 phrases came out worse, and unlike
   Embryon's 0.67 dB the worst is Elektra at **+12.13 dB**. `fball_ii` is the only
   title with no regression at all. The regressions are deterministic and track
   phrase length rather than pitch clamping or correction density; the per-game
