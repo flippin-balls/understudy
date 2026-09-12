@@ -8222,7 +8222,7 @@
   "profile_version": 1,
   "schema": "understudy-audio-optimization/1",
   "tables": {
-    "source_sha256": "b5295263819250f84e9ec7f4feeadafd662b063ab53f69047e759c146d457b17",
-    "target_sha256": "f15418abad1bbe838edc67036961c8675692c2196a8be3d70d2b316c628c983c"
+    "source_sha256": "4fa12f1327a02822cb7b9e392b633c3bf1dacbff88dbd42153a36518ad8367f0",
+    "target_sha256": "728aa528ea0ffeeb806a76c1d31f11ba2a3006e7e96dc1f893ee812588bdca5e"
   }
 }

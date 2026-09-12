@@ -116,12 +116,17 @@ _ORIGINAL_DATA_DIR = optimize.data_dir
 
 
 def _bundled_table_hashes():
-    """The digests convert_set will compute for the bundled coefficient files."""
-    import hashlib
+    """The digests convert_set will compute for the bundled coefficient tables.
+
+    Content digests, not file digests. Hashing the file made this suite pass on
+    Linux and fail on Windows, because git rewrites line endings on checkout --
+    which would have refused optimisation on every game for Windows users.
+    """
+    from tms52xx.tables import ChipTables
     out = {}
     for role, chip in (("source", "tms5200"), ("target", "tms5220")):
-        raw = resolve(chip).table_path.read_bytes()
-        out["%s_sha256" % role] = hashlib.sha256(raw).hexdigest()
+        loaded = ChipTables.from_json(resolve(chip).table_path)
+        out["%s_sha256" % role] = optimize.table_digest(loaded)
     return out
 
 
@@ -685,3 +690,29 @@ class TestCoverageReport(unittest.TestCase):
         self.assertEqual(totals["phrases_worse"],
                          sum((r.get("phrases") or {}).get("worse", 0)
                              for r in measured))
+
+
+class TestTableDigestIsPlatformStable(unittest.TestCase):
+    """The table binding must not depend on how the file was checked out.
+
+    Git rewrites line endings on Windows, so a digest over the file's bytes
+    differs between platforms. Optimisation would then refuse every game on one
+    of them, which is how this was found.
+    """
+
+    def test_line_endings_do_not_change_the_digest(self):
+        from tms52xx.tables import ChipTables
+        path = resolve("tms5220").table_path
+        raw = path.read_bytes()
+        with tempfile.TemporaryDirectory() as tmp:
+            crlf = Path(tmp) / "tms5220.json"
+            crlf.write_bytes(raw.replace(b"\n", b"\r\n"))
+            self.assertNotEqual(crlf.read_bytes(), raw, "fixture did not differ")
+            self.assertEqual(optimize.table_digest(ChipTables.from_json(path)),
+                             optimize.table_digest(ChipTables.from_json(crlf)))
+
+    def test_different_coefficients_do_change_the_digest(self):
+        from tms52xx.tables import ChipTables
+        a = ChipTables.from_json(resolve("tms5200").table_path)
+        b = ChipTables.from_json(resolve("tms5220").table_path)
+        self.assertNotEqual(optimize.table_digest(a), optimize.table_digest(b))
