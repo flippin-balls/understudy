@@ -8,7 +8,7 @@ TMS5220, TMS5220C and TSP5220C while keeping the ROM layout and phrase timing
 intact. The result is a set of files you can burn into replacement EPROMs.
 
 Understudy is an open-source preservation project from
-[Flashback Fleet LLC](https://github.com/flippin-balls), who run these machines
+[Flashback Fleet LLC](https://flashbackfleet.com), who run these machines
 on location and would rather they kept talking.
 
 > **Pre-1.0:** Embryon has been converted and played on a real Squawk & Talk with
