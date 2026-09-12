@@ -32,9 +32,15 @@ from tms52xx.profiles import Profile                     # noqa: E402
 from tms52xx.workflow import ConversionRefused, convert_set   # noqa: E402
 
 
-def override(frame, **deltas):
-    """One override for `frame`, guarded by that frame's own baseline."""
-    return {"guard": optimize.guard_for(frame), "delta": deltas}
+def override(frames, index=0, before=9.0, after=4.0, **deltas):
+    """One override for `frames[index]`, guarded by its own baseline.
+
+    Carries a scoring pair because the applier insists on one: an override with
+    no recorded improvement is refused, so a fixture without scores would be
+    testing the refusal rather than the thing under test.
+    """
+    return {"guard": optimize.guard_for(frames, index), "delta": deltas,
+            "mcd_db_before": before, "mcd_db_after": after}
 
 
 def doc(phrases, **extra):
@@ -80,7 +86,8 @@ class TestOptIn(unittest.TestCase):
         profile = Profile(copy.deepcopy(raw), "<synth>")
         plain = convert_set(dict(dumps), profile, resolve("tms5220"))
         with tempfile.TemporaryDirectory() as tmp:
-            self._install(tmp, doc({}))
+            self._install(tmp, doc({}, profile_version=profile.version,
+                                   tables=_bundled_table_hashes()))
             opted = convert_set(dict(dumps), profile, resolve("tms5220"),
                                 optimize_audio=True)
             # An empty data file changes nothing, which is the control: the
@@ -99,12 +106,22 @@ class TestOptIn(unittest.TestCase):
 _ORIGINAL_DATA_DIR = optimize.data_dir
 
 
+def _bundled_table_hashes():
+    """The digests convert_set will compute for the bundled coefficient files."""
+    import hashlib
+    out = {}
+    for role, chip in (("source", "tms5200"), ("target", "tms5220")):
+        raw = resolve(chip).table_path.read_bytes()
+        out["%s_sha256" % role] = hashlib.sha256(raw).hexdigest()
+    return out
+
+
 class TestBounds(unittest.TestCase):
     """(6) The search neighbourhood, and the table bounds, are enforced here."""
 
     def test_a_two_step_move_is_refused(self):
         _out, frames, dst = converted_frames()
-        d = doc({"0": {"0": override(frames[0], K1=3)}})
+        d = doc({"0": {"0": override(frames, K1=3)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertIn("outside the measured search", str(caught.exception))
@@ -115,7 +132,7 @@ class TestBounds(unittest.TestCase):
         land two places out -- bounding this at one step drops them."""
         _out, frames, dst = converted_frames()
         was = frames[0].fields["K1"].index
-        d = doc({"0": {"0": override(frames[0], K1=2)}})
+        d = doc({"0": {"0": override(frames, K1=2)}})
         applied = optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertEqual(len(applied), 1)
         self.assertEqual(frames[0].fields["K1"].index, was + 2)
@@ -123,7 +140,7 @@ class TestBounds(unittest.TestCase):
     def test_a_one_step_move_is_allowed(self):
         _out, frames, dst = converted_frames()
         was = frames[0].fields["K1"].index
-        d = doc({"0": {"0": override(frames[0], K1=1)}})
+        d = doc({"0": {"0": override(frames, K1=1)}})
         applied = optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertEqual(len(applied), 1)
         self.assertEqual(frames[0].fields["K1"].index, was + 1)
@@ -133,7 +150,7 @@ class TestBounds(unittest.TestCase):
         width = list(dst.k_widths)[0]
         top = (1 << width) - 1
         frames[0].fields["K1"].index = top
-        d = doc({"0": {"0": override(frames[0], K1=1)}})
+        d = doc({"0": {"0": override(frames, K1=1)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertIn("leaves the", str(caught.exception))
@@ -142,8 +159,9 @@ class TestBounds(unittest.TestCase):
         """(7) Pitch is not the optimiser's to touch, and neither is energy."""
         for field in ("pitch", "energy"):
             _out, frames, dst = converted_frames()
-            d = doc({"0": {"0": {"guard": optimize.guard_for(frames[0]),
-                                 "delta": {field: 1}}}})
+            d = doc({"0": {"0": {"guard": optimize.guard_for(frames, 0),
+                                 "delta": {field: 1},
+                                 "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
             with self.assertRaises(OptimizationError) as caught:
                 optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
             self.assertIn("K coefficient", str(caught.exception))
@@ -155,16 +173,17 @@ class TestGuards(unittest.TestCase):
     def test_a_baseline_that_does_not_match_is_refused(self):
         _out, frames, dst = converted_frames()
         d = doc({"0": {"0": {"guard": "0000000000000000",
-                             "delta": {"K1": 1}}}})
+                             "delta": {"K1": 1},
+                             "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
-        self.assertIn("does not describe this ROM", str(caught.exception))
+        self.assertIn("was not measured on", str(caught.exception))
 
     def test_a_zero_delta_is_refused_rather_than_ignored(self):
         """(5) A frame the search left alone gets no entry, not a null one."""
         _out, frames, dst = converted_frames()
         was = frames[0].fields["K1"].index
-        d = doc({"0": {"0": override(frames[0], K1=0)}})
+        d = doc({"0": {"0": override(frames, K1=0)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertIn("outside the measured search", str(caught.exception))
@@ -172,7 +191,8 @@ class TestGuards(unittest.TestCase):
 
     def test_a_frame_past_the_end_is_refused(self):
         _out, frames, dst = converted_frames()
-        d = doc({"0": {"99": {"guard": "x", "delta": {"K1": 1}}}})
+        d = doc({"0": {"99": {"guard": "x", "delta": {"K1": 1},
+                              "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
         with self.assertRaises(OptimizationError):
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
 
@@ -183,14 +203,15 @@ class TestGuards(unittest.TestCase):
         out, _r, _s = convert_stream(data, src, dst)
         frames, _ = parse(out, dst.pitch_bits, list(dst.k_widths))
         self.assertEqual(frames[0].kind, "unvoiced")
-        d = doc({"0": {"0": override(frames[0], K1=1)}})
+        d = doc({"0": {"0": override(frames, K1=1)}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertIn("voiced frames only", str(caught.exception))
 
     def test_mismatched_expect_and_apply_are_refused(self):
         _out, frames, dst = converted_frames()
-        d = doc({"0": {"0": {"delta": {"K1": 1}}}})
+        d = doc({"0": {"0": {"delta": {"K1": 1},
+                             "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
         with self.assertRaises(OptimizationError) as caught:
             optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
         self.assertIn("no `guard`", str(caught.exception))
@@ -210,7 +231,7 @@ class TestStructure(unittest.TestCase):
         def hook(frames):
             step = -1 if frames[0].fields["K3"].index > 0 else 1
             optimize.optimise_frames(
-                frames, 0, doc({"0": {"0": override(frames[0], K3=step)}}),
+                frames, 0, doc({"0": {"0": override(frames, K3=step)}}),
                 list(dst.k_widths))
 
         opted, _r, _s = convert_stream(data, src, dst, optimizer=hook)
@@ -236,7 +257,7 @@ class TestDeterminism(unittest.TestCase):
         for _ in range(2):
             def hook(frames):
                 optimize.optimise_frames(
-                    frames, 0, doc({"0": {"0": override(frames[0], K2=1)}}),
+                    frames, 0, doc({"0": {"0": override(frames, K2=1)}}),
                     list(dst.k_widths))
             out, _r, _s = convert_stream(data, src, dst, optimizer=hook)
             results.append(out)
@@ -271,3 +292,126 @@ class TestLoading(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScoreIsEnforced(unittest.TestCase):
+    """(4) "Never chooses a worse candidate" has to be enforced HERE.
+
+    The search accepted a candidate only when it scored strictly better, but the
+    search does not run at conversion time -- so without re-checking, that
+    property would belong to whatever produced the data file rather than to this
+    code, and a file recording a regression would apply just as readily.
+    """
+
+    def _apply(self, before, after):
+        _out, frames, dst = converted_frames()
+        d = doc({"0": {"0": override(frames, before=before, after=after, K1=1)}})
+        return optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+
+    def test_a_recorded_regression_is_refused(self):
+        with self.assertRaises(OptimizationError) as caught:
+            self._apply(1.0, 2.0)
+        self.assertIn("not an improvement", str(caught.exception))
+
+    def test_an_unchanged_score_is_refused(self):
+        with self.assertRaises(OptimizationError):
+            self._apply(1.0, 1.0)
+
+    def test_a_missing_score_is_refused(self):
+        _out, frames, dst = converted_frames()
+        d = doc({"0": {"0": {"guard": optimize.guard_for(frames, 0),
+                             "delta": {"K1": 1}}}})
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+        self.assertIn("not a score", str(caught.exception))
+
+    def test_a_nan_score_is_refused(self):
+        with self.assertRaises(OptimizationError):
+            self._apply(1.0, float("nan"))
+
+    def test_an_infinite_score_is_refused(self):
+        with self.assertRaises(OptimizationError):
+            self._apply(float("inf"), 1.0)
+
+    def test_a_genuine_improvement_is_applied(self):
+        self.assertEqual(len(self._apply(9.0, 4.0)), 1)
+
+
+class TestGuardCoversWhatWasScored(unittest.TestCase):
+    """(4) The score spanned the frame AND its successor, and depended on the
+    frame's pitch and energy as well as its filter. A guard over this frame's K
+    alone would let a correction land on audio it was never measured against."""
+
+    def _doc_for(self, frames):
+        return doc({"0": {"0": override(frames, K1=1)}})
+
+    def test_a_changed_pitch_invalidates_the_override(self):
+        _out, frames, dst = converted_frames()
+        d = self._doc_for(frames)
+        frames[0].fields["pitch"].index += 1
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+        self.assertIn("was not measured on", str(caught.exception))
+
+    def test_a_changed_energy_invalidates_the_override(self):
+        _out, frames, dst = converted_frames()
+        d = self._doc_for(frames)
+        frames[0].fields["energy"].index += 1
+        with self.assertRaises(OptimizationError):
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+
+    def test_a_changed_successor_invalidates_the_override(self):
+        _out, frames, dst = converted_frames()
+        d = self._doc_for(frames)
+        frames[1].fields["K1"].index += 1
+        with self.assertRaises(OptimizationError):
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+
+
+class TestCompleteness(unittest.TestCase):
+    """(8) An override that never reached a frame must not be reported as applied.
+
+    Aliased pointers are the way this happens: identical extents are converted
+    once, under the lower index, so overrides keyed to the other are skipped in
+    silence while every structural check still passes."""
+
+    def test_an_unreached_override_is_refused(self):
+        d = doc({"3": {"0": {"guard": "x", "delta": {"K1": 1},
+                             "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.check_all_applied(d, [])
+        self.assertIn("never applied", str(caught.exception))
+
+    def test_a_fully_applied_set_passes(self):
+        d = doc({"3": {"7": {"guard": "x", "delta": {"K1": 1},
+                             "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
+        optimize.check_all_applied(d, [optimize.FrameOptimization(
+            phrase=3, frame=7, changed={"K1": (1, 2)})])
+
+
+class TestTableAndProfileBinding(unittest.TestCase):
+    """(4) Different coefficient tables mean different audio from identical
+    indexes -- a change no index-derived guard can see."""
+
+    def test_a_different_target_table_is_refused(self):
+        d = doc({}, tables={"source_sha256": "a" * 64,
+                            "target_sha256": "b" * 64})
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.check_tables(d, "a" * 64, "c" * 64)
+        self.assertIn("measured against target", str(caught.exception))
+
+    def test_matching_tables_pass(self):
+        d = doc({}, tables={"source_sha256": "a" * 64,
+                            "target_sha256": "b" * 64})
+        optimize.check_tables(d, "a" * 64, "b" * 64)
+
+    def test_unrecorded_tables_are_refused(self):
+        with self.assertRaises(OptimizationError):
+            optimize.check_tables(doc({}), "a" * 64, "b" * 64)
+
+    def test_a_different_profile_version_is_refused(self):
+        class FakeProfile:
+            id, version = "synthgame", 9
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.check_profile(doc({}, profile_version=1), FakeProfile())
+        self.assertIn("profile version", str(caught.exception))

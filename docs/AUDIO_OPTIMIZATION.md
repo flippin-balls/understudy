@@ -21,11 +21,16 @@ give you the nearest-tasting dish.
 ## What was measured
 
 Around each nearest-mapped K index, a search tried the immediate neighbours —
-one step up, one step down — by coordinate descent. Crucially, it did not judge
-candidates by how close the *numbers* were. It **rendered** each one and
-compared the resulting audio against the same speech played through a TMS5200's
-tables, scoring the difference in spectral envelope over the frame and the one
-after it.
+one step up, one step down — by coordinate descent, accepting a candidate only
+when it scored **strictly better**. Crucially, it did not judge candidates by
+how close the *numbers* were. It **rendered** each one and compared the
+resulting audio against the same speech played through a TMS5200's tables,
+scoring the difference in spectral envelope over the frame and the one after it.
+
+The search makes **two passes**, and the second steps from wherever the first
+left off. So while the neighbourhood offered is ±1, a coefficient the search
+moved twice ends up **two** places from the nearest mapping. That is the bound
+enforced when the data is applied; 46 of Embryon's 1486 index moves are two.
 
 Frame length, frame type, energy and pitch were held fixed throughout, so any
 improvement is attributable to joint K selection alone.
@@ -38,7 +43,9 @@ On a 40-frame stratified sample of Embryon:
 | median frames | 10 | 2.41 dB (19.2 %) | 10/10 |
 | random frames | 20 | 1.72 dB (14.2 %) | 19/20 |
 
-**39 of 40 improved; the nearest-value choice was already optimal in 1.**
+**39 of 40 improved; in 1, this search found nothing better than the
+nearest-value choice.** (That is not the same as proving it optimal — a bounded
+local search does not establish a global best.)
 
 The controls are the point. An improvement measured only on the worst frames
 could not be generalised — but typical frames gained *more* in percentage terms
@@ -100,10 +107,27 @@ runs against the optimised bytes, not the unoptimised ones:
   speech-bearing devices;
 - the profile still authenticates the dumps by hash.
 
-Beyond those, the optimiser may move **K indexes only**, by **one step**, on
-**voiced frames**, and never outside a field's bit width. Each of those is
-enforced when the data is applied rather than assumed of the file, and a
-violation stops the conversion instead of being skipped.
+Beyond those, and all enforced when the data is applied rather than assumed of
+the file:
+
+- **K indexes only** — energy, pitch, repeat flags and frame length are refused
+  outright, so this mode cannot reach the pitch floor even by accident;
+- **voiced frames only**, which is what was measured;
+- **at most two places** from the nearest mapping, and never outside a field's
+  bit width;
+- **every override must record the score that justified it**, and that score
+  must be a real number showing a strict improvement. A file claiming a
+  regression is refused rather than applied;
+- **the frame and its successor must hash to what was measured** — covering
+  pitch and energy, not just the filter;
+- **the coefficient tables and profile version must match** those the
+  measurements were taken through;
+- **every override must actually reach a frame.** Two pointers naming the same
+  bytes are converted once, so an override keyed to the second would otherwise
+  be skipped in silence while the manifest still claimed it was applied.
+
+A violation stops the conversion. None of them degrades to applying the data
+anyway.
 
 ## Coverage today
 
@@ -115,6 +139,33 @@ conversion before shipping, and all 456 agreed.
 
 The other fifteen profiles have no data, and `--optimize-audio` will say so
 rather than convert without it.
+
+### The honest caveat: frames were measured one at a time
+
+Each frame was searched against the **unoptimised** phrase, and its score spans
+the frame *and its successor*. Applying 456 corrections at once therefore is not
+the same experiment: neighbouring corrections interact, and per-frame gains are
+not additive by construction.
+
+So the assembled result was measured too, by rendering every finished phrase and
+scoring it whole against the TMS5200 reference:
+
+| | |
+|---|---|
+| phrases improved | **18 of 20** |
+| phrases slightly worse | **2 of 20** (phrase 0 by 0.67 dB, phrase 6 by 0.07 dB) |
+| mean, whole phrase | **12.65 dB → 12.07 dB** (−0.57 dB) |
+
+The net effect is an improvement and most phrases share it, but it is **not
+uniform**, and two phrases came out marginally worse as wholes than the ordinary
+conversion. Those two are not removed from the data: the corrections in them
+were each measured to help, and dropping them would mean tuning the shipped
+result against a second metric after the fact. They are reported here instead so
+you can listen for them.
+
+This is also why the flag is opt-in. If a phrase sounds worse on your machine,
+convert without it and
+[say so](HARDWARE_VALIDATION.md) — that is more useful than any number here.
 
 ## Auditing a run
 

@@ -14,9 +14,10 @@ features.
   additionally applies per-frame K-coefficient refinements that were measured,
   for that game, by rendering candidate frames and comparing them against the
   original chip. In the experiment behind it, **39 of 40 representative Embryon
-  frames improved** and one was already optimal. That is a measurement on one
-  game's frames, not a promise that any given phrase or game sounds better, and
-  it does nothing about the pitch floor — see
+  frames improved** and one found nothing better. Measured as whole phrases
+  instead of frames, 18 of Embryon's 20 improved and 2 came out slightly worse.
+  That is a measurement on one game, not a promise that any given phrase or game
+  sounds better, and it does nothing about the pitch floor — see
   [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md).
 - Optimisation data exists only for games it has been measured on, and
   `--optimize-audio` says so plainly rather than silently converting without it.

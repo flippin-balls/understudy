@@ -211,6 +211,8 @@ Read that as a measurement, not a promise:
 
 - it was measured on one game's frames — yours may gain less, or nothing;
 - **no optimised ROM has been played on real hardware by anyone yet**;
+- measured as whole phrases rather than frames, 18 of Embryon's 20 improved and
+  **2 came out slightly worse**;
 - it does **not** help the pitch limitation below, and does not try to;
 - it exists only for games it has been measured on, and says so if yours is not
   one.

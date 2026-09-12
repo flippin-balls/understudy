@@ -27,22 +27,34 @@ measure than the one that was actually validated -- while reporting the
 validated result. So the search stays where it can be run honestly, and what
 ships here is its OUTCOME: per frame, which way it stepped each coefficient.
 
-That makes this a lookup, and lookups go stale silently. Hence `guard`: every
-override carries a hash of the ten baseline K indexes of the frame it was
-measured on, and is applied only if this run produced exactly those. A profile
-revision, a different dump, an edited coefficient table -- anything that moves
-the baseline -- stops the override instead of shifting it onto a frame it was
-not measured for.
+That makes this a lookup, and lookups go stale silently. A lookup is only worth
+as much as its key, and the key here has to cover everything the score depended
+on -- which is more than the frame being corrected:
 
-WHY A HASH, AND WHY DELTAS. The obvious shape for this file is "field X was 15,
-make it 14". That shape cannot be shipped: the "was" half is the real
-coefficient data out of a copyrighted ROM, and enough of it is a redistribution
-of the speech this project is careful never to redistribute. So an override
-stores no absolute index at all -- only which way to step (`delta`, always +1 or
--1) and an opaque hash to check the frame against. The hash covers all ten K
-indexes rather than only the ones that move, which makes the check STRICTER than
-naming values would have been: a frame differing anywhere in its filter is
-refused, not just one differing where the optimiser happened to act.
+  * `guard` fingerprints the frame AND its successor, every field, because the
+    score was measured over both, and because pitch and energy shape that audio
+    just as the filter does;
+  * `tables` pins the coefficient files, because different tables mean different
+    audio from identical indexes -- a change no index-derived guard can see;
+  * `profile_version` pins the layout, because phrase and frame numbers are
+    coordinates in it;
+  * and each override carries the before/after score that justified it, which is
+    re-checked here rather than trusted. The search accepted a candidate only
+    when it scored strictly better; that rule lived in the search, so it is
+    re-stated at the point of use or it is not enforced at all.
+
+Any of those failing stops the conversion. None of them degrades to "apply it
+anyway": the failure mode this guards against is a ROM that passes every
+structural check while sounding wrong, which nothing downstream would catch.
+
+WHY DIGESTS AND DELTAS. The obvious shape for this file is "field X was 15, make
+it 14". That shape cannot be shipped: the "was" half is real coefficient data
+out of a copyrighted ROM, and enough of it is a redistribution of the speech
+this project is careful never to redistribute. So an override stores no absolute
+index -- only which way to step, and digests to check against.
+
+A step is `+1` or `-1` per pass and the search runs two passes, so a coefficient
+may end up to two places from the nearest mapping. See `MAX_STEP`.
 """
 from __future__ import annotations
 
@@ -80,16 +92,36 @@ MAX_STEP = SEARCH_PASSES
 GUARD_CHARS = 16
 
 
-def guard_for(frame) -> str:
-    """An opaque fingerprint of one frame's baseline K indexes.
+def guard_for(frames: Sequence, index: int) -> str:
+    """A fingerprint of everything the measurement's score depended on.
 
-    Covers every K field the frame carries, in field order, so a frame whose
-    filter differs anywhere fails the check. Carries no recoverable coefficient
-    value: a digest of ten small integers is not a way to ship them.
+    NOT just the frame's K indexes. The score was mel-cepstral distortion over
+    the frame AND ITS SUCCESSOR, rendered -- so the audio it judged was a
+    function of this frame's energy and pitch as well as its filter, and of the
+    next frame in full. A guard covering only this frame's K would apply a
+    correction to a frame whose pitch, energy or successor had moved, and the
+    recorded gain would simply not be about the audio produced.
+
+    So both frames go in, every field, with the frame kind alongside: a frame
+    that changed kind carries different fields entirely, and its absence from
+    the digest would let that pass. The end of the phrase is its own marker,
+    because "there is no successor" is part of what was rendered.
+
+    Carries no recoverable coefficient value. That is not a security claim --
+    the index space is small -- but the file ships steps and digests rather than
+    the values themselves, which is what keeps ROM data out of this repository.
     """
-    present = [n for n in K_FIELDS if n in frame.fields]
-    joined = ",".join("%s=%d" % (n, frame.fields[n].index) for n in present)
-    return hashlib.sha256(joined.encode("ascii")).hexdigest()[:GUARD_CHARS]
+    parts = []
+    for i in (index, index + 1):
+        if i >= len(frames):
+            parts.append("end")
+            continue
+        frame = frames[i]
+        fields = ",".join("%s=%d" % (name, frame.fields[name].index)
+                          for name in sorted(frame.fields))
+        parts.append("%s|%s" % (frame.kind, fields))
+    return hashlib.sha256(";".join(parts).encode("ascii")
+                          ).hexdigest()[:GUARD_CHARS]
 
 
 class OptimizationError(ValueError):
@@ -131,6 +163,9 @@ class OptimizationReport:
     frames_baseline_retained: int = 0
     frames: List[FrameOptimization] = field(default_factory=list)
     method: Dict = field(default_factory=dict)
+    #: Fingerprint of the override set applied, so a manifest identifies the
+    #: measurements and not merely the fact that some ran.
+    digest: str = ""
 
     @property
     def k_indexes_changed(self) -> int:
@@ -172,6 +207,95 @@ def load(profile_id: str) -> dict:
             "%s is optimisation data for %r, not %r"
             % (path, doc.get("profile_id"), profile_id))
     return doc
+
+
+def check_tables(doc: dict, source_sha: str, target_sha: str) -> None:
+    """The measurements are only about the tables they were rendered through.
+
+    Both chips' tables shape the audio that was scored: the source decides what
+    the baseline mapping reads, the target decides what every candidate index
+    means. Supplying a different table file changes the sound without changing
+    a single index, so the guards -- which are computed from indexes -- cannot
+    notice. This is the check that does.
+    """
+    declared = doc.get("tables") or {}
+    for name, got in (("source_sha256", source_sha), ("target_sha256", target_sha)):
+        want = declared.get(name)
+        if not want:
+            raise OptimizationError(
+                "optimisation data for %s does not record which %s it was "
+                "measured through, so nothing establishes that it describes "
+                "this conversion." % (doc.get("profile_id"), name[:-7]))
+        if want != got:
+            raise OptimizationError(
+                "optimisation data for %s was measured against %s %s, but this "
+                "run is using %s. The measurements describe audio produced by "
+                "different coefficients; refusing to apply them."
+                % (doc.get("profile_id"), name[:-7], want[:16], got[:16]))
+
+
+def check_profile(doc: dict, profile) -> None:
+    """The measurements are tied to the layout that produced their coordinates.
+
+    Overrides are addressed by phrase index and frame number. Both are products
+    of the profile's layout -- move a pointer table, change a phrase count, and
+    the same coordinates name different speech. The guards would catch most of
+    that, but only frame by frame, and "most" is not the standard for something
+    that gets burned into an EPROM.
+    """
+    want = doc.get("profile_version")
+    if want is None:
+        raise OptimizationError(
+            "optimisation data for %s does not record which profile version it "
+            "was measured against" % doc.get("profile_id"))
+    if want != profile.version:
+        raise OptimizationError(
+            "optimisation data for %s was measured against profile version %s, "
+            "and this is version %s. Phrase and frame numbers come from the "
+            "layout, so measurements from another version may not describe the "
+            "same speech." % (profile.id, want, profile.version))
+
+
+def digest(doc: dict) -> str:
+    """A stable fingerprint of the overrides themselves, for the manifest.
+
+    Over the decisions only, not the surrounding prose: what a later reader
+    needs to answer is "were these the corrections applied to my ROM", and
+    reformatting the method text should not change the answer.
+    """
+    canonical = json.dumps(doc.get("phrases") or {}, sort_keys=True,
+                           separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def override_count(doc: dict) -> int:
+    """How many frame overrides the data file contains, in total."""
+    return sum(len(entry) for entry in (doc.get("phrases") or {}).values())
+
+
+def check_all_applied(doc: dict, applied: Sequence[FrameOptimization]) -> None:
+    """Every override in the file must have reached a frame.
+
+    Shared by both conversion paths on purpose. The way this fails is an alias:
+    two pointers naming the same bytes are converted once, under the first
+    phrase's index, so an override keyed to the second is never offered a frame
+    to act on. Nothing else notices -- the ROM is structurally perfect, every
+    check passes, and the manifest says optimisation ran. It would simply not
+    have been applied where it was measured.
+    """
+    reached = {(f.phrase, f.frame) for f in applied}
+    missed = [(int(p), int(f))
+              for p, entry in sorted((doc.get("phrases") or {}).items(),
+                                     key=lambda kv: int(kv[0]))
+              for f in sorted(entry, key=int)
+              if (int(p), int(f)) not in reached]
+    if missed:
+        raise OptimizationError(
+            "%d optimisation override(s) were never applied, first phrase %d "
+            "frame %d. Usually two pointers name the same bytes, so the phrase "
+            "is converted once under the lower index and the other's overrides "
+            "never reach a frame. Refusing to report an optimisation that did "
+            "not happen." % (len(missed), missed[0][0], missed[0][1]))
 
 
 def _overrides_for(doc: dict, phrase_index: int) -> Dict[int, dict]:
@@ -223,7 +347,32 @@ def optimise_frames(frames: Sequence, phrase_index: int, doc: dict,
                 "Without it there is nothing to establish that this frame is "
                 "the one the measurement was taken on."
                 % (phrase_index, frame_index))
-        got_guard = guard_for(frame)
+        # AN OVERRIDE MUST CARRY A SCORE, AND THE SCORE MUST BE AN IMPROVEMENT.
+        #
+        # The search accepted a candidate only when it scored strictly better.
+        # That rule lived in the search, which does not run here -- so without
+        # this, "never chooses a worse candidate" would be a property of the
+        # process that produced the file rather than of anything this code does,
+        # and a file recording a regression would be applied as readily as a
+        # gain. Re-stating the acceptance rule at the point of use is what makes
+        # it enforceable.
+        before, after = override.get("mcd_db_before"), override.get("mcd_db_after")
+        for name, value in (("mcd_db_before", before), ("mcd_db_after", after)):
+            if not isinstance(value, (int, float)) or isinstance(value, bool) \
+                    or value != value or value in (float("inf"), float("-inf")):
+                raise OptimizationError(
+                    "phrase %d frame %d: %s is %r, which is not a score. Every "
+                    "override must record the measurement that justified it."
+                    % (phrase_index, frame_index, name, value))
+        if not after < before:
+            raise OptimizationError(
+                "phrase %d frame %d: recorded score %.4f -> %.4f is not an "
+                "improvement. The search accepted a candidate only when it "
+                "scored strictly better; this override does not, so applying "
+                "it would make the speech measurably worse."
+                % (phrase_index, frame_index, before, after))
+
+        got_guard = guard_for(frames, frame_index)
         if got_guard != want_guard:
             raise OptimizationError(
                 "phrase %d frame %d: this conversion produced a filter the "

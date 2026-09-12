@@ -411,10 +411,15 @@ def cmd_convert(args) -> int:
     # was measured from, and applying this data to a ROM whose conversion
     # produces anything else stops the run. Pointing it at the wrong game fails
     # closed rather than quietly re-indexing somebody's speech.
-    opt_hook, opt_applied = None, []
+    opt_hook, opt_applied, opt_doc = None, [], None
     if getattr(args, "optimize_audio", None):
         try:
             opt_doc = optimize.load(args.optimize_audio)
+            # Same binding as the set path. The layout is yours here, so no
+            # profile version can be checked -- which is exactly why the
+            # per-frame guards and the completeness check below both run.
+            optimize.check_tables(opt_doc, _sha256(source_raw),
+                                  _sha256(target_raw))
         except OptimizationError as error:
             print("cannot optimise: %s" % error, file=sys.stderr)
             return 2
@@ -437,6 +442,17 @@ def cmd_convert(args) -> int:
     except ValueError as error:
         print("%s" % error, file=sys.stderr)
         return 2
+
+    # Before anything is written or reported: every override must have reached a
+    # frame. Aliased pointers convert once, so one keyed to the second index
+    # would otherwise be skipped in silence and still be reported as applied.
+    if opt_doc is not None:
+        try:
+            optimize.check_all_applied(opt_doc, opt_applied)
+        except OptimizationError as error:
+            print("cannot optimise: %s" % error, file=sys.stderr)
+            return 2
+
     stats = summarise(results)
 
     # Verify before writing: re-read the produced image and confirm that only

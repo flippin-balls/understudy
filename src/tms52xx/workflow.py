@@ -116,6 +116,7 @@ def _optimization_manifest(report) -> dict:
     return {
         "enabled": True,
         "profile_id": report.profile_id,
+        "data_sha256": report.digest,
         "frames_considered": report.frames_considered,
         "frames_changed": report.frames_changed,
         "frames_baseline_retained": report.frames_baseline_retained,
@@ -321,12 +322,17 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     hook = None
     if optimize_audio:
         opt_doc = optimize.load(profile.id)
+        # The measurements are about audio rendered through specific tables and
+        # a specific profile. Bind to both before applying any of them.
+        optimize.check_tables(opt_doc, hashlib.sha256(src_raw).hexdigest(),
+                              hashlib.sha256(dst_raw).hexdigest())
+        optimize.check_profile(opt_doc, profile)
         opt_report = optimize.OptimizationReport(
             profile_id=profile.id,
             frames_considered=opt_doc.get("frames_considered") or 0,
             frames_baseline_retained=opt_doc.get("frames_baseline_retained") or 0,
-            method=opt_doc.get("method") or {})
-        expected = sum(len(v) for v in (opt_doc.get("phrases") or {}).values())
+            method=opt_doc.get("method") or {},
+            digest=optimize.digest(opt_doc))
 
         def hook(phrase_index, frames, _doc=opt_doc, _rep=opt_report):
             _rep.frames.extend(optimize.optimise_frames(
@@ -342,23 +348,8 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     result.stats = summarise(results)
 
     if optimize_audio:
-        # Every override in the file must have been reached. The one way this
-        # fails silently is an alias: two pointers naming the same bytes are
-        # converted once, under the FIRST phrase's index, so an override keyed
-        # to the second is never offered a frame. The ROM would then be burned
-        # missing an optimisation the manifest claims it has.
         opt_report.frames_changed = len(opt_report.frames)
-        if len(opt_report.frames) != expected:
-            reached = {(f.phrase, f.frame) for f in opt_report.frames}
-            missed = [(int(p), int(f))
-                      for p, entry in (opt_doc.get("phrases") or {}).items()
-                      for f in entry if (int(p), int(f)) not in reached]
-            raise ConversionRefused(
-                "audio optimisation data names %d frame(s) that this layout "
-                "never converted, first phrase %d frame %d. The data and the "
-                "profile disagree about which phrases exist; refusing to write "
-                "a ROM whose manifest would overstate what was applied."
-                % (len(missed), missed[0][0], missed[0][1]))
+        optimize.check_all_applied(opt_doc, opt_report.frames)
         result.optimization = opt_report
 
     # Backstop. `patch_rom` writes only inside phrase extents, so this cannot
