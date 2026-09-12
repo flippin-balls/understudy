@@ -26,13 +26,19 @@ hardware.
 | check | coverage |
 |---|---|
 | output re-parsed and frame kinds compared | every conversion |
-| converted ROMs exercised with board firmware in simulation | all 16 profiles |
-| firmware-played streams covered by converted phrases | all 16 profiles |
+| converted ROMs exercised with board firmware in simulation | 16 of 17 profiles |
+| firmware-played streams covered by converted phrases | 16 of 17 profiles |
 | ordinary conversion listened to on real hardware | Embryon only |
 | optimized conversion listened to on real hardware | none |
 
 A profile may contain table entries that the firmware trace did not reach. Those
 are recorded separately in its evidence rather than treated as trace-verified.
+
+The profile not covered by the two simulation rows is **Midnight Marauders**,
+which is `layout-verified` rather than `board-simulated`. The harness that runs
+those checks finds games by their `BY61_SOUNDROM` macro, and this one declares
+its sound ROMs by hand inside a plain `SOUNDREGION`, so it is invisible to that
+discovery. That is a gap in the harness, not evidence about the game.
 
 ## Why a clean boot is not enough
 

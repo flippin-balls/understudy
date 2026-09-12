@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "profile_id": "mdntmrdr",
+  "profile_version": 1,
+  "title": "Midnight Marauders",
+  "manufacturer": "Bally Midway",
+  "year": 1984,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "memory": {
+    "window_base": 53248,
+    "window_size": 12288,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "u3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "941ac08da29f2de645f1a8a3df7e706e480ceb80d092d164641e9f38eb132268",
+      "crc32": "3ba474e4",
+      "note": "The whole speech bank. Every phrase lives here, between $D000 and $DFF8, and every byte conversion changes is inside this device. The pointer table that addresses it is in U5."
+    },
+    {
+      "socket": "U5",
+      "label": "u5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "8252552230fadea659a31d4d4bdf7a19e780028fb6507bae586e83c642263e3e",
+      "crc32": "3ab40e35",
+      "note": "Sound firmware plus the speech pointer table at $F022. Holds no speech itself, so conversion never writes to it -- but it is still read to find the phrases, and still burned, so it is part of the set."
+    }
+  ],
+  "layout": {
+    "table_offset": 8226,
+    "base_address": 53248,
+    "phrases": 20,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F022 (file offset 0x2022 in the assembled $D000 window), 21 entries: 20 phrases and a final end bound at $DFF8. All 20 phrases parse with the TMS5200 tables and terminate in a stop frame, each filling its declared extent to within 0-2 bytes.",
+    "ordering": "Command-ordered, not address-ordered. Entry 17 is $DECB and entry 18 is $D769, which goes backwards -- so the pointers are sorted before extents are derived. Read as address-ordered the table yields one phrase with 143 unused trailing bytes and another that does not terminate; sorted, every phrase terminates and the slack disappears.",
+    "table_location": "The table sits in U5 while every phrase sits in U3, so no device holds both. That is why U5 is marked holds_speech: false -- it is read, and burned, but conversion never changes a byte in it.",
+    "device_type": "INFERRED. Both sound devices are 4096 bytes, which on this board is a 2532 or a 2732, and those are not pin-compatible. Nothing in the dump records which is fitted. Check the board's jumpers against its schematic before reading or burning.",
+    "speech_content": "20 phrases, 21.2 seconds of audio, 803 frames of which 493 are voiced.",
+    "not_verified": [
+      "No converted set has been fitted to this machine and listened to. Everything above is emulation and static analysis.",
+      "Nobody has heard a converted set on this hardware.",
+      "This is a gun game, not a pinball. The board is the same Squawk & Talk, but no machine of this type has been tested with any conversion from this tool."
+    ],
+    "independent_check": "The board's own firmware was run in a byte-taint model of the AS-2518-61 and every byte it pushes into the TMS5200 FIFO captured with its ROM provenance. It plays 20 streams, 4115 bytes, with 0 unexplained bytes, and every stream's address is traced to a pointer read from u5.bin+0x0022 -- the table this profile declares, found by execution rather than by pattern-matching. The sweep covers all 256 sound commands on both the manual and game paths.",
+    "chip_commands": "The firmware writes exactly one command byte to the TMS across all 256 sound commands on both paths: 0x60, SPEAK EXTERNAL. Nothing in group 0x00 or 0x20, so no SET RATE opcode is ever issued and a TMS5220C or TSP5220C reads this board's traffic the same way a TMS5220 does.",
+    "end_of_phrase_convention": "MIXED, which is unusual and matters. 17 phrases are sent as ROM body plus a synthesized 0x00 terminator -- their final ROM byte never reaches the chip -- while phrases 5, 17 and 18 are transmitted verbatim to their final ROM byte. truncate_last_byte is therefore empty: the three verbatim phrases MUST have their last byte converted, and converting the unsent byte of the other 17 is harmless because it is never transmitted.",
+    "phrase_19_does_not_terminate": "On the stream the chip actually receives, phrase 19 has no stop frame. The trace shows the player substituting 0x00 for the ROM's final 0xF1, and the resulting 138 bytes parse to 29 frames with no terminator -- the FIFO simply runs dry. The phrase terminates only if its full extent is read, which is what conversion does, so this is recorded rather than worked around.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same sweep of all 256 sound commands on both paths: 53 SPEAK EXTERNAL commands, 3170 writes to the TMS and 1243 writes to the DAC, identical in both runs, and the same 20 speech streams from the same 20 pointer-table entries with the same FIFO length at every one. The bytes sent to the TMS differ in value -- changing them is what conversion is -- but nothing about the player's control flow, its addressing, or the non-speech audio moved."
+  },
+  "notes": [
+    "Bally Midway gun game, not a pinball, which is why it does not appear in the Squawk & Talk pinball listings. It uses the same AS-2518-61 sound board.",
+    "The sound ROMs sit at $D000 and $F000 with a 4 KB hole between them, so the assembled window is $D000-$FFFF rather than the $C000 window the pinball profiles use."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ],
+  "applies_to": [
+    "mdntmrdr"
+  ],
+  "chip_commands_observed": [
+    "0x60"
+  ]
+}

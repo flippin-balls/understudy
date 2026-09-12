@@ -52,9 +52,9 @@ phrases were therefore rendered and scored separately:
 
 | result | Embryon | whole library |
 |---|---:|---:|
-| phrases improved | 18 of 20 | 375 of 441 |
+| phrases improved | 18 of 20 | 389 of 461 |
 | phrases unchanged | 0 | 2 |
-| phrases worse | 2 of 20 | 64 of 441 |
+| phrases worse | 2 of 20 | 70 of 461 |
 | worst single regression | +0.67 dB | +12.13 dB (Elektra) |
 
 Every game's mean whole-phrase score improves. But Embryon set an expectation
@@ -119,8 +119,8 @@ floor are handled exactly as they are in the default conversion; see
 
 ## Coverage
 
-Fifteen of the sixteen supported profiles ship optimization data. `bigbat` has
-none, because no ROM set was available to measure it; on a profile without data
+Sixteen of the seventeen supported profiles ship optimization data. `bigbat`
+has none, because no ROM set was available to measure it; on a profile without data
 `--optimize-audio` stops with an error rather than silently falling back to the
 default mapping.
 
@@ -142,13 +142,14 @@ No game has tuning of its own and nothing in the runtime is game-specific.
 | `flashgdf` | measured | 9 better / 1 worse, worst +0.02 dB |
 | `flashgdn` | measured | 7 better / 1 worse, worst +1.08 dB |
 | `m_mpac` | measured | 18 better / 7 worse, worst +7.37 dB |
+| `mdntmrdr` | measured | 14 better / 6 worse, worst +1.08 dB |
 | `medusa` | measured | 23 better / 4 worse, worst +0.97 dB |
 | `mysteria` | measured | 30 better / 6 worse, worst +2.48 dB |
 | `spectrum` | measured | 29 better / 2 worse, worst +0.32 dB |
 | `vector` | measured | 47 better / 3 worse, worst +2.16 dB |
 
-Across all fifteen: **10,151 eligible frames, 9,777 improved** (96.3 %), 31,797
-K indexes moved.
+Across all sixteen: **10,580 eligible frames, 10,184 improved** (96.3 %),
+33,075 K indexes moved.
 
 ### What the regressions are, and are not
 
