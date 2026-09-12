@@ -219,6 +219,151 @@ The numbers above are placeholders. Do not copy them into a real conversion.
 and [CONTRIBUTING_PROFILES.md](docs/CONTRIBUTING_PROFILES.md) explains how to
 turn one into a safe `convert-set` profile.
 
+## What the chips actually differ by, and why the result sounds right
+
+### The chip does not store the voice
+
+A TMS5200 contains no recordings. It is a small electronic model of a human
+vocal tract — a buzz or a hiss for the sound a voice makes, and an adjustable
+filter that shapes that sound into vowels and consonants the way a mouth and
+throat do. The chip cannot say anything on its own. The ROM tells it what shape
+to be, twenty-five times a second.
+
+Each of those updates is called a **frame**. A frame is not a piece of audio. It
+is a short list of settings, roughly: how loud, whether this is a buzz or a hiss,
+how low or high the buzz is, and ten numbers describing the shape of the filter.
+Play the frames in order and the chip talks.
+
+### The ROM stores lookup numbers, not the settings themselves
+
+Here is the part everything else follows from. A frame does not contain the
+actual filter settings. There is not enough room. Instead it contains a **lookup
+number** for each setting — a position in a table that is built into the chip
+itself.
+
+An analogy: the ROM does not say "paint it sky blue". It says "use colour 14",
+and the chip has a paint chart with colour 14 on it. The ROM is a list of chart
+positions. The chart lives in the chip.
+
+Each setting has its own chart, and they are small:
+
+| setting in a frame | positions on its chart |
+|---|---|
+| how loud (**energy**) | 16 |
+| how low or high the buzz is (**pitch**) | 64 |
+| filter shape, first number | 32 |
+| filter shape, second number | 32 |
+| filter shape, numbers 3–7 | 16 each |
+| filter shape, numbers 8–10 | 8 each |
+
+Those ten filter numbers have a proper name, **reflection coefficients**, and
+together they are what makes an "ee" sound different from an "oh".
+
+### What is different between the chips
+
+**The frames are laid out identically.** A TMS5200 frame and a TMS5220 frame have
+the same fields, in the same order, using the same number of bits each. Feed a
+TMS5200's speech to a TMS5220 and it reads it perfectly happily. Nothing jams,
+nothing desynchronises, the phrases start and stop in the right places.
+
+**The charts inside are different.** Same number of positions, different values
+at those positions. Position 14 is simply a different colour on the two chips.
+Measured against the actual tables this project ships:
+
+- **Loudness: identical.** All 16 positions match exactly on both chips.
+- **Filter shape: almost entirely different.** Of the 32 positions on the first
+  filter chart, 30 hold different values. On several of the smaller charts,
+  *every* position differs.
+- **Pitch: 62 of 64 positions differ**, and the range is different too — more on
+  that below.
+
+So a TMS5200 ROM played through a TMS5220 is a set of perfectly valid
+instructions being carried out against the wrong chart. The result is
+intelligible-ish, wrong-sounding speech: recognisably the same rhythm and the
+same phrases, with the voice mangled. That is the fault this tool fixes.
+
+### The other chips
+
+**TMS5220, TMS5220C and TSP5220C all have the same charts as each other.** They
+were physically examined — the silicon decapped and read — and the tables are
+identical. So a conversion aimed at any one of them produces *byte-for-byte the
+same file*, and it does not matter which of the three you can find. They differ
+in control details that have nothing to do with the speech data: the C versions
+understand one extra command that the plain TMS5220 ignores.
+
+The TMS5200 also appears under the names **CD2501E** and **TMC0285**. Those are
+the same part with a different label, and this tool treats them as the original
+to convert *from*.
+
+### How the fix works
+
+If the ROM says "colour 14" and the two chips disagree about colour 14, the
+answer is to look up what colour 14 *actually was* on the original chip, then
+find the position on the new chip's chart that is closest to that same real
+colour, and write that position number into the ROM instead.
+
+That is the whole conversion. For every setting in every frame, replace the
+lookup number with the one that means the same thing on the replacement chip.
+
+The critical property is that a **position number is the same size as any other
+position number**. Changing "14" to "11" does not make the frame longer. So the
+converted ROM is exactly the same length as the original, every phrase still
+begins and ends at the same address, and the table of phrase addresses elsewhere
+in the ROM stays correct without being touched. The ROM is edited in place, and
+nothing about its structure moves.
+
+### Why it comes out sounding right
+
+Three reasons, in order of how much they matter.
+
+**The charts are dense enough that "closest" is very close.** The replacement's
+chart has as many positions as the original's, covering the same kind of range.
+When the tool looks for the nearest value it is not settling for something
+roughly similar — on the largest filter chart, the worst case across every
+position is off by under **4% of the chart's full span**, and most are far
+closer than that. The ear does not hear a difference that small in a filter
+setting.
+
+**Loudness needs no conversion at all.** Those tables are identical, so the
+volume shape of every word is carried across untouched. Loudness is a large part
+of what makes speech sound natural, and none of it is approximated.
+
+**Nothing about the timing or structure changes.** Frames stay the same length,
+in the same order, of the same type — a buzzed frame stays buzzed, a hissed
+frame stays hissed, a silence stays silence. On the reference conversion all
+**850 frames kept their type**, verified by re-reading the finished file. Speech
+that is slightly off in filter shape still sounds like speech; speech with the
+timing disturbed does not.
+
+The measured result on that conversion: the pitch of the converted frames lands
+a **median of about 1 Hz** away from the original, with the worst frame about
+3.4 Hz out. For comparison, the difference between two people saying the same
+word is tens of hertz.
+
+### The one part that cannot be fixed
+
+The two chips disagree about how *low* a voice can go, and this is a real limit
+rather than a shortcoming of the method.
+
+The lowest note a TMS5200 can produce is about **38 Hz**. The lowest a TMS5220
+can produce is about **50 Hz**. The 5220's chart simply does not go down that
+far — there is no position on it meaning "38 Hz", so there is nothing to point
+at. Any frame written below roughly 50 Hz has to be raised to the lowest note
+the replacement can actually make.
+
+This is not something a cleverer conversion could route around. The limit is in
+the destination chip's chart, not in how the numbers are chosen. Nine different
+workarounds were built as real speech data and measured, including several
+attempts to fake a lower note by alternating between two higher ones; all nine
+failed.
+
+In practice it is a small effect. On the reference conversion **17 frames out of
+850 — two percent** — sat below the floor and were raised. Those frames are in
+five of the twenty phrases, and the prediction was that they would sound
+noticeably higher-pitched. When the conversion was finally played on a real
+machine, the person listening did not pick them out.
+
+
 ## How the conversion works
 
 The TMS5200 and TMS5220 use the same speech frame grammar and field widths, but
