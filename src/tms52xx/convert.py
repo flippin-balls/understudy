@@ -153,11 +153,19 @@ def convert_frames(frames: List[Frame], source: ChipTables,
 
 
 def convert_stream(data: bytes, source: ChipTables,
-                   target: ChipTables) -> tuple:
+                   target: ChipTables, optimizer=None) -> tuple:
     """Convert a whole stream. Returns (bytes, report, stopped_cleanly).
 
     The output is the same length as the input, byte for byte, and every field
     keeps its original bit offset. Only index values change.
+
+    `optimizer`, if given, is called with the converted frames before they are
+    packed back into bytes, and may adjust field indexes in place. It runs after
+    the ordinary conversion and cannot see the source tables, so whatever it
+    does is a refinement OF the nearest mapping rather than a replacement for
+    it; and because it runs before `rebuild`, the length and structure checks
+    below apply to its output exactly as they do to an unoptimised one. Omitted,
+    conversion is bit-for-bit what it has always been.
     """
     for chip in (source, target):
         if (chip.pitch_bits, list(chip.k_widths)) != (PITCH_BITS, list(K_WIDTHS)):
@@ -187,6 +195,8 @@ def convert_stream(data: bytes, source: ChipTables,
 
     frames, stopped = parse(data, source.pitch_bits, list(source.k_widths))
     report = convert_frames(frames, source, target)
+    if optimizer is not None:
+        optimizer(frames)
     out = rebuild(frames, len(data), base=data)
     if len(out) != len(data):
         raise AssertionError("conversion changed the stream length")

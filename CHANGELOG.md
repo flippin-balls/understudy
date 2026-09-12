@@ -7,6 +7,24 @@ features.
 
 ## [Unreleased]
 
+### Added
+
+- **`--optimize-audio`, an optional conversion mode.** The default conversion
+  is unchanged and remains the deterministic nearest-table mapping; this flag
+  additionally applies per-frame K-coefficient refinements that were measured,
+  for that game, by rendering candidate frames and comparing them against the
+  original chip. In the experiment behind it, **39 of 40 representative Embryon
+  frames improved** and one found nothing better. Measured as whole phrases
+  instead of frames, 18 of Embryon's 20 improved and 2 came out slightly worse.
+  That is a measurement on one game, not a promise that any given phrase or game
+  sounds better, and it does nothing about the pitch floor — see
+  [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md).
+- Optimisation data exists only for games it has been measured on, and
+  `--optimize-audio` says so plainly rather than silently converting without it.
+- Manifests now always carry an `audio_optimization` section — set schema 4,
+  manual schema 2 — stating whether the pass ran, and, when it did, every frame
+  it touched with the scores that justified each move.
+
 ### Validated on silicon
 
 - **Embryon has been played on a real board.** On 2026-09-11 a converted set was

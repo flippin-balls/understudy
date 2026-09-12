@@ -23,6 +23,7 @@ from .profiles import Profile, ProfileError, sha256
 from .bitstream import parse
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
 from .tables import ChipTables
+from . import optimize
 from . import reads
 
 #: Bumped when the manifest's shape changes. Readers should check it.
@@ -31,7 +32,12 @@ from . import reads
 #: bytes each phrase actually consumes through its stop frame, against the
 #: PHYSICAL device. A v2 reader comparing the two would be comparing different
 #: quantities. `source_window` was added alongside it.
-MANIFEST_SCHEMA_VERSION = 3
+#: Bumped to 4: every manifest now carries `audio_optimization`, stating whether
+#: the optional K-index optimisation ran. It is written even when it did not,
+#: because "this manifest has no such section" otherwise means either "it was off"
+#: or "the build predates the feature", and a technician holding an odd-sounding
+#: ROM cannot tell those apart.
+MANIFEST_SCHEMA_VERSION = 4
 
 
 class ConversionRefused(RuntimeError):
@@ -53,6 +59,8 @@ class SetResult:
         #: True when a table file was supplied instead of the bundled data.
         self.custom_tables: bool = False
         self.overrides: List[str] = []
+        #: Set only when audio optimisation ran; None means it was not asked for.
+        self.optimization = None
         self.manifest: dict = {}
         self.before: bytes = b""
         self.after: bytes = b""
@@ -95,13 +103,53 @@ def _table_identity(chip: Chip, custom: Optional[Path],
     return identity
 
 
+def _optimization_manifest(report) -> dict:
+    """The optimisation section of the manifest.
+
+    Always present, and always says `enabled` outright. A manifest that simply
+    omitted the section when optimisation was off would be indistinguishable
+    from one written by a build that had no optimiser, which is the one question
+    a reader holding an odd-sounding ROM most needs answered.
+    """
+    if report is None:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "profile_id": report.profile_id,
+        "data_sha256": report.digest,
+        "frames_considered": report.frames_considered,
+        "frames_changed": report.frames_changed,
+        "frames_baseline_retained": report.frames_baseline_retained,
+        "k_indexes_changed": report.k_indexes_changed,
+        "mean_mcd_db_gain": (round(report.mean_mcd_db_gain, 3)
+                             if report.mean_mcd_db_gain is not None else None),
+        "method": report.method,
+        # Per frame, so a report of "phrase 12 sounds wrong" can be traced to
+        # the exact indexes that moved and the score that justified moving them.
+        "frames": [
+            {"phrase": f.phrase, "frame": f.frame,
+             "changed": {name: {"from": was, "to": now}
+                         for name, (was, now) in sorted(f.changed.items())},
+             "mcd_db_before": f.mcd_db_before,
+             "mcd_db_after": f.mcd_db_after}
+            for f in report.frames],
+    }
+
+
 def convert_set(dumps: Dict[str, bytes], profile: Profile,
                 target: Chip, source: Optional[Chip] = None,
                 source_tables: Optional[Path] = None,
                 target_tables: Optional[Path] = None,
                 allow_unterminated: bool = False,
-                allow_unverified_rate_control: bool = False) -> SetResult:
-    """Convert one identified ROM set. Returns a SetResult; writes nothing."""
+                allow_unverified_rate_control: bool = False,
+                optimize_audio: bool = False) -> SetResult:
+    """Convert one identified ROM set. Returns a SetResult; writes nothing.
+
+    `optimize_audio` opts into the measured K-index refinement described in
+    `optimize.py`. It is off by default and, when off, this function does not
+    read the optimisation data, touch the frames, or add anything to the
+    manifest beyond recording that it was off.
+    """
     # A C-FAMILY TARGET NEEDS EVIDENCE ABOUT THE FIRMWARE, NOT JUST THE DATA.
     #
     # The TMS5220C and TSP5220C carry LPC tables decap-verified identical to the
@@ -266,13 +314,44 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             "layout.unterminated_phrases."
             % (len(stuck), ", ".join(str(i) for i in stuck)))
 
+    # AUDIO OPTIMISATION IS OPT-IN, AND IS A REFINEMENT OF THE CONVERSION ABOVE.
+    #
+    # It runs inside patch_rom, per phrase, after the ordinary nearest mapping
+    # and before the bytes are packed -- so every structural check below sees
+    # the optimised ROM. Omitted, not one byte of this path changes.
+    hook = None
+    if optimize_audio:
+        opt_doc = optimize.load(profile.id)
+        # The measurements are about audio rendered through specific tables and
+        # a specific profile. Bind to both before applying any of them.
+        optimize.check_tables(opt_doc, hashlib.sha256(src_raw).hexdigest(),
+                              hashlib.sha256(dst_raw).hexdigest())
+        optimize.check_profile(opt_doc, profile)
+        opt_report = optimize.OptimizationReport(
+            profile_id=profile.id,
+            frames_considered=opt_doc.get("frames_considered") or 0,
+            frames_baseline_retained=opt_doc.get("frames_baseline_retained") or 0,
+            method=opt_doc.get("method") or {},
+            digest=optimize.digest(opt_doc))
+
+        def hook(phrase_index, frames, original, _doc=opt_doc, _rep=opt_report):
+            optimize.check_phrase_source(_doc, phrase_index, original)
+            _rep.frames.extend(optimize.optimise_frames(
+                frames, phrase_index, _doc, list(dst_tables.k_widths)))
+
     patched, results = patch_rom(
         image, table, src_tables, dst_tables,
         truncate_last_byte=profile.truncate_last_byte or False,
         allow_unterminated=(allow_unterminated
-                            or sorted(declared) or False))
+                            or sorted(declared) or False),
+        optimizer=hook)
     result.after = patched
     result.stats = summarise(results)
+
+    if optimize_audio:
+        opt_report.frames_changed = len(opt_report.frames)
+        optimize.check_all_applied(opt_doc, opt_report.frames)
+        result.optimization = opt_report
 
     # Backstop. `patch_rom` writes only inside phrase extents, so this cannot
     # fire today -- `test_conversion_only_ever_touches_phrase_extents` is what
@@ -662,6 +741,7 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         "image": {"before_sha256": sha256(image),
                   "after_sha256": sha256(patched),
                   "bytes": len(image)},
+        "audio_optimization": _optimization_manifest(result.optimization),
         "summary": result.stats,
         "phrase_rows": ("one row per pointer in the layout; a row with alias_of "
                         "set repeats an earlier row's phrase and is excluded "

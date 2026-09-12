@@ -27,12 +27,17 @@ from . import reads
 from pathlib import Path, PurePosixPath
 
 from . import __version__
+from . import optimize
+from .optimize import OptimizationError
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
+from .workflow import _optimization_manifest
 
 #: The manual `convert` command's manifest. Versioned separately from
 #: `convert-set`'s, because they describe different things: one image and a
 #: declared layout, versus a whole ROM set and the profile that identified it.
-MANUAL_MANIFEST_SCHEMA_VERSION = 1
+#: Bumped to 2 alongside the set manifest: every manual manifest now states
+#: whether audio optimisation ran, for the same reason.
+MANUAL_MANIFEST_SCHEMA_VERSION = 2
 from .tables import ChipTables
 
 
@@ -400,16 +405,59 @@ def cmd_convert(args) -> int:
     except ValueError as error:
         print("bad --truncate-last-byte: %s" % error, file=sys.stderr)
         return 2
+
+    # This path declares its own layout, so it has no profile to look the
+    # measurements up by and the flag names one. That is not a way to borrow
+    # another game's optimisation: every override records the baseline index it
+    # was measured from, and applying this data to a ROM whose conversion
+    # produces anything else stops the run. Pointing it at the wrong game fails
+    # closed rather than quietly re-indexing somebody's speech.
+    opt_hook, opt_applied, opt_doc = None, [], None
+    if getattr(args, "optimize_audio", None):
+        try:
+            opt_doc = optimize.load(args.optimize_audio)
+            # Same binding as the set path. The layout is yours here, so no
+            # profile version can be checked -- which is exactly why the
+            # per-frame guards and the completeness check below both run.
+            optimize.check_tables(opt_doc, _sha256(source_raw),
+                                  _sha256(target_raw))
+        except OptimizationError as error:
+            print("cannot optimise: %s" % error, file=sys.stderr)
+            return 2
+
+        def opt_hook(phrase_index, frames, original, _doc=opt_doc):
+            # On this path there is no profile to pin the layout with, so the
+            # phrase digest is the whole binding: it is what establishes that
+            # these corrections were measured on the speech in front of us.
+            optimize.check_phrase_source(_doc, phrase_index, original)
+            opt_applied.extend(optimize.optimise_frames(
+                frames, phrase_index, _doc, list(target.k_widths)))
+
     try:
         # allow_unterminated is passed through unconditionally: the CLI reports
         # the failure in its own words below, with the phrase extents and the
         # layout flags to check, which is more use than the library's message.
         out, results = patch_rom(rom, table, source, target,
                                  truncate_last_byte=truncate,
-                                 allow_unterminated=True)
+                                 allow_unterminated=True,
+                                 optimizer=opt_hook)
+    except OptimizationError as error:
+        print("cannot optimise: %s" % error, file=sys.stderr)
+        return 2
     except ValueError as error:
         print("%s" % error, file=sys.stderr)
         return 2
+
+    # Before anything is written or reported: every override must have reached a
+    # frame. Aliased pointers convert once, so one keyed to the second index
+    # would otherwise be skipped in silence and still be reported as applied.
+    if opt_doc is not None:
+        try:
+            optimize.check_all_applied(opt_doc, opt_applied)
+        except OptimizationError as error:
+            print("cannot optimise: %s" % error, file=sys.stderr)
+            return 2
+
     stats = summarise(results)
 
     # Verify before writing: re-read the produced image and confirm that only
@@ -545,6 +593,19 @@ def cmd_convert(args) -> int:
                    "base_address": args.base_address,
                    "truncate_last_byte": sorted(r.phrase.index for r in results
                                                 if r.last_byte_truncated)},
+        # Built by the same function the set path uses, so a manual manifest
+        # identifies its measurement set exactly as a set manifest does. These
+        # diverged once and the manual one silently lacked the data digest.
+        "audio_optimization": _optimization_manifest(
+            None if opt_doc is None else optimize.OptimizationReport(
+                profile_id=args.optimize_audio,
+                frames_considered=opt_doc.get("frames_considered") or 0,
+                frames_changed=len(opt_applied),
+                frames_baseline_retained=(
+                    opt_doc.get("frames_baseline_retained") or 0),
+                frames=list(opt_applied),
+                method=opt_doc.get("method") or {},
+                digest=optimize.digest(opt_doc))),
         "summary": stats,
         "changed_ranges": _changed_ranges(rom, out),
         # `alias_of` is not decoration: without it the per-phrase rows cannot be
@@ -1123,7 +1184,11 @@ def cmd_convert_set(args) -> int:
             target_tables=Path(args.target_tables) if args.target_tables else None,
             allow_unterminated=args.allow_unterminated,
             allow_unverified_rate_control=getattr(
-                args, "allow_unverified_rate_control", False))
+                args, "allow_unverified_rate_control", False),
+            optimize_audio=getattr(args, "optimize_audio", False))
+    except OptimizationError as error:
+        print("cannot optimise: %s" % error, file=sys.stderr)
+        return 2
     except ConversionRefused as error:
         print("refusing to convert: %s" % error, file=sys.stderr)
         return 2
@@ -1275,6 +1340,16 @@ def _print_set_summary(result, profile, target, written, args) -> None:
         print("  f0 error, unclamped    median %.2f Hz, max %.2f Hz"
               % (err["median"], err["max"]))
     print("  bytes changed          %d" % stats["bytes_changed"])
+    if result.optimization is not None:
+        opt = result.optimization
+        print()
+        print("audio optimization")
+        print("  frames considered      %d" % opt.frames_considered)
+        print("  frames improved        %d" % opt.frames_changed)
+        print("  baseline retained      %d" % opt.frames_baseline_retained)
+        print("  K indexes moved        %d" % opt.k_indexes_changed)
+        if opt.mean_mcd_db_gain is not None:
+            print("  mean spectral gain     %.2f dB" % opt.mean_mcd_db_gain)
     print()
     print("output devices")
     for entry in result.outputs:
@@ -1376,6 +1451,13 @@ def main(argv=None) -> int:
                               "phrase indexes. `inspect --source-tables` "
                               "reports which phrases it is SAFE for; whether it "
                               "is needed depends on your player's firmware")
+    convert.add_argument("--optimize-audio", metavar="PROFILE", default=None,
+                         help="apply that profile's measured K-index "
+                              "refinements. This path declares its own layout "
+                              "and has no profile, so the game is named here. "
+                              "Every refinement records the baseline it was "
+                              "measured from and is refused if this ROM "
+                              "converts to anything else.")
     convert.add_argument("--dry-run", action="store_true")
     convert.add_argument("--force", action="store_true",
                          help="allow overwriting an existing output file; never "
@@ -1421,6 +1503,14 @@ def main(argv=None) -> int:
              "record which commands its firmware sends. Those parts read the "
              "0x00/0x20 opcode as SET RATE where a TMS5200 ignores it, so this "
              "asserts something about the BOARD that this tool has not checked.")
+    convert_set_p.add_argument(
+        "--optimize-audio", action="store_true",
+        help="apply measured per-frame K-index refinements for this game, "
+             "where they exist. The default conversion maps each coefficient "
+             "to its nearest entry independently; this nudges groups of them "
+             "to choices that measured closer to the original chip when "
+             "rendered and compared. Optional, off by default, and available "
+             "only for games the measurement has been run on.")
     convert_set_p.add_argument("--dry-run", action="store_true")
     convert_set_p.add_argument("--force", action="store_true",
                                help="allow overwriting existing output files")
