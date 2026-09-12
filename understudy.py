@@ -3,13 +3,12 @@
 
     python understudy.py identify 841-01_4.716 841-02_5.532
 
-There is nothing to install. The tool is pure standard library -- no
-dependencies, no build step, no package to fetch -- and the only reason a clone
-could not previously be run directly is that the code lives under `src/`, which
-Python does not search unless it is told to. This tells it.
+There is nothing to install, and no way to install it. The tool is pure standard
+library -- no dependencies, no build step, no package to fetch -- and the only
+reason a clone could not be run directly is that the code lives under `src/`,
+which Python does not search unless it is told to. This tells it.
 
-Installing remains possible (`pip install .`) and puts an `understudy` command on
-the PATH, but it buys nothing except the shorter name.
+Clone the repository and run this file. That is the whole distribution story.
 """
 import sys
 from pathlib import Path

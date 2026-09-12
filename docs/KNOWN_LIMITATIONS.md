@@ -15,9 +15,15 @@ and adding any would change its length and break the in-place property the whole
 approach rests on.
 
 The consequence is operational: converting an already-converted ROM moves every
-index a second time and quietly degrades the speech, and neither the tool nor
-the file can warn you. The manifest records the input's SHA-256 precisely so you
-can tell which image you have. Keep the original.
+index a second time and quietly degrades the speech, and the file itself cannot
+warn you.
+
+**`convert-set` can, and does, for a supported game.** It matches every device
+against the profile's recorded SHA-256, so a file that has already been through
+the tool no longer matches and is refused. What is unprotected is the manual
+`convert` path, which has no profile to check against and will convert whatever
+you hand it, as many times as you hand it over. The manifest records the input's
+SHA-256 precisely so you can tell which image you have. Keep the original.
 
 ## Emulator-derived, not silicon-confirmed
 
@@ -41,8 +47,11 @@ For each of the sixteen bundled profiles, the converted devices were
 additionally loaded into a simulation of the Squawk & Talk board, which booted
 and drove them, issuing the same speech commands as the originals. That
 exercises the board's firmware and control flow against the converted data, and
-it is what the `board-simulated` profile status means. **It renders no audio and
-nobody has heard the result.**
+it is what the `board-simulated` profile status means. **It renders no audio.**
+Fifteen of the sixteen profiles have never been heard, in an emulator or
+otherwise. The exception is Embryon, which has since been played on a real board
+and carries the `silicon-verified` status; that result is one board judged by
+ear, and nothing about it transfers to the other fifteen.
 
 What that means for your own output is narrower than it may look. Hash
 identification fixes the *inputs*: every device is matched by SHA-256, so a
@@ -59,7 +68,8 @@ what a given run actually used is visible rather than assumed.
 
 If you used the manual `convert` path, on an unsupported revision or a layout of
 your own, none of this applies: it has had no simulation at all. Either way,
-calling the result a "working ROM" would require hardware testing nobody has
+calling the result a "working ROM" would require hardware testing that, for
+fifteen of the sixteen profiles, nobody has
 done.
 
 ## Nearest-value conversion is a baseline, not an optimum

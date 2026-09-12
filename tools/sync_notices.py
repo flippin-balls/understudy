@@ -2,8 +2,9 @@
 """Copy the licence materials into the package, where installs can see them.
 
 The BSD-3-Clause licence on the bundled coefficient tables requires its notice
-to accompany redistribution, and a wheel is a redistribution. Files beside the
-repository do not survive `pip install`, so the package carries its own copy --
+to accompany redistribution, and passing on a copy of this repository is a
+redistribution. A file sitting at the repository root can be separated from the
+data it covers, so the package carries its own copy --
 and two copies can drift, which is what `test_the_packaged_notice_matches_the_
 repository_copy` exists to catch. Run this after editing either original.
 """

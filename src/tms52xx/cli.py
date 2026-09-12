@@ -22,7 +22,8 @@ import os
 import shlex
 import sys
 import tempfile
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 
 from . import __version__
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
@@ -414,7 +415,14 @@ def cmd_convert(args) -> int:
     # the declared phrase extents moved. A conversion that touched anything else
     # is a bug, and the user should not receive the file.
     if len(out) != len(rom):
-        print("refusing to write: length changed", file=sys.stderr)
+        # An internal invariant broke. There is nothing the reader can fix, and
+        # the one thing they must not do is treat a partial result as usable.
+        print("refusing to write: the converted image changed length, which "
+              "must never happen.\n"
+              "  NO output files were produced. Do not burn anything from "
+              "this run.\n"
+              "  This is a bug in understudy, not something you did -- please "
+              "report it with the command you ran.", file=sys.stderr)
         return 2
     phrase_bytes = set()
     for phrase in table.phrases:
@@ -585,6 +593,76 @@ def _read_dump(path: Path) -> bytes:
     return data
 
 
+#: Suffixes that are never a ROM dump. Used only when EXPANDING a folder or a
+#: zip, never when the user names a file: if someone points at a file directly
+#: they mean it, whatever it is called.
+#:
+#: A blocklist rather than an allowlist, because dump extensions are whatever
+#: the person who read the chip felt like -- .716, .532, .bin, .rom, .u4, none
+#: at all. Guessing which are ROMs would drop real dumps; guessing which are
+#: documentation drops, at worst, a file that would have been reported unused.
+_NOT_A_DUMP = {".txt", ".md", ".json", ".html", ".htm", ".pdf", ".png", ".jpg",
+               ".gif", ".xml", ".yml", ".yaml", ".csv", ".log", ".cfg", ".ini",
+               ".doc", ".docx", ".zip", ".gz", ".7z", ".rar"}
+
+
+def _looks_like_a_dump(name: str) -> bool:
+    base = PurePosixPath(name.replace("\\", "/")).name
+    if not base or base.startswith("."):
+        return False
+    if base.upper() in ("README", "READ.ME", "FILE_ID.DIZ", "LICENSE", "COPYING"):
+        return False
+    return PurePosixPath(base).suffix.lower() not in _NOT_A_DUMP
+
+
+def _expand_inputs(names):
+    """Turn what the user typed into (label, data, guard, explicit) rows.
+
+    Each argument may be a FILE, a FOLDER, or a ZIP. Pinball ROMs arrive as a
+    zip far more often than as a tidy list of files, and "point at the folder"
+    is what someone repairing a board actually wants to type.
+
+    `label` names the row for output filenames and messages; `guard` is the real
+    path that must not be overwritten (for a zip member, the zip itself);
+    `explicit` records whether the user named this file personally. That last
+    flag is the whole reason this returns rows instead of a dict: a file the
+    user NAMED and which fits no socket is an error, because converting less
+    than they asked for is worse than refusing. A file merely FOUND inside a
+    folder or zip is not -- those legitimately hold the CPU ROMs, a README and
+    whatever else, and complaining about them would make the easy path the one
+    that fails.
+    """
+    rows = []
+    for name in names:
+        path = Path(name)
+        if path.is_dir():
+            for found in sorted(p for p in path.iterdir() if p.is_file()):
+                if _looks_like_a_dump(found.name):
+                    data = found.read_bytes()
+                    if data:
+                        rows.append((str(found), data, found, False))
+            continue
+        if path.is_file() and zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path) as archive:
+                for info in sorted(archive.infolist(), key=lambda i: i.filename):
+                    if info.is_dir() or not _looks_like_a_dump(info.filename):
+                        continue
+                    data = archive.read(info)
+                    if data:
+                        rows.append((info.filename, data, path, False))
+            continue
+        rows.append((str(path), _read_dump(path), path, True))
+    if not rows:
+        raise ValueError(
+            "nothing that looks like a ROM dump was found in: %s\n"
+            "  Folders are not searched recursively -- point at the folder that "
+            "directly contains the files, not the one above it.\n"
+            "  Files named README, or ending .txt .md .json and similar, are "
+            "skipped when scanning. Name a file directly if you mean it."
+            % ", ".join(str(n) for n in names))
+    return rows
+
+
 def _sockets_from_args(args, profile):
     """Map the files the user gave us onto the profile's sockets.
 
@@ -615,17 +693,22 @@ def _sockets_from_args(args, profile):
                 raise ValueError("socket %r given twice" % socket)
             dumps[socket] = _read_dump(Path(path))
             sources[socket] = path
-        return dumps, sources
+        return dumps, sources, {k: Path(v) for k, v in sources.items()}
 
     if not args.dumps:
         raise ValueError("no dumps given")
 
-    files = {}
-    for name in args.dumps:
-        path = Path(name)
-        if any(_same_file(path, Path(other)) for other in files):
-            raise ValueError("%s was given twice" % path)
-        files[str(path)] = _read_dump(path)
+    rows = _expand_inputs(args.dumps)
+    files, guards, explicit = {}, {}, set()
+    for label, data, guard, was_named in rows:
+        if label in files:
+            raise ValueError("%s was given twice" % label)
+        if was_named and any(_same_file(guard, other) for other in guards.values()):
+            raise ValueError("%s was given twice" % label)
+        files[label] = data
+        guards[label] = guard
+        if was_named:
+            explicit.add(label)
     digests = {name: _sha(data) for name, data in files.items()}
     taken = set()
 
@@ -652,9 +735,12 @@ def _sockets_from_args(args, profile):
             taken.add(candidates[0])
         elif not candidates:
             raise ValueError(
-                "nothing supplied fits socket %s (%s, %d bytes) of the %s "
-                "profile" % (device.socket, device.device_type, device.size,
-                             profile.id))
+                "nothing supplied fits socket %s of the %s profile.\n"
+                "  That socket holds a %s, %d bytes. Nothing you gave me is that "
+                "size, so either the chip has not been read yet -- several of "
+                "these games hold speech in TWO devices -- or it was read with "
+                "the wrong device type selected, which changes the size."
+                % (device.socket, profile.id, device.device_type, device.size))
         else:
             raise ValueError(
                 "cannot tell which file belongs in socket %s: %d files are %d "
@@ -665,13 +751,28 @@ def _sockets_from_args(args, profile):
     # Every file the user named must have gone somewhere. Silently dropping one
     # converts less than they asked for and leaves it out of the manifest, which
     # is the record of what was done.
-    unused = [n for n in files if n not in taken]
+    # Only files the user NAMED have to land somewhere. One they named and which
+    # fits no socket is an error: converting less than they asked for, silently,
+    # is worse than refusing. Files merely FOUND inside a folder or zip are a
+    # different case -- a Squawk & Talk zip holds the CPU ROMs too, and the whole
+    # point of accepting a folder is that the user does not have to know which
+    # files are the speech ones.
+    unused = [n for n in files if n not in taken and n in explicit]
     if unused:
+        # Suggesting --socket here used to invite assigning a CPU ROM to a speech
+        # socket, which converts the wrong bytes. The likely truth is simpler:
+        # these are the board's other ROMs, and pointing at the folder ignores
+        # them instead of refusing.
         raise ValueError(
-            "these files were given but fit no socket in the %s profile: %s. "
-            "Remove them, or name each file's socket with --socket."
-            % (profile.id, ", ".join(Path(n).name for n in unused)))
-    return dumps, sources
+            "these files are not part of the %s speech set: %s\n"
+            "  They are probably the board's CPU ROMs. Either leave them out, or "
+            "point at the whole folder -- understudy ignores what it does not "
+            "need:\n"
+            "    %s convert-set FOLDER"
+            % (profile.id,
+               ", ".join(PurePosixPath(n).name for n in unused),
+               invocation()))
+    return dumps, sources, guards
 
 
 def cmd_chips(args) -> int:
@@ -718,10 +819,9 @@ def cmd_profiles(args) -> int:
 def cmd_identify(args) -> int:
     from . import profiles as profile_mod
 
-    files = {}
-    for name in args.dumps:
-        path = Path(name)
-        files[str(path)] = _read_dump(path)
+    # Same expansion as convert-set: a folder or a zip is a perfectly ordinary
+    # thing to point at, and identify is usually the FIRST command anyone runs.
+    files = {label: data for label, data, _guard, _named in _expand_inputs(args.dumps)}
 
     print("Supplied dumps")
     for name, data in files.items():
@@ -787,11 +887,21 @@ def cmd_identify(args) -> int:
             print("Dump the remaining device(s) and run identify again.")
             return 1
         print()
+        # THE SHORTEST COMMAND THAT WORKS. Every flag this used to print is a
+        # default: the set is identified by hash, the target defaults to the
+        # TMS5220, and the output directory is made for you. Printing them
+        # taught everyone that four flags were required, which is the opposite
+        # of what the tool does -- and the person reading this is usually
+        # holding a soldering iron, not looking for options.
+        # ECHO BACK WHAT THEY TYPED. Printing the file names discovered inside a
+        # folder or zip produces a command that does not run: the names are
+        # relative to the archive, not to where the user is standing. Whatever
+        # they pointed identify at is, by construction, something convert-set
+        # accepts too.
         print("Convert it with:")
-        print("  %s convert-set %s --game %s --target tsp5220c -o out/"
+        print("  %s convert-set %s"
               % (invocation(),
-                 " ".join(shell_quote(Path(f).name) for f in files),
-                 profile.id))
+                 " ".join(shell_quote(str(given)) for given in args.dumps)))
         if profile.status != "silicon-verified":
             print()
             print("Note: this profile is %r. No converted ROM from it has been"
@@ -818,12 +928,30 @@ def cmd_convert_set(args) -> int:
     if args.game:
         profile = profile_mod.get(args.game)
     else:
-        files = {str(Path(f)): _read_dump(Path(f)) for f in args.dumps}
+        files = {label: data for label, data, _guard, _named in _expand_inputs(args.dumps)}
         matches = [m for m in profile_mod.identify(files) if m.complete]
         if len(matches) != 1:
-            print("error: could not identify this set (%d complete matches). "
-                  "Run `%s identify` to see why, or name the profile with "
-                  "--game." % (len(matches), invocation()), file=sys.stderr)
+            # GIVE THEM A COMMAND THEY CAN RUN. The old message named `identify`
+            # without the files, so copying it produced a usage error -- and it
+            # asserted "not a supported game", which is only one of three causes.
+            # A half-dumped set and a bad read look identical from here, and the
+            # person reading this has a machine in pieces.
+            given = " ".join(shell_quote(str(d)) for d in args.dumps)
+            if len(matches) > 1:
+                print("error: %d profiles match this set. Choose one with "
+                      "--game NAME." % len(matches), file=sys.stderr)
+                return 2
+            print("error: this does not match any game understudy knows.\n"
+                  "  See exactly what was found and what was expected:\n"
+                  "    %s identify %s\n"
+                  "  Three things cause this, and they look the same from here:\n"
+                  "    - the game is not one of the %d covered  (%s profiles)\n"
+                  "    - a device is missing: some games hold speech in TWO chips\n"
+                  "    - a ROM was read with the wrong device type selected\n"
+                  "  If you already know the game, name it: --game NAME"
+                  % (invocation(), given,
+                     len(profile_mod.available()), invocation()),
+                  file=sys.stderr)
             return 2
         profile = matches[0].profile
         print("identified   %s (profile %s v%d)"
@@ -834,7 +962,7 @@ def cmd_convert_set(args) -> int:
         print("error: %s is not a replacement part" % target.id, file=sys.stderr)
         return 2
 
-    dumps, sources = _sockets_from_args(args, profile)
+    dumps, sources, guards = _sockets_from_args(args, profile)
     try:
         result = convert_set(
             dumps, profile, target,
@@ -869,7 +997,7 @@ def cmd_convert_set(args) -> int:
         # Matching on contents would name two sockets holding identical bytes
         # after the same input.
         origin = sources.get(entry["socket"])
-        source_name = (Path(origin).name if origin
+        source_name = (PurePosixPath(str(origin).replace("\\", "/")).name if origin
                        else "%s_%s" % (profile.id, entry["socket"]))
         name = output_name(source_name, device, target, result.custom_tables)
         destination = outdir / name
@@ -893,7 +1021,10 @@ def cmd_convert_set(args) -> int:
     # coefficient table or a profile is just as much an input, and just as
     # irreplaceable to whoever wrote it; an earlier version of this check
     # defined "input" as the dumps alone and would replace the others.
-    inputs = [Path(origin) for origin in sources.values()]
+    # Guard the real files on disk. For a zip member that is the ARCHIVE: the
+    # member has no path of its own, and it is the zip that must not be
+    # overwritten by an output that happens to share its name.
+    inputs = [Path(guards.get(origin, origin)) for origin in sources.values()]
     for extra in (args.source_tables, args.target_tables):
         if extra:
             inputs.append(Path(extra))

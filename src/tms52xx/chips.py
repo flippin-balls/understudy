@@ -51,7 +51,8 @@ from .tables import ChipTables
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 #: Ships inside the package, because the tables' BSD-3-Clause licence requires
-#: its notice to accompany them and a wheel is a binary redistribution.
+#: its notice to accompany them, and handing someone a copy of this repository is
+#: a redistribution.
 LICENSE_DIR = DATA_DIR / "licenses"
 
 

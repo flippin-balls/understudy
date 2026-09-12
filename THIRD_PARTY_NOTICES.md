@@ -1,7 +1,7 @@
 # Third-party notices
 
 Understudy's own code and documentation are Zero-Clause BSD
-([LICENSES/0BSD.txt](LICENSES/0BSD.txt)) — use them for anything, no attribution
+([LICENSES/0BSD.txt](https://github.com/flippin-balls/understudy/blob/main/LICENSES/0BSD.txt)) — use them for anything, no attribution
 required.
 
 **The bundled coefficient data is not ours and is not 0BSD.** It is
@@ -57,7 +57,7 @@ and the header comment of `tms5110r.hxx` reads:
 
 BSD-3-Clause permits redistribution in source and binary form provided the
 copyright notice, the conditions and the disclaimer travel with it. That is what
-this file and [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt) are for.
+this file and [LICENSES/BSD-3-Clause.txt](https://github.com/flippin-balls/understudy/blob/main/LICENSES/BSD-3-Clause.txt) are for.
 
 This is our reading, offered so you can check it rather than take it on trust.
 It is not legal advice, and it is your call for your use.
@@ -77,7 +77,7 @@ each was established:
 > table is verified to match the decap and exactly matches TMS5220NL."
 
 That last sentence is why Understudy treats the TMS5220, TMS5220C and TSP5220C
-as one conversion target — see [docs/CHIPS.md](docs/CHIPS.md) for what that
+as one conversion target — see [docs/CHIPS.md](https://github.com/flippin-balls/understudy/blob/main/docs/CHIPS.md) for what that
 claim does and does not cover.
 
 ### Regenerating and checking it yourself
@@ -103,10 +103,10 @@ converted, which is why the bundled copy comes from MAME.
 
 **No ROM images.** Understudy contains no game code or speech data, and never
 distributes any. See
-[docs/SQUAWK_AND_TALK.md](docs/SQUAWK_AND_TALK.md#where-the-roms-come-from) for
+[docs/SQUAWK_AND_TALK.md](https://github.com/flippin-balls/understudy/blob/main/docs/SQUAWK_AND_TALK.md#where-the-roms-come-from) for
 legitimate ways to obtain the ROMs for a machine you own.
 
 **Nothing from other LPC projects.** The tables in Talkie, python_wizard,
 BlueWizard and TMS Express were compared during research and none of their code
-or data is included here. [docs/PRIOR_ART.md](docs/PRIOR_ART.md) records what is
+or data is included here. [docs/PRIOR_ART.md](https://github.com/flippin-balls/understudy/blob/main/docs/PRIOR_ART.md) records what is
 in each and how they differ.

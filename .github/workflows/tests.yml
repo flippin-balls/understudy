@@ -36,72 +36,58 @@ jobs:
         env:
           PYTHONPATH: src
 
-      - name: install from a built wheel and convert with no setup
+      - name: a fresh clone runs with nothing installed
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet build
-          python -m build --wheel --outdir dist
-          python -m pip install --quiet dist/*.whl
-          # The bundled data must survive packaging: without it an installed
-          # copy cannot convert anything, which is the whole point of bundling.
-          python - <<'PY'
-          from tms52xx import chips, profiles
-          assert abs(chips.resolve("tms5200").tables().lowest_f0_hz - 37.91) < 0.1
-          assert abs(chips.resolve("tsp5220c").tables().lowest_f0_hz - 50.31) < 0.1
-          ids = [p.id for p in profiles.available()]
-          assert "embryon" in ids, ids
-          print("bundled data present after install:", ids)
-          PY
-          # The BSD-3-Clause notice must survive packaging: a wheel is a
-          # binary redistribution, and files beside the repository do not
-          # survive pip install.
-          python - <<'PY'
-          from tms52xx import chips
-          text = chips.notices()
-          assert "BSD-3-Clause" in text, "notice missing from the install"
-          assert "mamedev/mame" in text, "notice does not name the upstream"
-          for table in ("tms5200", "tms5220"):
-              prov = chips.bundled_provenance(table)
-              assert prov["source_sha256"] in text, table
-          assert (chips.LICENSE_DIR / "BSD-3-Clause.txt").exists()
-          print("third-party licence materials present after install")
-          PY
-          understudy --version
-          understudy --help > /dev/null
-          understudy chips > /dev/null
-          understudy profiles > /dev/null
-          understudy notices > /dev/null
-          understudy identify --help > /dev/null
-          understudy convert-set --help > /dev/null
-          echo "console script works"
+          # THE DISTRIBUTION IS THE CLONE. There is no wheel and no sdist, so what
+          # has to be proven is that someone who downloads this repository can run
+          # it -- no build step, no dependency, no PYTHONPATH. understudy.py is the
+          # only entry point, and it is the thing a user is told to run.
+          python understudy.py --help > /dev/null
+          python understudy.py identify --help > /dev/null
+          python understudy.py convert-set --help > /dev/null
+          echo "the launcher runs from a clone"
 
-  sdist:
-    # The published source archive must be usable on its own: the README's test
-    # command has to work in it, and the documentation the provenance narrative
-    # asks a reviewer to read has to be in it.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python -m pip install --quiet build
-      - run: python -m build --sdist --outdir dist
-      - name: the archive is complete and its tests run
+      - name: the bundled data and its licence notice are present
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p unpacked && tar xzf dist/*.tar.gz -C unpacked
-          cd unpacked/understudy-*
+          # Without the coefficient tables a clone cannot convert anything, which
+          # is the whole point of bundling them; and the BSD-3-Clause data must be
+          # accompanied by its notice wherever it travels. Both are asserted from
+          # the package directory rather than the repository root, because that is
+          # what stays with the data if anyone copies it out.
+          python - <<'PY'
+          from pathlib import Path
+          from tms52xx import chips, profiles
+          assert abs(chips.resolve("tms5200").tables().lowest_f0_hz - 37.91) < 0.1
+          assert abs(chips.resolve("tms5220").tables().lowest_f0_hz - 50.31) < 0.1
+          ids = [p.id for p in profiles.available()]
+          assert "embryon" in ids, ids
+          notice = Path(chips.__file__).parent / "data" / "licenses" / "THIRD_PARTY_NOTICES.md"
+          assert notice.is_file(), "the BSD-3-Clause notice must sit beside the data it covers"
+          assert "BSD-3-Clause" in notice.read_text(encoding="utf-8")
+          print("bundled data and notice present:", ids)
+          PY
+        env:
+          PYTHONPATH: src
+
+      - name: the documentation a reviewer is pointed at is actually here
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The provenance narrative asks a reader to go and check specific files.
+          # If one is missing the argument has a hole in it, and nothing else in
+          # this workflow would notice.
           for required in THIRD_PARTY_NOTICES.md LICENSES/BSD-3-Clause.txt \
                           docs/CHIPS.md docs/PROVENANCE.md \
                           docs/HARDWARE_VALIDATION.md tools/extract_tables.py \
                           examples/embryon.manifest.json tests/synthetic.py \
-                          tests/synthetic_game.py; do
-            test -f "$required" || { echo "sdist is missing $required"; exit 1; }
+                          tests/synthetic_game.py understudy.py; do
+            test -f "$required" || { echo "missing $required"; exit 1; }
           done
-          PYTHONPATH=src python -m unittest discover -s tests
-          echo "the source archive stands on its own"
+          echo "the repository stands on its own"
 
   self-check:
     # Guards claims the documentation makes, so they cannot rot silently.

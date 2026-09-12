@@ -50,6 +50,10 @@ out. Understudy only re-indexes data that already exists.
 
 ## Hardware validation
 
-Nobody yet. This is where the name of the first person to fit a converted set to
+The first real-board validation was Embryon, 2026-09-11, by Flashback Fleet LLC:
+a converted set fitted to a Bally Squawk & Talk AS-2518-61A with a TMS5220 and
+compared by ear against a TMS5200 baseline on the same board.
+
+Fifteen profiles are still unheard. This is where the name of the next person to fit a converted set to
 a real Squawk & Talk and report what happened will go — see
 [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md).

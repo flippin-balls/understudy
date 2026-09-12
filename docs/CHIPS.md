@@ -5,9 +5,11 @@ a TMS5220, a TMS5220C and a TSP5220C, because their LPC coefficient tables are
 identical. Pick whichever you can get; the conversion does not change.
 
 **What it cannot tell you:** whether the part you buy drops into your board.
-No physical chip has been fitted or measured for this project. Pinout, supply
-current, clock and output level are between you, the datasheet and the
-schematic. Everything below is about the data.
+One TMS5220 has been fitted to one board for this project (Embryon, 2026-09-11)
+and it worked, with no board change. **No chip has been electrically measured** —
+pinout, supply current, clock and output level are still between you, the
+datasheet and the schematic, and one working fit is not a substitution
+guarantee. Everything below is about the data.
 
 ```
 python understudy.py chips

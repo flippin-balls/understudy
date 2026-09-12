@@ -169,6 +169,99 @@ class TestDestinationPreflight(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_pointing_at_a_folder_converts_the_set(self):
+        """The command a board repairer actually wants to type.
+
+        Listing every dump is a programmer's habit. Someone with a machine open
+        has a folder of files read out of sockets, and should be able to point
+        at it.
+        """
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        out = self.dir / "out"
+        result = run("convert-set", str(roms), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(sum(1 for p in out.iterdir() if p.suffix != ".json"), 2)
+
+    def test_a_folder_may_hold_files_that_are_not_speech_roms(self):
+        """A real ROM folder holds the CPU ROMs and a README as well.
+
+        A file the user NAMED and which fits no socket is an error. A file
+        merely FOUND while expanding a folder is not -- otherwise the easy path
+        is the one that fails, which is the opposite of the point.
+        """
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        (roms / "README").write_text("notes about this machine")
+        (roms / "notes.txt").write_text("more notes")
+        (roms / "cpu.bin").write_bytes(b"\xa5" * 373)      # fits no socket
+        out = self.dir / "out"
+        result = run("convert-set", str(roms), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_a_named_file_that_fits_no_socket_is_still_an_error(self):
+        """The guard that folder support must not weaken.
+
+        Naming a file is a claim that it belongs in the set. Converting less
+        than the user asked for, silently, is worse than refusing.
+        """
+        stray = self.dir / "stray.bin"
+        stray.write_bytes(b"\x5a" * 373)
+        u4 = self.dir / "u4.bin"
+        u4.write_bytes(self.dumps["U4"])
+        result = run("convert-set", str(u4), str(self.u5), str(stray),
+                     "--game", "synthgame", "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not part of the", result.stderr)
+        self.assertIn("stray.bin", result.stderr)
+        # and it must offer the way out, not suggest forcing it into a socket
+        self.assertIn("point at the whole folder", result.stderr)
+        self.assertNotIn("--socket", result.stderr)
+
+    def test_pointing_at_a_zip_converts_the_set(self):
+        """ROM sets arrive as zips far more often than as loose files."""
+        import zipfile
+        archive = self.dir / "game.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+            z.writestr("README", "notes")
+        out = self.dir / "out"
+        result = run("convert-set", str(archive), "-o", str(out),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        written = sorted(p.name for p in out.iterdir() if p.suffix != ".json")
+        self.assertEqual(len(written), 2, written)
+        # Outputs are named after the ZIP MEMBER, not the archive, or both
+        # devices would be named "game" and collide.
+        self.assertTrue(any(n.startswith("u4") for n in written), written)
+        self.assertTrue(any(n.startswith("u5") for n in written), written)
+
+    def test_a_zip_is_never_overwritten_by_its_own_output(self):
+        """The overwrite guard must follow a member back to its archive.
+
+        A zip member has no path of its own. If the guard were given the member
+        name it would protect nothing, and an output could land on the archive
+        the run is reading.
+        """
+        import zipfile
+        archive = self.dir / "synthgame.manifest.json"    # the derived name
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        before = archive.read_bytes()
+        result = run("convert-set", str(archive), "-o", str(self.dir),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(archive.read_bytes(), before, "the archive was modified")
+
     def test_the_manifest_cannot_overwrite_an_input_even_with_force(self):
         victim = self.dir / "synthgame.manifest.json"     # the derived name
         victim.write_bytes(self.dumps["U4"])
@@ -828,7 +921,12 @@ class TestCommandLine(unittest.TestCase):
         result = run("convert-set", str(self.u4), str(self.u5),
                      "-o", str(self.dir / "out"), cwd=self.dir)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("could not identify", result.stderr)
+        # The message must name a cause the reader can act on, and hand back a
+        # command they can actually run -- it used to suggest `identify` with no
+        # files, which is a usage error.
+        self.assertIn("does not match any game", result.stderr)
+        self.assertIn("identify", result.stderr)
+        self.assertIn("--game", result.stderr)
         self.assertFalse((self.dir / "out").exists())
 
     def test_convert_set_rejects_a_source_part_as_target(self):
@@ -898,7 +996,7 @@ class TestCommandLine(unittest.TestCase):
             dumps = [str(a), str(b)]
 
         profile = Profile(raw, "<twins>")
-        dumps, sources = _sockets_from_args(Args(), profile)
+        dumps, sources, _guards = _sockets_from_args(Args(), profile)
         self.assertEqual(sorted(dumps), ["U4", "U5"])
         self.assertNotEqual(sources["U4"], sources["U5"],
                             "both sockets were mapped to the same file")
@@ -947,7 +1045,7 @@ class TestCommandLine(unittest.TestCase):
             socket = ["U4=%s" % self.u4, "U5=%s" % self.u5]
             dumps = []
 
-        dumps, sources = _sockets_from_args(Args(), Profile(raw, "<x>"))
+        dumps, sources, _guards = _sockets_from_args(Args(), Profile(raw, "<x>"))
         self.assertEqual(sorted(dumps), ["U4", "U5"])
         self.assertEqual(Path(sources["U4"]).name, "u4.bin")
 
