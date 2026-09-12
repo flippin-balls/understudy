@@ -324,8 +324,8 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
         opt_doc = optimize.load(profile.id)
         # The measurements are about audio rendered through specific tables and
         # a specific profile. Bind to both before applying any of them.
-        optimize.check_tables(opt_doc, hashlib.sha256(src_raw).hexdigest(),
-                              hashlib.sha256(dst_raw).hexdigest())
+        optimize.check_tables(opt_doc, optimize.table_digest(src_tables),
+                              optimize.table_digest(dst_tables))
         optimize.check_profile(opt_doc, profile)
         opt_report = optimize.OptimizationReport(
             profile_id=profile.id,

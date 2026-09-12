@@ -1,0 +1,830 @@
+{
+  "note": "Measured optimisation coverage. Frame counts come from the offline search; phrase figures come from rendering the finished ROM and scoring it whole against the TMS5200 reference.",
+  "profiles": [
+    {
+      "eligible_frames": 897,
+      "frames_baseline_retained": 28,
+      "frames_improved": 869,
+      "k_indexes_moved": 2778,
+      "max_frame_gain_db": 36.4691,
+      "mean_frame_gain_db": 2.1936,
+      "median_frame_gain_db": 1.6062,
+      "one_step_moves": 2669,
+      "phrases": {
+        "best_improvement_db": -16.7501,
+        "improved": 43,
+        "mean_baseline_mcd_db": 15.4404,
+        "mean_optimized_mcd_db": 14.7608,
+        "median_delta_db": -0.6404,
+        "total": 60,
+        "unchanged": 0,
+        "worse": 17,
+        "worst_regression_db": 7.369
+      },
+      "profile": "beatclck",
+      "reason": "17 phrase(s) regress; worst +7.369 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 16.2462,
+          "delta_db": 0.3502,
+          "optimized_mcd_db": 16.5964,
+          "phrase": 3
+        },
+        {
+          "baseline_mcd_db": 16.1735,
+          "delta_db": 0.4141,
+          "optimized_mcd_db": 16.5876,
+          "phrase": 8
+        },
+        {
+          "baseline_mcd_db": 9.1108,
+          "delta_db": 0.3179,
+          "optimized_mcd_db": 9.4287,
+          "phrase": 9
+        },
+        {
+          "baseline_mcd_db": 22.1679,
+          "delta_db": 7.369,
+          "optimized_mcd_db": 29.5369,
+          "phrase": 15
+        },
+        {
+          "baseline_mcd_db": 10.4495,
+          "delta_db": 0.0647,
+          "optimized_mcd_db": 10.5143,
+          "phrase": 20
+        },
+        {
+          "baseline_mcd_db": 11.9459,
+          "delta_db": 3.7809,
+          "optimized_mcd_db": 15.7268,
+          "phrase": 30
+        },
+        {
+          "baseline_mcd_db": 21.8284,
+          "delta_db": 2.4774,
+          "optimized_mcd_db": 24.3058,
+          "phrase": 31
+        },
+        {
+          "baseline_mcd_db": 8.6869,
+          "delta_db": 0.4913,
+          "optimized_mcd_db": 9.1782,
+          "phrase": 34
+        },
+        {
+          "baseline_mcd_db": 10.7011,
+          "delta_db": 2.0947,
+          "optimized_mcd_db": 12.7959,
+          "phrase": 35
+        },
+        {
+          "baseline_mcd_db": 17.3738,
+          "delta_db": 4.5737,
+          "optimized_mcd_db": 21.9475,
+          "phrase": 36
+        },
+        {
+          "baseline_mcd_db": 5.1207,
+          "delta_db": 0.1747,
+          "optimized_mcd_db": 5.2954,
+          "phrase": 37
+        },
+        {
+          "baseline_mcd_db": 9.3276,
+          "delta_db": 0.8186,
+          "optimized_mcd_db": 10.1462,
+          "phrase": 38
+        },
+        {
+          "baseline_mcd_db": 11.571,
+          "delta_db": 2.9449,
+          "optimized_mcd_db": 14.5159,
+          "phrase": 39
+        },
+        {
+          "baseline_mcd_db": 15.0343,
+          "delta_db": 3.7324,
+          "optimized_mcd_db": 18.7666,
+          "phrase": 40
+        },
+        {
+          "baseline_mcd_db": 27.0897,
+          "delta_db": 6.0988,
+          "optimized_mcd_db": 33.1885,
+          "phrase": 42
+        },
+        {
+          "baseline_mcd_db": 9.1061,
+          "delta_db": 0.0991,
+          "optimized_mcd_db": 9.2052,
+          "phrase": 47
+        },
+        {
+          "baseline_mcd_db": 11.8135,
+          "delta_db": 4.1716,
+          "optimized_mcd_db": 15.9851,
+          "phrase": 51
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1695,
+      "two_step_moves": 109
+    },
+    {
+      "profile": "bigbat",
+      "reason": "no ROM set available",
+      "status": "skipped"
+    },
+    {
+      "eligible_frames": 807,
+      "frames_baseline_retained": 36,
+      "frames_improved": 771,
+      "k_indexes_moved": 2450,
+      "max_frame_gain_db": 16.0461,
+      "mean_frame_gain_db": 2.4569,
+      "median_frame_gain_db": 1.9712,
+      "one_step_moves": 2304,
+      "phrases": {
+        "best_improvement_db": -6.5145,
+        "improved": 29,
+        "mean_baseline_mcd_db": 18.6247,
+        "mean_optimized_mcd_db": 17.8831,
+        "median_delta_db": -0.6731,
+        "total": 37,
+        "unchanged": 0,
+        "worse": 8,
+        "worst_regression_db": 11.615
+      },
+      "profile": "centaur",
+      "reason": "8 phrase(s) regress; worst +11.615 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 11.8062,
+          "delta_db": 4.1716,
+          "optimized_mcd_db": 15.9778,
+          "phrase": 0
+        },
+        {
+          "baseline_mcd_db": 19.9656,
+          "delta_db": 0.0437,
+          "optimized_mcd_db": 20.0093,
+          "phrase": 4
+        },
+        {
+          "baseline_mcd_db": 21.8975,
+          "delta_db": 0.91,
+          "optimized_mcd_db": 22.8074,
+          "phrase": 5
+        },
+        {
+          "baseline_mcd_db": 26.3448,
+          "delta_db": 11.615,
+          "optimized_mcd_db": 37.9598,
+          "phrase": 9
+        },
+        {
+          "baseline_mcd_db": 13.8226,
+          "delta_db": 0.4615,
+          "optimized_mcd_db": 14.2841,
+          "phrase": 11
+        },
+        {
+          "baseline_mcd_db": 24.0091,
+          "delta_db": 1.8447,
+          "optimized_mcd_db": 25.8539,
+          "phrase": 20
+        },
+        {
+          "baseline_mcd_db": 13.7152,
+          "delta_db": 0.4156,
+          "optimized_mcd_db": 14.1309,
+          "phrase": 30
+        },
+        {
+          "baseline_mcd_db": 12.3941,
+          "delta_db": 0.0962,
+          "optimized_mcd_db": 12.4903,
+          "phrase": 31
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1759,
+      "two_step_moves": 146
+    },
+    {
+      "eligible_frames": 832,
+      "frames_baseline_retained": 29,
+      "frames_improved": 803,
+      "k_indexes_moved": 2503,
+      "max_frame_gain_db": 16.0461,
+      "mean_frame_gain_db": 2.2809,
+      "median_frame_gain_db": 1.8726,
+      "one_step_moves": 2421,
+      "phrases": {
+        "best_improvement_db": -6.5145,
+        "improved": 34,
+        "mean_baseline_mcd_db": 13.6527,
+        "mean_optimized_mcd_db": 13.2548,
+        "median_delta_db": -0.6719,
+        "total": 38,
+        "unchanged": 0,
+        "worse": 4,
+        "worst_regression_db": 11.8565
+      },
+      "profile": "eballchp",
+      "reason": "4 phrase(s) regress; worst +11.857 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 9.4003,
+          "delta_db": 11.8565,
+          "optimized_mcd_db": 21.2569,
+          "phrase": 0
+        },
+        {
+          "baseline_mcd_db": 14.3987,
+          "delta_db": 0.3593,
+          "optimized_mcd_db": 14.758,
+          "phrase": 13
+        },
+        {
+          "baseline_mcd_db": 11.9459,
+          "delta_db": 3.7809,
+          "optimized_mcd_db": 15.7268,
+          "phrase": 48
+        },
+        {
+          "baseline_mcd_db": 11.8135,
+          "delta_db": 4.1716,
+          "optimized_mcd_db": 15.9851,
+          "phrase": 56
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1485,
+      "two_step_moves": 82
+    },
+    {
+      "eligible_frames": 798,
+      "frames_baseline_retained": 27,
+      "frames_improved": 771,
+      "k_indexes_moved": 2406,
+      "max_frame_gain_db": 11.1194,
+      "mean_frame_gain_db": 2.2409,
+      "median_frame_gain_db": 1.9116,
+      "one_step_moves": 2323,
+      "phrases": {
+        "best_improvement_db": -2.6791,
+        "improved": 39,
+        "mean_baseline_mcd_db": 13.2961,
+        "mean_optimized_mcd_db": 12.7951,
+        "median_delta_db": -0.6719,
+        "total": 42,
+        "unchanged": 0,
+        "worse": 3,
+        "worst_regression_db": 11.8565
+      },
+      "profile": "eballdlx",
+      "reason": "3 phrase(s) regress; worst +11.857 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 9.4003,
+          "delta_db": 11.8565,
+          "optimized_mcd_db": 21.2569,
+          "phrase": 2
+        },
+        {
+          "baseline_mcd_db": 14.3987,
+          "delta_db": 0.3593,
+          "optimized_mcd_db": 14.758,
+          "phrase": 13
+        },
+        {
+          "baseline_mcd_db": 8.6191,
+          "delta_db": 1.0747,
+          "optimized_mcd_db": 9.6938,
+          "phrase": 38
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1448,
+      "two_step_moves": 83
+    },
+    {
+      "eligible_frames": 643,
+      "frames_baseline_retained": 25,
+      "frames_improved": 618,
+      "k_indexes_moved": 2047,
+      "max_frame_gain_db": 46.7747,
+      "mean_frame_gain_db": 2.5295,
+      "median_frame_gain_db": 1.9437,
+      "one_step_moves": 1965,
+      "phrases": {
+        "best_improvement_db": -17.797,
+        "improved": 12,
+        "mean_baseline_mcd_db": 21.9344,
+        "mean_optimized_mcd_db": 19.6297,
+        "median_delta_db": -0.6582,
+        "total": 16,
+        "unchanged": 0,
+        "worse": 4,
+        "worst_regression_db": 12.1267
+      },
+      "profile": "elektra",
+      "reason": "4 phrase(s) regress; worst +12.127 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 16.0915,
+          "delta_db": 0.543,
+          "optimized_mcd_db": 16.6345,
+          "phrase": 4
+        },
+        {
+          "baseline_mcd_db": 16.9703,
+          "delta_db": 12.1267,
+          "optimized_mcd_db": 29.097,
+          "phrase": 5
+        },
+        {
+          "baseline_mcd_db": 16.5863,
+          "delta_db": 2.4569,
+          "optimized_mcd_db": 19.0432,
+          "phrase": 10
+        },
+        {
+          "baseline_mcd_db": 13.6692,
+          "delta_db": 0.4475,
+          "optimized_mcd_db": 14.1167,
+          "phrase": 14
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1148,
+      "two_step_moves": 82
+    },
+    {
+      "eligible_frames": 475,
+      "frames_baseline_retained": 19,
+      "frames_improved": 456,
+      "k_indexes_moved": 1486,
+      "max_frame_gain_db": 10.0223,
+      "mean_frame_gain_db": 2.0873,
+      "median_frame_gain_db": 1.808,
+      "one_step_moves": 1440,
+      "phrases": {
+        "best_improvement_db": -1.8596,
+        "improved": 18,
+        "mean_baseline_mcd_db": 12.6476,
+        "mean_optimized_mcd_db": 12.0737,
+        "median_delta_db": -0.638,
+        "total": 20,
+        "unchanged": 0,
+        "worse": 2,
+        "worst_regression_db": 0.6715
+      },
+      "profile": "embryon",
+      "reason": "2 phrase(s) regress; worst +0.671 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 7.667,
+          "delta_db": 0.6715,
+          "optimized_mcd_db": 8.3385,
+          "phrase": 0
+        },
+        {
+          "baseline_mcd_db": 14.2412,
+          "delta_db": 0.0676,
+          "optimized_mcd_db": 14.3087,
+          "phrase": 6
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 850,
+      "two_step_moves": 46
+    },
+    {
+      "eligible_frames": 630,
+      "frames_baseline_retained": 25,
+      "frames_improved": 605,
+      "k_indexes_moved": 1949,
+      "max_frame_gain_db": 11.6161,
+      "mean_frame_gain_db": 2.5582,
+      "median_frame_gain_db": 2.018,
+      "one_step_moves": 1887,
+      "phrases": {
+        "best_improvement_db": -2.2347,
+        "improved": 24,
+        "mean_baseline_mcd_db": 12.4528,
+        "mean_optimized_mcd_db": 11.7126,
+        "median_delta_db": -0.7098,
+        "total": 26,
+        "unchanged": 0,
+        "worse": 2,
+        "worst_regression_db": 1.0489
+      },
+      "profile": "fathom",
+      "reason": "2 phrase(s) regress; worst +1.049 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 11.126,
+          "delta_db": 0.0812,
+          "optimized_mcd_db": 11.2072,
+          "phrase": 11
+        },
+        {
+          "baseline_mcd_db": 14.4869,
+          "delta_db": 1.0489,
+          "optimized_mcd_db": 15.5358,
+          "phrase": 17
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1182,
+      "two_step_moves": 62
+    },
+    {
+      "eligible_frames": 370,
+      "frames_baseline_retained": 12,
+      "frames_improved": 358,
+      "k_indexes_moved": 1113,
+      "max_frame_gain_db": 17.1119,
+      "mean_frame_gain_db": 2.4885,
+      "median_frame_gain_db": 1.9389,
+      "one_step_moves": 1072,
+      "phrases": {
+        "best_improvement_db": -1.9512,
+        "improved": 13,
+        "mean_baseline_mcd_db": 11.9283,
+        "mean_optimized_mcd_db": 10.8867,
+        "median_delta_db": -1.0795,
+        "total": 13,
+        "unchanged": 0,
+        "worse": 0,
+        "worst_regression_db": -0.217
+      },
+      "profile": "fball_ii",
+      "status": "approved",
+      "total_frames": 721,
+      "two_step_moves": 41
+    },
+    {
+      "eligible_frames": 306,
+      "frames_baseline_retained": 8,
+      "frames_improved": 298,
+      "k_indexes_moved": 1022,
+      "max_frame_gain_db": 9.6412,
+      "mean_frame_gain_db": 2.5977,
+      "median_frame_gain_db": 2.1224,
+      "one_step_moves": 971,
+      "phrases": {
+        "best_improvement_db": -1.549,
+        "improved": 9,
+        "mean_baseline_mcd_db": 16.9486,
+        "mean_optimized_mcd_db": 16.1685,
+        "median_delta_db": -0.8786,
+        "total": 10,
+        "unchanged": 0,
+        "worse": 1,
+        "worst_regression_db": 0.0145
+      },
+      "profile": "flashgdf",
+      "reason": "1 phrase(s) regress; worst +0.015 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 12.0549,
+          "delta_db": 0.0145,
+          "optimized_mcd_db": 12.0694,
+          "phrase": 11
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 663,
+      "two_step_moves": 51
+    },
+    {
+      "eligible_frames": 289,
+      "frames_baseline_retained": 10,
+      "frames_improved": 279,
+      "k_indexes_moved": 923,
+      "max_frame_gain_db": 10.8717,
+      "mean_frame_gain_db": 2.4643,
+      "median_frame_gain_db": 2.092,
+      "one_step_moves": 884,
+      "phrases": {
+        "best_improvement_db": -1.0931,
+        "improved": 7,
+        "mean_baseline_mcd_db": 13.4726,
+        "mean_optimized_mcd_db": 13.1247,
+        "median_delta_db": -0.3902,
+        "total": 9,
+        "unchanged": 1,
+        "worse": 1,
+        "worst_regression_db": 1.0772
+      },
+      "profile": "flashgdn",
+      "reason": "1 phrase(s) regress; worst +1.077 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 11.7817,
+          "delta_db": 1.0772,
+          "optimized_mcd_db": 12.859,
+          "phrase": 3
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 677,
+      "two_step_moves": 39
+    },
+    {
+      "eligible_frames": 373,
+      "frames_baseline_retained": 1,
+      "frames_improved": 372,
+      "k_indexes_moved": 1161,
+      "max_frame_gain_db": 26.9564,
+      "mean_frame_gain_db": 2.4784,
+      "median_frame_gain_db": 1.7934,
+      "one_step_moves": 1132,
+      "phrases": {
+        "best_improvement_db": -19.3882,
+        "improved": 18,
+        "mean_baseline_mcd_db": 17.4406,
+        "mean_optimized_mcd_db": 16.4234,
+        "median_delta_db": -0.8154,
+        "total": 26,
+        "unchanged": 1,
+        "worse": 7,
+        "worst_regression_db": 7.369
+      },
+      "profile": "m_mpac",
+      "reason": "7 phrase(s) regress; worst +7.369 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 18.0186,
+          "delta_db": 0.4801,
+          "optimized_mcd_db": 18.4987,
+          "phrase": 5
+        },
+        {
+          "baseline_mcd_db": 9.8837,
+          "delta_db": 0.2564,
+          "optimized_mcd_db": 10.1401,
+          "phrase": 8
+        },
+        {
+          "baseline_mcd_db": 10.5657,
+          "delta_db": 0.1729,
+          "optimized_mcd_db": 10.7386,
+          "phrase": 12
+        },
+        {
+          "baseline_mcd_db": 14.3858,
+          "delta_db": 0.0693,
+          "optimized_mcd_db": 14.4551,
+          "phrase": 15
+        },
+        {
+          "baseline_mcd_db": 22.1679,
+          "delta_db": 7.369,
+          "optimized_mcd_db": 29.5369,
+          "phrase": 17
+        },
+        {
+          "baseline_mcd_db": 27.7301,
+          "delta_db": 4.2095,
+          "optimized_mcd_db": 31.9396,
+          "phrase": 22
+        },
+        {
+          "baseline_mcd_db": 11.3838,
+          "delta_db": 1.2745,
+          "optimized_mcd_db": 12.6583,
+          "phrase": 24
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 722,
+      "two_step_moves": 29
+    },
+    {
+      "eligible_frames": 825,
+      "frames_baseline_retained": 49,
+      "frames_improved": 776,
+      "k_indexes_moved": 2630,
+      "max_frame_gain_db": 11.7802,
+      "mean_frame_gain_db": 2.4989,
+      "median_frame_gain_db": 2.0773,
+      "one_step_moves": 2513,
+      "phrases": {
+        "best_improvement_db": -2.2848,
+        "improved": 23,
+        "mean_baseline_mcd_db": 14.1521,
+        "mean_optimized_mcd_db": 13.751,
+        "median_delta_db": -0.3886,
+        "total": 27,
+        "unchanged": 0,
+        "worse": 4,
+        "worst_regression_db": 0.9693
+      },
+      "profile": "medusa",
+      "reason": "4 phrase(s) regress; worst +0.969 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 10.1028,
+          "delta_db": 0.3452,
+          "optimized_mcd_db": 10.448,
+          "phrase": 16
+        },
+        {
+          "baseline_mcd_db": 12.8283,
+          "delta_db": 0.9693,
+          "optimized_mcd_db": 13.7976,
+          "phrase": 18
+        },
+        {
+          "baseline_mcd_db": 18.6467,
+          "delta_db": 0.8189,
+          "optimized_mcd_db": 19.4656,
+          "phrase": 21
+        },
+        {
+          "baseline_mcd_db": 12.9712,
+          "delta_db": 0.2229,
+          "optimized_mcd_db": 13.1941,
+          "phrase": 23
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1567,
+      "two_step_moves": 117
+    },
+    {
+      "eligible_frames": 716,
+      "frames_baseline_retained": 32,
+      "frames_improved": 684,
+      "k_indexes_moved": 2205,
+      "max_frame_gain_db": 38.3042,
+      "mean_frame_gain_db": 2.5476,
+      "median_frame_gain_db": 1.951,
+      "one_step_moves": 2130,
+      "phrases": {
+        "best_improvement_db": -11.5408,
+        "improved": 30,
+        "mean_baseline_mcd_db": 14.5484,
+        "mean_optimized_mcd_db": 13.5199,
+        "median_delta_db": -0.6595,
+        "total": 36,
+        "unchanged": 0,
+        "worse": 6,
+        "worst_regression_db": 2.4774
+      },
+      "profile": "mysteria",
+      "reason": "6 phrase(s) regress; worst +2.477 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 10.1028,
+          "delta_db": 0.3452,
+          "optimized_mcd_db": 10.448,
+          "phrase": 1
+        },
+        {
+          "baseline_mcd_db": 12.8283,
+          "delta_db": 0.9693,
+          "optimized_mcd_db": 13.7976,
+          "phrase": 3
+        },
+        {
+          "baseline_mcd_db": 21.8284,
+          "delta_db": 2.4774,
+          "optimized_mcd_db": 24.3058,
+          "phrase": 7
+        },
+        {
+          "baseline_mcd_db": 11.6674,
+          "delta_db": 0.0769,
+          "optimized_mcd_db": 11.7443,
+          "phrase": 8
+        },
+        {
+          "baseline_mcd_db": 16.4738,
+          "delta_db": 0.0345,
+          "optimized_mcd_db": 16.5083,
+          "phrase": 9
+        },
+        {
+          "baseline_mcd_db": 22.851,
+          "delta_db": 1.1548,
+          "optimized_mcd_db": 24.0058,
+          "phrase": 16
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1392,
+      "two_step_moves": 75
+    },
+    {
+      "eligible_frames": 785,
+      "frames_baseline_retained": 29,
+      "frames_improved": 756,
+      "k_indexes_moved": 2472,
+      "max_frame_gain_db": 12.7282,
+      "mean_frame_gain_db": 2.3615,
+      "median_frame_gain_db": 1.9924,
+      "one_step_moves": 2375,
+      "phrases": {
+        "best_improvement_db": -2.2973,
+        "improved": 29,
+        "mean_baseline_mcd_db": 12.1656,
+        "mean_optimized_mcd_db": 11.3969,
+        "median_delta_db": -0.6954,
+        "total": 31,
+        "unchanged": 0,
+        "worse": 2,
+        "worst_regression_db": 0.3179
+      },
+      "profile": "spectrum",
+      "reason": "2 phrase(s) regress; worst +0.318 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 9.1108,
+          "delta_db": 0.3179,
+          "optimized_mcd_db": 9.4287,
+          "phrase": 8
+        },
+        {
+          "baseline_mcd_db": 10.4495,
+          "delta_db": 0.0647,
+          "optimized_mcd_db": 10.5143,
+          "phrase": 27
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 1478,
+      "two_step_moves": 97
+    },
+    {
+      "eligible_frames": 1405,
+      "frames_baseline_retained": 44,
+      "frames_improved": 1361,
+      "k_indexes_moved": 4652,
+      "max_frame_gain_db": 38.3042,
+      "mean_frame_gain_db": 3.0657,
+      "median_frame_gain_db": 2.2535,
+      "one_step_moves": 4468,
+      "phrases": {
+        "best_improvement_db": -11.5408,
+        "improved": 47,
+        "mean_baseline_mcd_db": 14.9356,
+        "mean_optimized_mcd_db": 12.8733,
+        "median_delta_db": -1.4525,
+        "total": 50,
+        "unchanged": 0,
+        "worse": 3,
+        "worst_regression_db": 2.1643
+      },
+      "profile": "vector",
+      "reason": "3 phrase(s) regress; worst +2.164 dB",
+      "regressed_phrases": [
+        {
+          "baseline_mcd_db": 22.851,
+          "delta_db": 1.1548,
+          "optimized_mcd_db": 24.0058,
+          "phrase": 13
+        },
+        {
+          "baseline_mcd_db": 34.4294,
+          "delta_db": 0.96,
+          "optimized_mcd_db": 35.3894,
+          "phrase": 21
+        },
+        {
+          "baseline_mcd_db": 20.3001,
+          "delta_db": 2.1643,
+          "optimized_mcd_db": 22.4645,
+          "phrase": 22
+        }
+      ],
+      "status": "needs-review",
+      "total_frames": 2287,
+      "two_step_moves": 184
+    }
+  ],
+  "totals": {
+    "approved": 1,
+    "eligible_frames": 10151,
+    "failed": 0,
+    "frames_improved": 9777,
+    "frames_retained": 374,
+    "k_indexes_moved": 31797,
+    "needs_review": 14,
+    "phrases_improved": 375,
+    "phrases_unchanged": 2,
+    "phrases_worse": 64,
+    "processed": 15,
+    "profiles_total": 16,
+    "skipped": 1,
+    "worst_regression": {
+      "delta_db": 12.1267,
+      "profile": "elektra"
+    }
+  }
+}

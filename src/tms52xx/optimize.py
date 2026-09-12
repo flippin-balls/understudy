@@ -209,6 +209,31 @@ def load(profile_id: str) -> dict:
     return doc
 
 
+def table_digest(tables) -> str:
+    """Fingerprint a coefficient table by its CONTENT, not its file.
+
+    Hashing the file's bytes was the obvious thing and it was wrong. Git
+    normalises line endings on checkout, so the same table file hashes
+    differently on Windows than on Linux -- and a check built on that digest
+    refuses every game on one platform and passes on the other. CI caught it;
+    a technician on Windows would have met it as "cannot optimise" on a
+    perfectly good ROM.
+
+    What the measurements actually depend on is the numbers: every index the
+    chip can be asked for, and the field widths that decide what an index even
+    means. Those are what get hashed, in a fixed order, so the digest describes
+    the coefficients rather than the encoding of the file that carried them.
+    """
+    canonical = json.dumps({
+        "energy": list(tables.energy),
+        "pitch": list(tables.pitch),
+        "k": [list(row) for row in tables.k],
+        "pitch_bits": tables.pitch_bits,
+        "k_widths": list(tables.k_widths),
+    }, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("ascii")).hexdigest()
+
+
 def check_tables(doc: dict, source_sha: str, target_sha: str) -> None:
     """The measurements are only about the tables they were rendered through.
 
@@ -217,6 +242,9 @@ def check_tables(doc: dict, source_sha: str, target_sha: str) -> None:
     means. Supplying a different table file changes the sound without changing
     a single index, so the guards -- which are computed from indexes -- cannot
     notice. This is the check that does.
+
+    Digests come from `table_digest`, over the coefficients themselves. See
+    there for why the file's bytes are the wrong thing to hash.
     """
     declared = doc.get("tables") or {}
     for name, got in (("source_sha256", source_sha), ("target_sha256", target_sha)):

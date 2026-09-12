@@ -193,15 +193,20 @@ corrections on games for which optimization data has been generated.
 python understudy.py convert-set . --optimize-audio
 ```
 
-For Embryon, the offline search examined 475 eligible voiced frames. It found a
-better-scoring local choice for 456 and kept the default mapping for 19. When the
-finished phrases were rendered as wholes, 18 of 20 improved on the scoring
-metric and 2 were slightly worse.
+Across the fifteen measured games the search examined 10,151 eligible voiced
+frames and found a better-scoring local choice for 9,777 of them. Rendering the
+finished phrases as wholes, 375 of 441 improved and 64 were worse.
 
 Current limits:
 
 - the optimizer is opt-in; the default conversion is unchanged;
-- only Embryon currently has optimization data;
+- fifteen of the sixteen profiles have data; `bigbat` has none, and a profile
+  without data refuses the flag rather than silently ignoring it;
+- **the whole-phrase result varies a lot by game.** Embryon's worst phrase is
+  0.67 dB worse; Elektra's is +12.13 dB, and seven other titles exceed 2 dB.
+  Check the coverage table in
+  [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md) for your game before
+  trusting it;
 - no optimized ROM has yet been tested on real hardware;
 - the optimizer changes K indexes only and does not address the pitch floor;
 - the manifest records whether optimization was used and which measured data was

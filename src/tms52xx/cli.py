@@ -419,8 +419,8 @@ def cmd_convert(args) -> int:
             # Same binding as the set path. The layout is yours here, so no
             # profile version can be checked -- which is exactly why the
             # per-frame guards and the completeness check below both run.
-            optimize.check_tables(opt_doc, _sha256(source_raw),
-                                  _sha256(target_raw))
+            optimize.check_tables(opt_doc, optimize.table_digest(source),
+                                  optimize.table_digest(target))
         except OptimizationError as error:
             print("cannot optimise: %s" % error, file=sys.stderr)
             return 2
