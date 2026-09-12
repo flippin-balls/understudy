@@ -1,151 +1,106 @@
 # Known limitations
 
-## The pitch floor cannot be worked around
+## The TMS5220 pitch floor is higher
 
 A TMS5220 cannot produce a fundamental below about 50.3 Hz; a TMS5200 reaches
-about 37.9 Hz. Frames below the substitute part's floor are clamped upward and
-will sound higher than the original. Nine candidate workarounds were built and
-measured; none recovered the range. See [PITCH_CEILING.md](PITCH_CEILING.md).
+about 37.9 Hz. Frames below the replacement part's floor are clamped upward and
+will sound higher than the original.
 
-## A converted ROM is not distinguishable from an original
+Nine candidate workarounds were rendered and measured; none recovered the lower
+range. See [PITCH_CEILING.md](PITCH_CEILING.md).
 
-There is no marker in the output saying it has been converted — there is nowhere
-to put one. A TMS52xx stream has no header, no version field and no spare bits,
-and adding any would change its length and break the in-place property the whole
-approach rests on.
+## The ROM does not carry a conversion marker
 
-The consequence is operational: converting an already-converted ROM moves every
-index a second time and quietly degrades the speech, and the file itself cannot
-warn you.
+There is no spare header or version field in a TMS52xx speech stream where
+Understudy can mark a ROM as converted. Running the conversion twice would move
+the indexes again and degrade the result.
 
-**`convert-set` can, and does, for a supported game.** It matches every device
-against the profile's recorded SHA-256, so a file that has already been through
-the tool no longer matches and is refused. What is unprotected is the manual
-`convert` path, which has no profile to check against and will convert whatever
-you hand it, as many times as you hand it over. The manifest records the input's
-SHA-256 precisely so you can tell which image you have. Keep the original.
+For supported games, `convert-set` prevents this by matching every input device
+against the profile's SHA-256 hashes. An already converted set no longer matches
+and is refused.
 
-## Emulator-derived, not silicon-confirmed
+The manual `convert` path has no profile and cannot provide that protection.
+Keep the original dumps and the generated manifest.
 
-The pitch ceiling and every measurement behind it were derived against PinMAME's
-TMS52xx emulation — the tables in `src/sound/tms5220r.c`, rendered by the
-synthesiser in `src/sound/tms5220.c`. No physical TMS5200 or TMS5220 has been
-measured for this project.
+## Most validation is structural, not acoustic
 
-The ceiling follows from the coefficient table and the counter comparison, which
-are documented chip behaviour, so it should transfer. Finer claims — how one
-conversion strategy compares with another — depend on the emulator's
-interpolation and lattice arithmetic being faithful, which is a stronger
-assumption.
+Every conversion is re-parsed and checked for frame structure and length. The 16
+bundled profiles have also been exercised with the Squawk & Talk firmware in
+board simulation, and the streams observed from that firmware are checked
+against the phrases each profile converts.
 
-So an output of this tool is **structurally checked**: the converter re-parses
-what it wrote and confirms every frame kept its kind and the stream its length.
-That is not an acoustic check, and it is not an emulator run — the tool does not
-invoke one.
+That does not mean the speech has been heard. **Embryon is the only profile
+validated on real hardware.** The other 15 remain `board-simulated`.
 
-For each of the sixteen bundled profiles, the converted devices were
-additionally loaded into a simulation of the Squawk & Talk board, which booted
-and drove them, issuing the same speech commands as the originals. That
-exercises the board's firmware and control flow against the converted data, and
-it is what the `board-simulated` profile status means. **It renders no audio.**
-Fifteen of the sixteen profiles have never been heard, in an emulator or
-otherwise. The exception is Embryon, which has since been played on a real board
-and carries the `silicon-verified` status; that result is one board judged by
-ear, and nothing about it transfers to the other fifteen.
+The Embryon hardware test used the ordinary conversion. The optional
+`--optimize-audio` result has not yet been tested on real hardware.
 
-What that means for your own output is narrower than it may look. Hash
-identification fixes the *inputs*: every device is matched by SHA-256, so a
-`convert-set` run is working on the same bytes the simulation did. The output
-also depends on the target part, the coefficient tables, any override you pass,
-and the version of this tool. Run the same release against the same set with the
-same target and the bundled tables and no overrides, and the result is the one
-that was simulated. Change the target, supply `--source-tables` or
-`--target-tables`, or pass `--allow-unterminated`, and that guarantee no longer
-applies — the output may well still be identical (all three supported targets
-share one coefficient table, so today they produce the same bytes), but nothing
-here establishes it. The manifest records each of those inputs precisely, so
-what a given run actually used is visible rather than assumed.
+See [VALIDATION.md](VALIDATION.md) for the exact coverage.
 
-If you used the manual `convert` path, on an unsupported revision or a layout of
-your own, none of this applies: it has had no simulation at all. Either way,
-calling the result a "working ROM" would require hardware testing that, for
-fifteen of the sixteen profiles, nobody has
-done.
+## Optimizer measurements are game-specific
 
-## Nearest-value conversion is a baseline, not an optimum
+`--optimize-audio` applies pre-measured K-index corrections rather than running a
+scorer during conversion. Only Embryon currently ships optimization data.
 
-`convert` maps each parameter independently to the closest entry in the
-destination table. Choosing K indexes jointly per frame, scored by rendering
-rather than by table distance, did better in our own private experiments,
-because the reflection coefficients interact. **That comparison is not
-reproducible from this repository** -- no scorer, harness or measurement is
-included -- so it is an assertion about work done elsewhere and should be read
-as one.
+The Embryon full-corpus run found better local frame scores for 456 of 475
+eligible voiced frames. When the finished phrases were scored as wholes, 18 of
+20 improved and 2 were slightly worse. No optimized set has yet been heard on a
+real board.
 
-That work is not in this repository. Scoring by rendering requires a
-synthesiser, our synthesiser is PinMAME, and shipping a scorer whose licence
-position is unresolved would push that ambiguity onto every user. If you want to
-pursue it, the architecture to aim for is a pluggable scorer with the renderer
-supplied by you.
+The optimizer therefore remains opt-in, and Understudy refuses the flag on a
+profile with no matching measurement data. See
+[AUDIO_OPTIMIZATION.md](AUDIO_OPTIMIZATION.md).
 
-## Table discovery is manual
+## Custom inputs step outside the bundled validation
 
-You supply `--table-offset` and `--phrases`. Automatic candidate-table discovery
-is feasible and unimplemented. See
+The manifests record the target part, coefficient-table hashes, profile version,
+and conversion options. The bundled profile evidence only describes the
+combinations that were actually tested.
+
+Supplying custom `--source-tables` or `--target-tables`, using the manual
+`convert` path, changing a layout, or forcing an otherwise refused condition
+means you are outside that evidence. The structural checks still run, but there
+is no claim that the resulting ROM matches a board-simulated profile.
+
+## A layout can be valid-looking and still incomplete
+
+Understudy catches many bad layouts: unterminated phrases, speech leaving the
+expected device, unexpected changed bytes, and other structural failures.
+
+It cannot infer that a layout simply contains too few otherwise-valid phrases.
+That happened during development of the Flash Gordon profile: the chosen pointer
+address was real but started partway through the table, so five of eight played
+phrases converted cleanly while three were missed.
+
+Bundled profiles address this with an external coverage check: run the board
+firmware, capture the streams it sends to the TMS, and require every observed
+stream to fall inside a converted phrase. Entries not reached by that trace are
+recorded separately in the profile evidence.
+
+See [VALIDATION.md](VALIDATION.md) and the profile procedure in
 [SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md).
-
-## A layout that is too SMALL cannot be detected from the ROM
-
-Understudy refuses a great many wrong layouts: a phrase that does not terminate,
-one that converts nothing, one whose speech runs off the end of its device, one
-whose bytes leave the devices marked as holding speech, one that overlaps the
-pointer table. Every one of those is a phrase that looks wrong.
-
-It cannot detect a layout whose phrases all look *right* and of which there are
-simply too few. If a profile declares 20 phrases of a 24-entry table, the 20 it
-declares convert perfectly, terminate properly, stay inside their devices and
-reconcile byte for byte — while four phrases are left encoded for the TMS5200,
-and the machine plays them through the wrong tables. Nothing about the twenty
-says anything about the four.
-
-That is not hypothetical. The Flash Gordon profile shipped this way: its table
-address was real but sat fourteen entries into the table, so it found 5 of 8
-phrases and converted 372 of 677 frames. Everything it did convert was correct.
-
-There is no check inside this tool for that, because the information is not in
-the ROM: the number of phrases IS the layout, and it is an input. The check that
-finds it is external — run the board's firmware, capture what it sends the TMS,
-and require every played stream to fall inside a converted phrase. Step 6 of
-"Working out the layout for your ROM" in [SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md)
-describes it, every bundled profile has cleared it, and each records in
-`evidence.traced_phrase_starts` the addresses it was checked against.
-
-The residue that even that leaves is stated per profile in
-`evidence.not_established_by_the_trace`: table entries no command reached during
-the sweep, which rest on the pointer table alone.
 
 ## Scope is one board and one chip family
 
-Squawk & Talk, TMS5200 to the TMS5220 family — which for the purposes of the
-converted data means the TMS5220, TMS5220C and TSP5220C alike, since their LPC
-tables are identical. See [CHIPS.md](CHIPS.md), including what that claim does
-not cover.
+Understudy targets Bally Squawk & Talk speech data converted from the TMS5200 to
+the TMS5220 family. TMS5220, TMS5220C and TSP5220C use the same LPC tables for
+this purpose; see [CHIPS.md](CHIPS.md).
 
-The **TMS5100 and TMS5110 are not handled**. They use a 5-bit pitch field and a
-different frame layout, and the converter refuses tables whose field widths are
-not the 52xx grammar rather than producing plausible nonsense.
+The TMS5100 and TMS5110 are not supported. They use a different frame layout and
+a 5-bit pitch field.
 
-Only **one board** is understood: the Bally Squawk & Talk. Other TMS52xx-bearing
-hardware would need its own layout work, and probably its own profile schema
-fields.
+Other TMS52xx hardware would need its own layout work and likely its own profile
+schema.
 
 ## No checksum handling
 
-If your board's firmware validates the sound ROM, this tool does not update any
-checksum. We have not established whether Squawk & Talk firmware does so.
+Understudy does not update a board-specific ROM checksum. The bundled Squawk &
+Talk workflow has not required one, but hardware with firmware-enforced checksums
+would need additional support.
 
-## Single-listener perceptual evidence
+## Perceptual evidence is still limited
 
-A blinded listening test on the conversion strategies was run with **one
-listener** over eight of ten prepared items. It is preliminary, it is not a
-controlled study, and no perceptual claim in this repository rests on it.
+The project has one real-board Embryon comparison and a small amount of blinded
+listening evidence from development work. That is useful engineering feedback,
+not a controlled perceptual study. Objective rendering scores are also proxies
+for similarity, not a guarantee of what a listener will prefer.

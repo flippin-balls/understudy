@@ -1,190 +1,155 @@
 # Adding a game profile
 
-A profile is what lets `understudy identify` and `convert-set` work on a game
-without anyone typing pointer offsets. It is a small JSON file of layout facts
-and device hashes.
+A profile lets `identify` and `convert-set` handle a game without asking the user
+for pointer offsets or socket mappings. It contains layout facts, device hashes,
+and validation evidence.
 
-**A profile contains no ROM data, and we do not want any.** Do not attach ROM
-images to an issue or a pull request. Everything below is derived from a ROM you
-have; none of it reproduces one.
+**Do not include ROM images.** Profiles contain no ROM data, and ROM files should
+not be attached to issues or pull requests.
 
-## What you need to find
+## What you need to establish
 
-Five layout facts and a description of the sockets. `understudy inspect` and the
-procedure in
-[SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md#working-out-the-layout-for-your-rom)
-walk you through finding them:
+Start with the layout procedure in
+[SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md#working-out-the-layout-for-your-rom).
+A profile needs these layout facts:
 
-| | |
+| field | meaning |
 |---|---|
-| pointer table offset | where the table of phrase pointers begins |
-| phrase count | how many entries it has |
-| base address | the CPU address the assembled window starts at |
-| ordering | address order, or command order |
-| end bound | does the table carry one extra entry for the last phrase's end? |
+| pointer table offset | where phrase pointers begin |
+| phrase count | number of phrases |
+| base address | CPU address of the assembled image |
+| ordering | address order or command order |
+| end bound | whether the table has a final end pointer |
 
-plus, per socket: the device type and size, the CPU address it maps to, whether
-a 2 KB device is mirrored in a 4 KB socket, and whether it holds speech.
+It also needs, for each socket: device type and size, CPU address, mirroring,
+whether it carries speech, and its SHA-256.
 
-## Writing it
+## Create the profile
 
-Copy `src/tms52xx/data/profiles/embryon.json` and edit it. The fields are
-documented in `src/tms52xx/profiles.py`; the loader validates every one and will
-tell you exactly what is wrong.
+Copy `src/tms52xx/data/profiles/embryon.json` and edit it. The loader in
+`src/tms52xx/profiles.py` validates the schema and reports invalid fields.
 
-### Layout fields that are claims, not switches
+### Layout exceptions
 
-Four `layout` fields let a profile state something unusual about its table.
-Each is *checked*, so none of them can be used to wave a bad layout through:
+Some games need explicit exceptions to the default layout rules:
 
-| field | states | checked how |
+| field | use it for | check performed |
 |---|---|---|
-| `entry_form` | `starts` (default) or `start_end_pairs` — whether an entry is a phrase start or a 4-byte (start, end) record | a pair record whose end precedes its start, or which overlaps the table, is refused; with `start_end_pairs`, stating `address_ordered` or `has_end_bound` is refused because neither has meaning |
-| `silent_phrases` | phrases that are a run of silence and nothing else | a named phrase that carries speech is refused |
-| `unterminated_phrases` | phrases the ROM leaves the player to terminate | a named phrase that *does* end in a stop frame is refused, and any phrase you did **not** name still has to terminate |
-| `truncate_last_byte` | phrases whose final ROM byte is never transmitted | `inspect --source-tables` reports where truncation is safe |
+| `entry_form` | `starts` or `start_end_pairs` | pair bounds and table overlap are validated |
+| `silent_phrases` | known all-silence phrases | named phrases must actually contain only silence |
+| `unterminated_phrases` | phrases terminated by the player rather than the ROM | named phrases must be unterminated; unnamed phrases must stop normally |
+| `truncate_last_byte` | phrases whose last ROM byte is not transmitted | use `inspect --source-tables` to establish where truncation is safe |
 
-Name only what you have checked. The value of each list is that everything not
-on it is still held to the default rule.
+Name only exceptions you have checked. Everything not named remains subject to
+the normal rule.
 
-**Every device needs a `sha256`, not only the speech-bearing ones.** A device
-carrying no speech is still copied out as a burn image, so it has to be
-authenticated too; `convert-set` refuses a profile that cannot verify every
-device it will emit.
+Every emitted device needs a `sha256`, including devices that hold no speech.
+`convert-set` verifies every file it will write back out.
 
-Get the device hashes with:
+You can print hashes with:
 
-```
+```text
 python understudy.py identify U4.bin U5.bin
 ```
 
-which prints the SHA-256 of each file whether it recognises them or not.
+The command prints each file's SHA-256 even if the set is not recognized.
 
-### Status
+## Status
 
-Be honest about this. It is the field a technician reads before trusting the
-profile.
+Use the lowest status supported by the evidence:
 
-| status | means, exactly |
+| status | meaning |
 |---|---|
-| `draft` | written, not yet checked against a real dump |
-| `layout-verified` | every phrase is found, and terminates in a stop frame or is named in `unterminated_phrases` and checked |
-| `board-simulated` | the board's own firmware, in emulation, boots and drives the **converted** ROMs |
+| `draft` | layout written but not fully checked |
+| `layout-verified` | phrases and layout checks pass against a real dump |
+| `board-simulated` | converted ROMs boot and run with the board firmware in simulation |
 | `silicon-verified` | a converted set has been fitted to a real board and listened to |
 
-**No rung below `silicon-verified` means anyone has heard the speech.** Not
-even `board-simulated`: that checks structure and control flow, not sound.
+`board-simulated` is not an audio result. Only `silicon-verified` means anyone
+has heard the conversion on hardware.
 
-`board-simulated` catches a layout that converted something which was not
-speech — Embryon's own profile shipped briefly with a pointer-table end bound
-read as a 21st phrase; it parsed, it terminated, it changed nothing outside its
-extent, and it rewrote 6800 instructions. Every static check passed it. Booting
-the board against the converted ROMs did not.
+Past profile failures are documented in [VALIDATION.md](VALIDATION.md). They are
+why a clean parse or successful boot alone is not enough: a profile also needs
+coverage evidence from the board firmware's actual TMS byte streams.
 
-**But booting is not sufficient either.** Fathom shipped a profile that booted
-identically to the original while rewriting 31 bytes of firmware, because the
-commands the simulation issues never reach that code. A profile now also has to
-agree with a phrase list captured from the **running** board — see step 6 of
-"Working out the layout for your ROM" in
-[SQUAWK_AND_TALK.md](SQUAWK_AND_TALK.md). If you cannot run that check, say so
-in the evidence block and mark the profile `draft`; it is better to contribute a
-layout labelled as unconfirmed than one labelled as more than it is.
+## Evidence block
 
-**Only a real-machine test earns `silicon-verified`**, and it needs a report —
-see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+Record how you established the layout and what remains unverified. In
+particular, distinguish:
 
-### Evidence
+- table/layout evidence;
+- board-simulation evidence;
+- firmware-trace coverage;
+- real-hardware listening evidence.
 
-The `evidence` block is not decoration. Say how you established the layout, what
-you checked, and — importantly — what you did **not**. Embryon's carries a
-`not_verified` key saying plainly that nothing has been played on a real board.
-Follow that habit.
+If the firmware trace does not exercise some table entries, record them in the
+profile evidence rather than implying they were covered.
 
-## Checking it
+## Test the profile locally
 
-Point Understudy at your working directory rather than editing the installed
-copy:
+Point Understudy at a working profile directory:
 
 ```bash
-export UNDERSTUDY_PROFILE_DIR=/path/to/your/profiles       # bash / zsh
+export UNDERSTUDY_PROFILE_DIR=/path/to/your/profiles
 ```
 
 ```powershell
-$env:UNDERSTUDY_PROFILE_DIR = 'C:\path\to\profiles'      # PowerShell
+$env:UNDERSTUDY_PROFILE_DIR = 'C:\path\to\profiles'
 ```
 
-```bat
-set UNDERSTUDY_PROFILE_DIR=C:\path\to\profiles           # cmd.exe
-```
+Then run:
 
-Then:
-
-```
-python understudy.py identify U4.bin U5.bin   # should now name your game
+```text
+python understudy.py identify U4.bin U5.bin
 python understudy.py convert-set U4.bin U5.bin --target tsp5220c -o out/ --dry-run
 ```
 
-The dry run prints the validation block without writing anything. Look for:
+Check that:
 
-- every phrase found, and none reported without a stop frame;
-- phrase lengths that look like words rather than wildly uneven;
-- every socket you marked `holds_speech` actually changing;
-- the reconciliation line adding up.
+- the expected game is identified;
+- every phrase parses as expected;
+- speech-bearing sockets actually change;
+- reported speech coverage makes sense for the device;
+- the image/device reconciliation line balances.
 
-If a socket you marked as holding speech does not change, the layout is not
-finding its phrases and the profile is wrong — Understudy will refuse rather
-than write, but do not talk it into proceeding.
+Then run the test suite:
 
-Then run the tests:
-
-```
+```text
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-## What a profile has to clear
+## What a profile must clear before shipping
 
-Automatic layout detection is not enough. A sweep over 46 Squawk & Talk sets
-found layouts that convert cleanly, boot the board's firmware, and are still
-wrong — one converted 1.5% of its speech and behaved normally. Before a profile
-ships:
+1. **Valid phrase layout.** Phrases must terminate normally unless an exception
+   is explicitly established and recorded.
+2. **Plausible device coverage.** `convert-set` reports how much of each physical
+   device is consumed by speech. There is no universal threshold; use it as a
+   sanity check against the board and ROM organization.
+3. **Independent evidence where available.** A separately derived frame count or
+   phrase list is useful because it does not depend on the same pointer-table
+   interpretation.
+4. **Board simulation.** The board firmware should boot and behave normally with
+   the converted ROMs before using `board-simulated` status.
+5. **Firmware-trace coverage.** Every speech stream observed from the board
+   firmware must fall inside a phrase the profile converts. Any entries not
+   reached by the trace must be called out in the evidence.
 
-1. **every phrase found and terminating** — `inspect --source-tables` shows it.
-   If one does not, that is normally a wrong layout. It can also be a ROM whose
-   player supplies the terminator: one phrase of Mr. and Mrs. Pac-Man is, and
-   nothing else in the sixteen sets. Establish which before naming it in
-   `unterminated_phrases`, and expect to be held to it — a named phrase that
-   does terminate is refused;
-2. **speech coverage that looks like a whole ROM.** `convert-set` prints, per device, the share of the PHYSICAL part that the
-   layout's phrases actually convert -- each phrase counted to its own stop
-   frame, not to its declared bound, and mapped through the mirror so a 2 KB
-   part in a 4 KB window is measured against 2048 bytes. Across the sixteen
-   shipped sets that runs 2%-100% with a median of 98%; the low figures are
-   devices that hold mostly something other than speech, and the known-wrong
-   layout in the corpus sweep ran 1.5%. There is no safe threshold, so look
-   at the number and judge it;
-3. **an independent frame count if you can get one** — four sets matched a
-   separately built corpus exactly, and that is the strongest check available
-   short of hardware;
-4. **the board's firmware booting against the converted ROMs**, behaving as it
-   does with the originals. That is what `board-simulated` means.
+A profile that cannot clear all of those can still be contributed as `draft`.
 
-## Sending it
+## Send the pull request
 
-Open a pull request with:
+Include:
 
 - the profile JSON;
-- a line in [CHANGELOG.md](../CHANGELOG.md);
-- the game added to the supported table in [README.md](../README.md);
-- in the PR description: how you established the layout, what you verified, and
-  the output of the `--dry-run` above.
+- a CHANGELOG entry;
+- the game in the README supported-games table;
+- the `--dry-run` output and a short description of how the layout was
+  established.
 
-**Do not attach ROM images.** If a maintainer needs to check something, the
-hashes and the manifest are enough; if they are not, we will ask you to run a
-command rather than send data.
+Do not attach ROM images. If more information is needed, maintainers can ask for
+a command to run against your copy.
 
-## If you cannot get it working
+## If you get stuck
 
-Open an issue with the **New game profile** template anyway. A partial layout,
-or a clear description of where it stops making sense, is a useful contribution.
-Several of the awkward cases already documented here — the mirrored device, the
-pointer table sitting above the speech — were found exactly that way.
+Open an issue using the **New game profile** template. A partial layout or a
+specific point where the analysis stops making sense is still useful.

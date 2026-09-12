@@ -1,42 +1,23 @@
 # Reporting a real-board test
 
-**This is the most useful thing anyone can contribute.** Exactly one profile --
-Embryon -- has been validated on silicon, on a single board, by ear. Everything
-the other fifteen claim comes from static analysis and emulation, and until
-someone fits a converted set to a real Squawk & Talk and listens to it, that is
-all they can claim.
+Real-board results are one of the most useful contributions to Understudy.
+Embryon is currently the only profile tested on hardware; the other bundled
+profiles are validated structurally and in board simulation.
 
-A second report on a title that already has one is still worth having: the
-Embryon result is one listener's judgement, and it left an unexplained
-observation behind (the replacement part sounded slightly louder than the
-original).
+A second report on Embryon is still useful, especially with a different
+replacement chip or with `--optimize-audio`.
 
-If you do it — whether it works or not — please report it. A failure is worth
-more than silence, and a partial failure ("phrases 1-14 fine, 15 sounds wrong")
-is worth more than either.
-
-Open an issue using the **Hardware validation** template, or copy the form below
-into one.
+Open an issue using the **Hardware validation** template, or copy the form below.
 
 ## Before you start
 
-- **Keep your original ROMs.** Burn onto blanks. If the conversion is wrong you
-  want to be able to put the machine back.
-- **Keep the manifest** `convert-set` wrote. Nearly every question anyone will
-  ask you is answerable from it, and it contains no ROM data.
-- Note the chip markings before you pull anything.
+- Keep the original ROMs and chips.
+- Keep the manifest from `convert-set`.
+- Record the markings on the original and replacement speech chips.
+- If possible, record or listen to the original TMS5200 setup first so you have a
+  baseline on the same board.
 
-## The baseline matters
-
-A test is far more useful with a "before". If the machine currently talks,
-record what it sounds like with the original TMS5200 and original ROMs first,
-phrase by phrase. Without that, an oddity in phrase 12 cannot be told from an
-oddity that was always there — these boards are forty-odd years old and not
-everything odd is our fault.
-
----
-
-## Form
+## Test form
 
 ### Machine and board
 
@@ -45,9 +26,9 @@ everything odd is our fault.
 | Game / title | |
 | Board | e.g. Bally Squawk & Talk AS-2518-61 / -61A |
 | Board revision markings | |
-| Anything non-standard about the board | repairs, mods, socketed parts |
+| Repairs, mods, or other non-standard details | |
 
-### Chips
+### Speech chips
 
 | | original | replacement |
 |---|---|---|
@@ -55,7 +36,7 @@ everything odd is our fault.
 | Date code | | |
 | Other markings | | |
 
-Did the replacement need any board change (jumpers, sockets, wiring)?
+Did the replacement require any jumper, socket, wiring, or other board change?
 
 ### ROMs
 
@@ -64,66 +45,63 @@ Did the replacement need any board change (jumpers, sockets, wiring)?
 | U4 | 2716 | | | |
 | U5 | 2532 | 2532 / 2732 | | |
 
-The hashes are in your manifest, under `inputs` and `outputs`.
+The hashes are in the manifest under `inputs` and `outputs`.
 
 ### Understudy
 
 | | |
 |---|---|
-| Version (`python understudy.py --version`, or the manifest) | |
+| Version | `python understudy.py --version` or manifest |
 | Profile id and version | |
 | Target chip | |
-| Source table SHA-256 | from the manifest, `tables.source.sha256` |
-| Target table SHA-256 | from the manifest, `tables.target.sha256` |
-| Any overrides used | `--allow-unterminated`, custom tables, etc. |
+| Audio optimization | off / `--optimize-audio` |
+| Source table SHA-256 | manifest `tables.source.sha256` |
+| Target table SHA-256 | manifest `tables.target.sha256` |
+| Other overrides | custom tables, `--allow-unterminated`, etc. |
 
-### Power-on behaviour
+If audio optimization was enabled, include the manifest's
+`audio_optimization` section.
+
+### Power-on behavior
 
 - Does the board come out of reset normally?
-- Does the speech chip's READY behave as before?
-- Anything different about the self-test, if the board has one?
-- Any new noise, hum, or click that was not there before?
+- Does the speech chip's READY behavior look normal?
+- Any change in self-test behavior?
+- Any new noise, hum, or click?
 
 ### Phrase by phrase
 
-The important part. One row per phrase the game can speak.
+One row per phrase or command you can exercise:
 
 | phrase / command | intelligible? | pitch vs original | notes |
 |---|---|---|---|
 | 0 | yes / no / partly | same / higher / lower | |
 | 1 | | | |
 
-For "pitch vs original": Understudy raises frames it cannot reproduce, so
-*some* phrases sounding higher is expected and the manifest says how many
-frames were affected. What matters is whether it is intelligible and whether
-anything sounds broken rather than merely higher.
-
 Note especially:
 
-- a phrase that is **cut short** or runs on;
-- **noise or garbage** instead of speech;
-- a phrase that **does not play at all**;
-- speech that plays at the **wrong speed** — that one is interesting, because it
-  is what a TMS5220C would do if the board sent it a SET RATE command
-  (see [CHIPS.md](CHIPS.md)).
+- speech cut short or running on;
+- noise or garbage instead of speech;
+- a phrase that does not play;
+- speech at the wrong speed;
+- any phrase that sounds worse with `--optimize-audio` than without it.
+
+Some pitch raising is expected when a source frame falls below the TMS5220's
+pitch floor. The manifest reports how many frames were affected.
 
 ### Conclusion
 
-- [ ] **PASS** — the machine speaks correctly; differences are limited to the
-      expected pitch raising
-- [ ] **PARTIAL** — mostly works, specific phrases wrong (say which)
-- [ ] **FAIL** — does not work (say how)
+- [ ] **PASS** — speech works correctly
+- [ ] **PARTIAL** — mostly works, with specific problems noted above
+- [ ] **FAIL** — does not work
 
-Anything else worth knowing?
+Anything else worth recording?
 
----
+## What happens to the report
 
-## What happens to your report
+A passing first hardware report can move a profile from `board-simulated` to
+`silicon-verified`. Partial and failing reports are just as important because
+they expose problems the structural and simulation checks did not catch.
 
-A PASS on a profile moves it from `board-simulated` to `silicon-verified`, and
-that is recorded in the profile with your report referenced. A FAIL or PARTIAL
-is more valuable still: it means something is wrong that no amount of emulation
-was going to find, and it will be treated as a bug.
-
-You will be credited in [ACKNOWLEDGEMENTS.md](../ACKNOWLEDGEMENTS.md) unless you
-would rather not be.
+Reports may be referenced from the profile and acknowledgements unless you ask
+not to be credited.
