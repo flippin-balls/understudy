@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "profile_id": "medusa",
+  "profile_version": 1,
+  "title": "Medusa",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "medusa",
+    "medusaa",
+    "medusaf"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U3",
+      "label": "845-01_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "d8735006a36823477549bff53f95978d47f7fb27b1b6c93bdc7397870f40c79c",
+      "crc32": "32200e02"
+    },
+    {
+      "socket": "U4",
+      "label": "845-02_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "a3fa15e40fa02f56fb6a43cc55c1955240ff3e9cc3ec7695c1f3e9b17ead26c8",
+      "crc32": "ab95885a"
+    },
+    {
+      "socket": "U5",
+      "label": "845-05_5",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 61440,
+      "mirrored": true,
+      "holds_speech": false,
+      "sha256": "1c39d85d33d3c99c01068929f815df12ff80c4953b8ff12aeaf007e778acff26",
+      "crc32": "3792a812"
+    }
+  ],
+  "layout": {
+    "table_offset": 13149,
+    "base_address": 49152,
+    "phrases": 27,
+    "truncate_last_byte": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F35D, 27 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 26 streams from 26 distinct addresses spanning $D000-$EF5E. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "1567 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 16 SPEAK EXTERNAL commands, 4612 writes to the TMS, and 17630 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$D000",
+      "$D1AF",
+      "$D4BF",
+      "$D636",
+      "$D8B4",
+      "$DACB",
+      "$DCD4",
+      "$DED8",
+      "$E1AE",
+      "$E3C9",
+      "$E5C5",
+      "$E69E",
+      "$E762",
+      "$E811",
+      "$E89C",
+      "$E904",
+      "$E99B",
+      "$EA13",
+      "$EAB3",
+      "$EB11",
+      "$EBB3",
+      "$EBF5",
+      "$EC9C",
+      "$ED3F",
+      "$EE54",
+      "$EF5E"
+    ],
+    "traced_streams": 26,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 26 streams from 26 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 26 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "This layout declares 1 distinct phrase the firmware never played ($D334). Nothing here confirms those independently: the evidence for them is the pointer table itself, which is the same kind of evidence that was wrong in Fathom v1. They are converted on the basis that they are entries in a table whose every other entry the trace confirms.",
+    "chip_commands": "The board's own firmware was driven through every command byte its MPU can send (all 256) and the bytes it wrote to the TMS were captured. It issues exactly 0x60 SPEAK EXTERNAL, and never an opcode in the 0x00/0x20 SET RATE range that a TMS5220C or TSP5220C interprets differently from a TMS5200. That is what makes the C-family targets available for this set; it is a statement about this firmware, not about electrical compatibility, which nobody here has tested."
+  },
+  "notes": [
+    "This sound ROM set is shared by 3 game revisions: medusa, medusaa, medusaf.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ],
+  "chip_commands_observed": [
+    "0x60"
+  ]
+}

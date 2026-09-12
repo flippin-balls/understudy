@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "profile_id": "embryon",
+  "profile_version": 4,
+  "title": "Embryon",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U4",
+      "label": "841-01",
+      "type": "2716",
+      "size": 2048,
+      "cpu_address": 57344,
+      "mirrored": true,
+      "holds_speech": true,
+      "sha256": "8495958b46c73f98840adff7d1ffe9076cc7c9ffdca5aeb8e6744501eefb7475",
+      "crc32": "e8b234e3",
+      "note": "A 2 KB device in a 4 KB socket. The firmware addresses its speech through the $E800 mirror, not the $E000 copy, so conversion rewrites the upper half."
+    },
+    {
+      "socket": "U5",
+      "label": "841-02",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "f24559ad001b4cbb1ef4442a9f06502cfe1f8685b8ae7ae0ebfe0622866caf82",
+      "crc32": "9cd8c04e",
+      "note": "Carries the pointer table at $FC1C as well as speech. A 2532 and a 2732 are not pin-compatible; the board has jumper options for both, so confirm which is fitted before reading or burning."
+    }
+  ],
+  "layout": {
+    "table_offset": 15388,
+    "base_address": 49152,
+    "phrases": 20,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "chip_commands_observed": [
+    "0x60"
+  ],
+  "status": "silicon-verified",
+  "evidence": {
+    "layout": "Pointer table at CPU $FC1C (file 0x3C1C in the assembled window), 21 entries: 20 phrases and a final END BOUND at $F9DA. Command-ordered. All 20 phrases parse and terminate in a stop frame.",
+    "speech_addressing": "Phrase pointers resolve to $E800-$F9DA, i.e. U4 is reached through its mirror.",
+    "conversion": "850 frames converted; all 850 kept their frame kind when the output was re-parsed with the target tables; 17 frames (2.0%) sat below the TMS5220 pitch floor and were clamped; median f0 error on the rest 1.07 Hz, maximum 3.40 Hz; 3508 bytes changed, none outside the phrase extents; the pointer table was not modified.",
+    "chip_commands": "The board's own firmware was driven through every command byte its MPU can send (all 256) and the bytes it wrote to the TMS were captured. It issues exactly 0x60 SPEAK EXTERNAL, and never an opcode in the 0x00/0x20 SET RATE range that a TMS5220C or TSP5220C interprets differently from a TMS5200. That is what makes the C-family targets available for this set; it is a statement about this firmware, not about electrical compatibility, which nobody here has tested.",
+    "not_verified": "What this profile still does NOT establish. The silicon test was one board, one listener, by ear -- not a measurement: no spectrum was captured, no phrase-by-phrase transcript recorded, and the loudness difference noted above is unexplained. Electrical substitution of the replacement part is the fitter's responsibility and was verified only in the sense that this particular board ran it. Nothing here transfers to the other profiles: each carries its own phrase table, pointer layout and mirror arrangement, and those are exactly what goes wrong.",
+    "end_bound": "Entry 20 ($F9DA) is a bound, not a phrase. The bytes there are six zeros followed by 8E 00 7F (LDS #$007F) and BD FA 5F (JSR $FA5F) -- 6800 code. Tracing the board's own firmware confirms it: 270 distinct addresses in $F9DA-$FC1C are executed, the first at $F9E1. Treating that entry as a 21st phrase made it run to the pointer table, and the parser read the zero padding as silence frames until it found a 0xF nibble inside the code -- so conversion rewrote executable instructions and the board no longer booted in simulation.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 12 SPEAK EXTERNAL commands, 2396 writes to the TMS, and 10963 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "independent_check": "Counts derived separately from this layout agree: 850 frames, and 20 distinct phrase starts observed by running the board -- both matching what this layout produces. The harness that produces these is a private research toolkit and is not part of this repository; what it measured is recorded here, and evidence.traced_phrase_starts lists the addresses so a reader with the same dumps can re-derive them.",
+    "traced_phrase_starts": [
+      "$E000",
+      "$E0A1",
+      "$E15C",
+      "$E237",
+      "$E2DB",
+      "$E3B3",
+      "$E5B3",
+      "$E6FC",
+      "$EFCA",
+      "$F07B",
+      "$F148",
+      "$F2E9",
+      "$F380",
+      "$F472",
+      "$F52D",
+      "$F63C",
+      "$F704",
+      "$F7AF",
+      "$F896",
+      "$F949"
+    ],
+    "traced_streams": 20,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 20 streams from 20 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 20 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone.",
+    "silicon": "Fitted to a real Bally Squawk & Talk AS-2518-61A and listened to, 2026-09-11, by the machine's owner (Flashback Fleet LLC). Three conditions were compared on the same board, one variable at a time: (1) TMS5200 with the original ROMs, the correct baseline; (2) TMS5220 with the original ROMs, i.e. the fault being corrected; (3) TMS5220 with the converted ROMs. Condition 2 established that the board, sockets and the replacement part were all working before the converted set was fitted, so a bad result in condition 3 could not have been blamed on the hardware. Both devices were swapped together each time, U4 holding phrases 0-8 and U5 phrases 8-19. Condition 3 was reported as 'very good' and 'very very close' to the condition 1 baseline; no phrase was broken, unintelligible or missing. No jumper or wiring change was made: U4 was refitted with a 2716, leaving the board in its documented configuration.",
+    "silicon_pitch_clamping": "The 17 clamped frames (2.0%), concentrated in phrases 10, 16, 17, 18 and 19, were NOT reported as standing out. The pitch ceiling itself is unaffected -- it is a property of the TMS5220 coefficient table, not of this conversion -- but its audible cost at this proportion appears to be below the threshold of notice on this title. Note what this is and is not: a listener did not notice something. Nothing was measured, no spectrum was captured, and one pair of ears on one board is not a characterisation of the ceiling.",
+    "silicon_open_question": "The TMS5220 was reported as sounding slightly LOUDER than the TMS5200. The cause is UNKNOWN. It is not a difference in the loudness data: the two parts' energy tables are byte-identical and conversion never rewrites the energy field, remapping pitch and K1-K10 only. That does not exonerate the conversion, because remapped K coefficients can change the lattice filter's gain at an identical energy index. The other candidate is that the parts' output stages differ. Unresolved; worth a second board and, ideally, a measurement rather than an ear."
+  },
+  "notes": [
+    "This sound ROM set is shared by 6 game revisions: embryon, embryona, embryonb, embryonc, embryond, embryone.",
+    "Command order, not address order: entry N is the phrase command N plays, and consecutive entries are not consecutive in memory.",
+    "The research toolkit's GAME_LAYOUTS records 21 entries and 16 directly addressable phrases (internal commands 0x28-0x37). The 21st entry is the end bound; entries 16-19 are reached by the composite sequences at $FC46."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ],
+  "applies_to": [
+    "embryon",
+    "embryona",
+    "embryonb",
+    "embryonc",
+    "embryond",
+    "embryone"
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "profile_id": "fathom",
+  "profile_version": 2,
+  "title": "Fathom",
+  "manufacturer": "Bally",
+  "year": 1981,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "fathom",
+    "fathoma",
+    "fathomb"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U4",
+      "label": "842-01_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "3397f6aa45f4117ce8d87877edcda0afa7117ac8aca11d904a3fe93e192d3cdc",
+      "crc32": "2ac02093"
+    },
+    {
+      "socket": "U5",
+      "label": "842-02_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "794060d72024a49bbb3a6963248399d009d8011124449cf87a3fa23914750a7d",
+      "crc32": "736800bc"
+    }
+  ],
+  "layout": {
+    "table_offset": 14959,
+    "base_address": 49152,
+    "phrases": 26,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": []
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $FA6F, 26 phrases with a final end bound at $F77D, command-ordered. Every phrase parses and terminates in a stop frame.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 26 distinct phrases spanning $E000-$F6DE, totalling 6013 bytes. This layout's 26 phrase starts are exactly that set -- no phrase missing, none invented.",
+    "conversion": "1182 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 8 SPEAK EXTERNAL commands, 2148 writes to the TMS, and 9383 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "corrected_in_v2": "Version 1 of this profile declared 28 phrases, taking two entries past the end of the table as speech. Entry 26 ($F77D) is the last phrase's end bound and points at erased 0xFF, which parses as an immediate stop frame; entry 27 ($FAD3) is 6802 CODE, and converting it rewrote 31 bytes of firmware. The board simulation still booted, because the 64 commands it issues never reach that code -- which is why the traced phrase list, not the simulation, is what settles a layout. The frame count that appeared to confirm v1 came from a corpus built by the same kind of static read, so it agreed with the error rather than testing it.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$E000",
+      "$E071",
+      "$E0CF",
+      "$E120",
+      "$E226",
+      "$E2A9",
+      "$E3BE",
+      "$E44E",
+      "$E553",
+      "$E5DB",
+      "$E69B",
+      "$E80A",
+      "$E90D",
+      "$E99D",
+      "$EA82",
+      "$ECA4",
+      "$EDE3",
+      "$EEE7",
+      "$F023",
+      "$F103",
+      "$F1E3",
+      "$F2FB",
+      "$F3F0",
+      "$F468",
+      "$F5CC",
+      "$F6DE"
+    ],
+    "traced_streams": 26,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 26 streams from 26 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 26 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone.",
+    "chip_commands": "The board's own firmware was driven through every command byte its MPU can send (all 256) and the bytes it wrote to the TMS were captured. It issues exactly 0x60 SPEAK EXTERNAL, and never an opcode in the 0x00/0x20 SET RATE range that a TMS5220C or TSP5220C interprets differently from a TMS5200. That is what makes the C-family targets available for this set; it is a statement about this firmware, not about electrical compatibility, which nobody here has tested."
+  },
+  "notes": [
+    "This sound ROM set is shared by 3 game revisions: fathom, fathoma, fathomb.",
+    "Command order, not address order.",
+    "The speech is all below the pointer table at $FA6F. Everything above it is code."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ],
+  "chip_commands_observed": [
+    "0x60"
+  ]
+}

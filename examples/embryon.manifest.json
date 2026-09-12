@@ -1,0 +1,439 @@
+{
+  "schema_version": 4,
+  "tool": "understudy",
+  "understudy_version": "0.3.0",
+  "profile": {
+    "id": "embryon",
+    "version": 4,
+    "title": "Bally Embryon (1981)",
+    "status": "silicon-verified",
+    "sha256": "1b85712566f61ea8e1e741db4a9447eaeecba3e738417583a3b9aaad8b1bc894",
+    "applies_to": [
+      "embryon",
+      "embryona",
+      "embryonb",
+      "embryonc",
+      "embryond",
+      "embryone"
+    ],
+    "source": "data/profiles/embryon.json"
+  },
+  "chips": {
+    "source": "tms5200",
+    "target": "tms5220",
+    "requested_source": "tms5200",
+    "requested_target": "tms5220"
+  },
+  "tables": {
+    "source": {
+      "requested_chip": "tms5200",
+      "table_name": "tms5200",
+      "bundled": true,
+      "path": "data/tms5200.json",
+      "sha256": "b5295263819250f84e9ec7f4feeadafd662b063ab53f69047e759c146d457b17",
+      "chip": "tms5200",
+      "provenance": {
+        "repository": "https://github.com/mamedev/mame",
+        "path": "src/devices/sound/tms5110r.hxx",
+        "struct": "T0285_2501E_coeff",
+        "source_sha256": "43b114437812a94073804617f78a4fd72e9874292dc9be44660cf7b8904f6480",
+        "license": "BSD-3-Clause",
+        "copyright_holders": "Frank Palazzolo, Couriersud, Jonathan Gevaryahu"
+      }
+    },
+    "target": {
+      "requested_chip": "tms5220",
+      "table_name": "tms5220",
+      "bundled": true,
+      "path": "data/tms5220.json",
+      "sha256": "f15418abad1bbe838edc67036961c8675692c2196a8be3d70d2b316c628c983c",
+      "chip": "tms5220",
+      "provenance": {
+        "repository": "https://github.com/mamedev/mame",
+        "path": "src/devices/sound/tms5110r.hxx",
+        "struct": "tms5220_coeff",
+        "source_sha256": "43b114437812a94073804617f78a4fd72e9874292dc9be44660cf7b8904f6480",
+        "license": "BSD-3-Clause",
+        "copyright_holders": "Frank Palazzolo, Couriersud, Jonathan Gevaryahu"
+      }
+    }
+  },
+  "layout": {
+    "table_offset": 15388,
+    "phrases": 20,
+    "base_address": 49152,
+    "address_ordered": false,
+    "has_end_bound": true,
+    "truncate_last_byte": [],
+    "window_base": 49152,
+    "window_size": 16384
+  },
+  "inputs": [
+    {
+      "socket": "U4",
+      "bytes": 2048,
+      "sha256": "8495958b46c73f98840adff7d1ffe9076cc7c9ffdca5aeb8e6744501eefb7475",
+      "device_type": "2716",
+      "expected_sha256": "8495958b46c73f98840adff7d1ffe9076cc7c9ffdca5aeb8e6744501eefb7475",
+      "matches_profile": true
+    },
+    {
+      "socket": "U5",
+      "bytes": 4096,
+      "sha256": "f24559ad001b4cbb1ef4442a9f06502cfe1f8685b8ae7ae0ebfe0622866caf82",
+      "device_type": "2532",
+      "expected_sha256": "f24559ad001b4cbb1ef4442a9f06502cfe1f8685b8ae7ae0ebfe0622866caf82",
+      "matches_profile": true
+    }
+  ],
+  "outputs": [
+    {
+      "socket": "U4",
+      "speech_coverage_percent": 99.6,
+      "device_type": "2716",
+      "bytes": 2048,
+      "sha256": "c75dc8cbafcff408d4496ee89c23111d27733289019c55eba81c96c01a0df304",
+      "changed_bytes": 1560,
+      "window_changed_bytes": 1560,
+      "changed": true,
+      "taken_from_mirror": true,
+      "source_window": "mirror",
+      "window": [
+        10240,
+        12288
+      ],
+      "path": "out/841-01_4_U4_2716_tms5220.716"
+    },
+    {
+      "socket": "U5",
+      "speech_coverage_percent": 61.3,
+      "device_type": "2532",
+      "bytes": 4096,
+      "sha256": "977ac758d65d1be2e6b7c38397a756a400b6589c5fda368f8a2b3838f024a81e",
+      "changed_bytes": 1948,
+      "window_changed_bytes": 1948,
+      "changed": true,
+      "taken_from_mirror": false,
+      "source_window": "lower",
+      "window": [
+        12288,
+        16384
+      ],
+      "path": "out/841-02_5_U5_2532_tms5220.532"
+    }
+  ],
+  "image": {
+    "before_sha256": "4d0f159c5d36c242450854f914cdb379751db61541eda6d404be960c02a0b1ce",
+    "after_sha256": "ea73b6b9bfbaad619742485968fe4131324d36e6707e2cc12d1a1d25a155ab7b",
+    "bytes": 16384
+  },
+  "audio_optimization": {
+    "enabled": false
+  },
+  "summary": {
+    "phrases": 20,
+    "distinct_phrases": 20,
+    "frames": 850,
+    "frames_clamped": 17,
+    "frames_approximated": 446,
+    "frames_truncated": 0,
+    "clamped_percent": 2.0,
+    "phrases_without_stop_frame": 0,
+    "bytes_changed": 3508,
+    "frame_kinds_preserved": 850,
+    "f0_error_hz": {
+      "frames": 617,
+      "median": 1.069,
+      "mean": 1.011,
+      "max": 3.401
+    }
+  },
+  "phrase_rows": "one row per pointer in the layout; a row with alias_of set repeats an earlier row's phrase and is excluded from the summary totals",
+  "phrases": [
+    {
+      "index": 0,
+      "start": 10240,
+      "end": 10401,
+      "frames": 29,
+      "clamped": 0,
+      "approximated": 7,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 126,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 1,
+      "start": 10401,
+      "end": 10588,
+      "frames": 31,
+      "clamped": 0,
+      "approximated": 24,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 150,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 2,
+      "start": 10588,
+      "end": 10807,
+      "frames": 37,
+      "clamped": 0,
+      "approximated": 27,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 166,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 3,
+      "start": 10807,
+      "end": 10971,
+      "frames": 32,
+      "clamped": 0,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 119,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 4,
+      "start": 10971,
+      "end": 11187,
+      "frames": 41,
+      "clamped": 0,
+      "approximated": 23,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 167,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 5,
+      "start": 11187,
+      "end": 11699,
+      "frames": 98,
+      "clamped": 0,
+      "approximated": 47,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 383,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 6,
+      "start": 11699,
+      "end": 12028,
+      "frames": 63,
+      "clamped": 0,
+      "approximated": 26,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 247,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 7,
+      "start": 12028,
+      "end": 12234,
+      "frames": 39,
+      "clamped": 0,
+      "approximated": 24,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 159,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 8,
+      "start": 12234,
+      "end": 12411,
+      "frames": 35,
+      "clamped": 0,
+      "approximated": 17,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 137,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 9,
+      "start": 12411,
+      "end": 12616,
+      "frames": 40,
+      "clamped": 0,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 160,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 10,
+      "start": 12616,
+      "end": 13033,
+      "frames": 79,
+      "clamped": 3,
+      "approximated": 39,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 316,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 11,
+      "start": 13033,
+      "end": 13184,
+      "frames": 27,
+      "clamped": 0,
+      "approximated": 18,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 122,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 12,
+      "start": 13184,
+      "end": 13426,
+      "frames": 51,
+      "clamped": 0,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 167,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 13,
+      "start": 13426,
+      "end": 13613,
+      "frames": 34,
+      "clamped": 0,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 147,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 14,
+      "start": 13613,
+      "end": 13884,
+      "frames": 47,
+      "clamped": 0,
+      "approximated": 29,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 226,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 15,
+      "start": 13884,
+      "end": 14084,
+      "frames": 36,
+      "clamped": 0,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 160,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 16,
+      "start": 14084,
+      "end": 14255,
+      "frames": 31,
+      "clamped": 3,
+      "approximated": 16,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 135,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 17,
+      "start": 14255,
+      "end": 14486,
+      "frames": 41,
+      "clamped": 5,
+      "approximated": 20,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 173,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 18,
+      "start": 14486,
+      "end": 14665,
+      "frames": 33,
+      "clamped": 3,
+      "approximated": 19,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 140,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    },
+    {
+      "index": 19,
+      "start": 14665,
+      "end": 14810,
+      "frames": 26,
+      "clamped": 3,
+      "approximated": 15,
+      "truncated": 0,
+      "last_byte_truncated": false,
+      "alias_of": null,
+      "changed_bytes": 108,
+      "stopped_cleanly": true,
+      "final_byte": "spare"
+    }
+  ],
+  "warnings": [
+    "17 frame(s) (2.0%) sit below the tms5220 pitch floor and were raised; those will sound higher than the original."
+  ],
+  "overrides": [],
+  "note": "Produced by `understudy convert-set` from a Squawk & Talk ROM set assembled from an original Bally Embryon set. Output paths are sanitised; nothing else is altered. This file records offsets, counts and hashes only -- no ROM contents. The ROM is not included and is not ours to distribute; the input hashes let you confirm you have the same devices before comparing results."
+}

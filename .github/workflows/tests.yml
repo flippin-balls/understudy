@@ -1,0 +1,170 @@
+name: tests
+# The suite is pure standard library and needs no fixtures, network or ROM data,
+# so it runs as-is everywhere. Windows is a first-class target: a lot of EPROM
+# programmer software is Windows-only, so that is where this tool will often be
+# run. It is also where path handling breaks first.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unittest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: unittest (POSIX)
+        if: runner.os != 'Windows'
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: unittest (Windows)
+        if: runner.os == 'Windows'
+        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+
+      - name: a fresh clone runs with nothing installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          # THE DISTRIBUTION IS THE CLONE. There is no wheel and no sdist, so what
+          # has to be proven is that someone who downloads this repository can run
+          # it -- no build step, no dependency, no PYTHONPATH. understudy.py is the
+          # only entry point, and it is the thing a user is told to run.
+          python understudy.py --help > /dev/null
+          python understudy.py identify --help > /dev/null
+          python understudy.py convert-set --help > /dev/null
+          echo "the launcher runs from a clone"
+
+      - name: the bundled data and its licence notice are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Without the coefficient tables a clone cannot convert anything, which
+          # is the whole point of bundling them; and the BSD-3-Clause data must be
+          # accompanied by its notice wherever it travels. Both are asserted from
+          # the package directory rather than the repository root, because that is
+          # what stays with the data if anyone copies it out.
+          python - <<'PY'
+          from pathlib import Path
+          from tms52xx import chips, profiles
+          assert abs(chips.resolve("tms5200").tables().lowest_f0_hz - 37.91) < 0.1
+          assert abs(chips.resolve("tms5220").tables().lowest_f0_hz - 50.31) < 0.1
+          ids = [p.id for p in profiles.available()]
+          assert "embryon" in ids, ids
+          notice = Path(chips.__file__).parent / "data" / "licenses" / "THIRD_PARTY_NOTICES.md"
+          assert notice.is_file(), "the BSD-3-Clause notice must sit beside the data it covers"
+          assert "BSD-3-Clause" in notice.read_text(encoding="utf-8")
+          print("bundled data and notice present:", ids)
+          PY
+        env:
+          PYTHONPATH: src
+
+      - name: the documentation a reviewer is pointed at is actually here
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The provenance narrative asks a reader to go and check specific files.
+          # If one is missing the argument has a hole in it, and nothing else in
+          # this workflow would notice.
+          for required in THIRD_PARTY_NOTICES.md LICENSES/BSD-3-Clause.txt \
+                          docs/CHIPS.md docs/PROVENANCE.md \
+                          docs/HARDWARE_VALIDATION.md tools/extract_tables.py \
+                          examples/embryon.manifest.json tests/synthetic.py \
+                          tests/synthetic_game.py understudy.py; do
+            test -f "$required" || { echo "missing $required"; exit 1; }
+          done
+          echo "the repository stands on its own"
+
+  self-check:
+    # Guards claims the documentation makes, so they cannot rot silently.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: bundled tables match their recorded provenance
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          import json, pathlib
+          for name in ("tms5200", "tms5220"):
+              raw = json.loads(pathlib.Path(
+                  "src/tms52xx/data/%s.json" % name).read_text())
+              prov = raw["_provenance"]
+              assert prov["license"] == "BSD-3-Clause", prov
+              assert "mamedev/mame" in prov["repository"], prov
+              assert len(prov["source_sha256"]) == 64, prov
+              notices = pathlib.Path("THIRD_PARTY_NOTICES.md").read_text()
+              assert prov["source_sha256"] in notices, (
+                  "%s: source hash is not recorded in THIRD_PARTY_NOTICES.md"
+                  % name)
+              assert prov["struct"] in notices, prov["struct"]
+          print("bundled data provenance is consistent with the notices")
+          PY
+      - name: licence materials are in sync with their packaged copies
+        run: |
+          python tools/sync_notices.py
+          git diff --exit-code -- src/tms52xx/data/licenses \
+            || (echo "packaged licence materials are stale; run tools/sync_notices.py" && exit 1)
+      - name: bundled tables match upstream MAME at the pinned commit
+        # The other provenance checks ask whether our metadata agrees with
+        # itself. This one asks upstream. It needs network, so it is allowed to
+        # be skipped on a fork without one -- but not to pass quietly if the
+        # data has drifted.
+        run: |
+          set -euo pipefail
+          COMMIT=$(python - <<'PY'
+          import pathlib, re
+          text = pathlib.Path("THIRD_PARTY_NOTICES.md").read_text()
+          print(re.search(r"`([0-9a-f]{40})`", text).group(1))
+          PY
+          )
+          echo "pinned MAME commit: $COMMIT"
+          git clone --filter=blob:none --no-checkout             https://github.com/mamedev/mame mame-src
+          git -C mame-src fetch --depth 1 origin "$COMMIT"
+          git -C mame-src checkout --quiet "$COMMIT" --             src/devices/sound/tms5110r.hxx
+          python tools/extract_tables.py mame-src /tmp/regenerated
+          python - <<'PY'
+          import json, pathlib, sys
+          bad = []
+          for name in ("tms5200", "tms5220"):
+              ours = json.loads(pathlib.Path(
+                  "src/tms52xx/data/%s.json" % name).read_text())
+              theirs = json.loads(pathlib.Path(
+                  "/tmp/regenerated/%s.json" % name).read_text())
+              for key in ("pitch_bits", "k_widths", "energy", "pitch", "k"):
+                  if ours[key] != theirs[key]:
+                      bad.append("%s: %s differs from upstream" % (name, key))
+          if bad:
+              sys.exit("\n".join(bad))
+          print("bundled coefficients match upstream MAME at the pinned commit")
+          PY
+      - name: no ROM data anywhere in the repository
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          bad = []
+          for path in pathlib.Path(".").rglob("*"):
+              if not path.is_file() or ".git/" in str(path):
+                  continue
+              if path.suffix.lower() in {".bin", ".rom", ".wav", ".snd",
+                                         ".716", ".532", ".732"}:
+                  bad.append(str(path))
+          if bad:
+              sys.exit("ROM-like files present: %s" % bad)
+          print("no ROM-like files")
+          PY

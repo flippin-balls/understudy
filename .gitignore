@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# The coefficient tables ARE distributed now, under BSD-3-Clause, and live in
+# src/tms52xx/data/ -- see docs/PROVENANCE.md. This ignores the scratch directory
+# tools/extract_tables.py writes into when someone re-derives them from MAME to
+# check the bundled copies; those outputs are not the shipped ones.
+tables/*.json
+
+# Never commit speech data. This project operates on ROMs you already own and
+# does not redistribute any. The one exception is examples/audio/: short lossy
+# comparison clips, published as documentation and approved individually. They
+# are not a route back to ROM bytes; see examples/audio/README.md.
+*.wav
+*.snd
+*.rom
+*.bin

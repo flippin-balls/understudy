@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "profile_id": "vector",
+  "profile_version": 1,
+  "title": "Vector",
+  "manufacturer": "Bally",
+  "year": 1982,
+  "board": "Squawk & Talk AS-2518-61",
+  "source_chip": "tms5200",
+  "applies_to": [
+    "vector",
+    "vector4",
+    "vectora",
+    "vectorb"
+  ],
+  "memory": {
+    "window_base": 49152,
+    "window_size": 16384,
+    "fill": 255
+  },
+  "devices": [
+    {
+      "socket": "U2",
+      "label": "858-01_2",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 49152,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "0347685630350a77b0c8a16612919fc78ee5e324ba086216cf11b03869d4627e",
+      "crc32": "bd2edef9"
+    },
+    {
+      "socket": "U3",
+      "label": "858-02_3",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 53248,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "6cfca3789cac3456bc9846fdc14dc7e46130d226e694ed757863013f8bee567c",
+      "crc32": "c592fb35"
+    },
+    {
+      "socket": "U4",
+      "label": "858-03_4",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 57344,
+      "mirrored": false,
+      "holds_speech": true,
+      "sha256": "8e0d5c047e5988fac9d70b8ef4f552ce8d50af6e1a39240da33caf321579fe2c",
+      "crc32": "8661d312"
+    },
+    {
+      "socket": "U5",
+      "label": "858-06_5",
+      "type": "2532",
+      "size": 4096,
+      "cpu_address": 61440,
+      "mirrored": false,
+      "holds_speech": false,
+      "sha256": "6f7779806ad645b66eba7c344e9a64407c6101346db7f5a3b941387f736bf27f",
+      "crc32": "3050edf6"
+    }
+  ],
+  "layout": {
+    "table_offset": 13312,
+    "base_address": 49152,
+    "phrases": 50,
+    "truncate_last_byte": [],
+    "silent_phrases": [],
+    "entry_form": "start_end_pairs"
+  },
+  "status": "board-simulated",
+  "evidence": {
+    "layout": "Pointer table at CPU $F400, 50 phrases, each a 4-byte (start, end) record.",
+    "independent_check": "The board's own firmware was run and the byte stream it sends the TMS captured and located back in the ROM. It plays 51 streams from 50 distinct addresses spanning $C000-$EE75. Every one of those streams falls inside a phrase this layout converts.",
+    "conversion": "2287 frames converted, all keeping their frame kind when the output was re-parsed with the target tables.",
+    "emulation": "The converted devices were loaded into a simulation of the Squawk & Talk board, which booted and drove them. Compared against the original set over the same commands: 16 SPEAK EXTERNAL commands, 2920 writes to the TMS, and 0 writes to the DAC, whose ordered stream of values is byte-for-byte identical. The bytes sent to the TMS itself are of course not identical -- changing them is what conversion is. This exercises the board's firmware and control flow. It renders no audio.",
+    "not_verified": "No converted ROM from this profile has been played on a real board. Nobody has heard it.",
+    "traced_phrase_starts": [
+      "$C000",
+      "$C087",
+      "$C13F",
+      "$C21E",
+      "$C295",
+      "$C313",
+      "$C390",
+      "$C4F6",
+      "$C54E",
+      "$C5DE",
+      "$C710",
+      "$C7EE",
+      "$C8ED",
+      "$CA5A",
+      "$CB75",
+      "$CBE8",
+      "$CC86",
+      "$CCFE",
+      "$CD82",
+      "$CE25",
+      "$CF61",
+      "$D0A1",
+      "$D2C7",
+      "$D49A",
+      "$D6CF",
+      "$D73F",
+      "$D7A4",
+      "$D841",
+      "$D98B",
+      "$DAD4",
+      "$DC9F",
+      "$DE34",
+      "$DF25",
+      "$E011",
+      "$E085",
+      "$E102",
+      "$E192",
+      "$E34F",
+      "$E4BA",
+      "$E534",
+      "$E5C8",
+      "$E634",
+      "$E799",
+      "$E91E",
+      "$EB0B",
+      "$EBA9",
+      "$EC60",
+      "$ECFF",
+      "$EDA6",
+      "$EE75"
+    ],
+    "traced_streams": 51,
+    "traced_check": "The firmware was driven through every command its MPU can send and played 51 streams from 50 distinct addresses. Each was located back in the ROM and trimmed at its own stop frame, and all 51 fall inside a phrase this layout converts. The addresses are listed so anyone holding these dumps can re-derive them and compare. Compare in device offsets, not CPU addresses: a 2 KB part answers at two.",
+    "not_established_by_the_trace": "Every phrase this layout declares was played by the firmware and located in the ROM. No entry rests on the pointer table alone.",
+    "chip_commands": "The board's own firmware was driven through every command byte its MPU can send (all 256) and the bytes it wrote to the TMS were captured. It issues exactly 0x60 SPEAK EXTERNAL, and never an opcode in the 0x00/0x20 SET RATE range that a TMS5220C or TSP5220C interprets differently from a TMS5200. That is what makes the C-family targets available for this set; it is a statement about this firmware, not about electrical compatibility, which nobody here has tested."
+  },
+  "notes": [
+    "This sound ROM set is shared by 4 game revisions: vector, vector4, vectora, vectorb.",
+    "The table stores both bounds of every phrase as a 4-byte (start, end) record, not a list of starts."
+  ],
+  "contributors": [
+    "Flashback Fleet LLC"
+  ],
+  "chip_commands_observed": [
+    "0x60"
+  ]
+}

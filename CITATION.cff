@@ -1,0 +1,58 @@
+cff-version: 1.2.0
+title: >-
+  Understudy: converting Bally Squawk & Talk TMS5200 speech ROMs
+  for TMS5220-family replacements
+message: >-
+  If you use Understudy in research or preservation work, please cite it.
+type: software
+authors:
+  - name: Flashback Fleet LLC
+    website: "https://github.com/flippin-balls"
+repository-code: "https://github.com/flippin-balls/understudy"
+abstract: >-
+  The Texas Instruments TMS5200 speech processor used on the Bally
+  Squawk & Talk sound board is long out of production. The TMS5220,
+  TMS5220C and TSP5220C share its frame grammar and field widths but
+  use different LPC coefficient tables, so existing speech data parses
+  correctly on them and sounds wrong. Understudy re-indexes the speech
+  data in a ROM into the substitute part's tables. Because no field
+  changes width the conversion is length-preserving, so a ROM can be
+  patched in place with no pointer table, phrase boundary or timing
+  altered. The tool reports what it cannot fix: the TMS5220 family
+  cannot reach the TMS5200's lowest pitches, and those frames are
+  raised.
+keywords:
+  - TMS5200
+  - TMS5220
+  - TSP5220C
+  - linear predictive coding
+  - speech synthesis
+  - pinball
+  - Bally
+  - Squawk and Talk
+  - retrocomputing
+  - digital preservation
+license: 0BSD
+version: 0.3.0
+date-released: "2026-09-06"
+references:
+  - type: software
+    title: MAME
+    notes: >-
+      Source of the bundled TMS5200 and TMS5220 coefficient tables,
+      from src/devices/sound/tms5110r.hxx, used under BSD-3-Clause.
+      The tables are decap-verified upstream.
+    authors:
+      - name: MAMEdev and contributors
+    repository-code: "https://github.com/mamedev/mame"
+    license: BSD-3-Clause
+  - type: article
+    title: >-
+      Portable speech development system creates linear predictive codes
+    authors:
+      - family-names: Helms
+        given-names: Gene
+      - family-names: Petersen
+        given-names: Steve
+    journal: Electronics
+    date-published: "1982-09-08"
