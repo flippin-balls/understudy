@@ -15,9 +15,9 @@ location and would rather they kept talking.
 three versions: the original TMS5200, a TMS5220 with unconverted ROMs, and a
 TMS5220 with converted ROMs.
 
-> **Pre-1.0:** Embryon is the only profile tested on real hardware. The other 15
-> bundled profiles have passed structural and board-simulation checks but have
-> not been heard on a real board. See [VALIDATION.md](docs/VALIDATION.md).
+> **Pre-1.0:** Embryon is the only profile tested on real hardware. The other 16
+> profiles have passed structural and board-simulation checks but have not been
+> heard on a real board. See [VALIDATION.md](docs/VALIDATION.md).
 
 ## Fixing a board
 
@@ -132,22 +132,18 @@ input hashes, conversion settings, and output files without containing ROM data.
 | Bally **Mysterian** (prototype, 1982) | `board-simulated` | 36 | 1 |
 | Bally **Spectrum** (1982) | `board-simulated` | 31 | 4 |
 | Bally **Vector** (1982) | `board-simulated` | 50 | 4 |
-| Bally Midway **Midnight Marauders** (1984) | `layout-verified` | 20 | 1 |
+| Bally Midway **Midnight Marauders** (1984) | `board-simulated` | 20 | 1 |
 | Bally **Big Bat** (1984) | `board-simulated` | 24 | 1 |
 | Bally **Beat the Clock** (1985) | `board-simulated` | 62 | 2 |
 | Bally **Eight Ball Champ** (1985) | `board-simulated` | 62 | 1 |
 
 These 17 profiles cover 45 of the 49 Squawk & Talk **pinball** revisions known
-to PinMAME, plus one machine that is not a pinball at all. Many revisions share
-sound ROMs, so those 49 revisions reduce to 19 distinct sound sets.
+to PinMAME, plus Midnight Marauders, a Bally Midway gun game that uses the same
+AS-2518-61 sound board.
 
-**Midnight Marauders** is a Bally Midway *gun game* from 1984 running the same
-AS-2518-61 sound board. It is the newest profile and the least proven: its
-layout is verified and every phrase terminates, but no emulation has driven the
-converted ROMs and nobody has heard them. It also clamps **7.5 %** of its frames
-at the TMS5220 pitch floor, against 2 % for Embryon — the highest in the
-library, so expect it to sound more obviously raised in pitch than the pinballs
-do.
+Midnight Marauders has the highest pitch-floor clamp rate in the library at
+**7.5% of frames**, compared with 2.0% for Embryon. Its converted ROMs have
+passed board simulation, but nobody has listened to them on real hardware yet.
 
 The remaining sets are unusual:
 
