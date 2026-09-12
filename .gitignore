@@ -2,13 +2,12 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-*.egg-info/
-dist/
-build/
 .pytest_cache/
 
-# Chip coefficient tables are NOT distributed with this project.
-# See docs/PROVENANCE.md -- you supply them from a source you are entitled to use.
+# The coefficient tables ARE distributed now, under BSD-3-Clause, and live in
+# src/tms52xx/data/ -- see docs/PROVENANCE.md. This ignores the scratch directory
+# tools/extract_tables.py writes into when someone re-derives them from MAME to
+# check the bundled copies; those outputs are not the shipped ones.
 tables/*.json
 
 # Never commit speech data. This project operates on ROMs you already own and

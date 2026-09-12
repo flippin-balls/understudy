@@ -1,0 +1,2 @@
+[console_scripts]
+understudy = tms52xx.cli:main
