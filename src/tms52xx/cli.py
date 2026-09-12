@@ -30,6 +30,7 @@ from . import __version__
 from . import optimize
 from .optimize import OptimizationError
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
+from .workflow import _optimization_manifest
 
 #: The manual `convert` command's manifest. Versioned separately from
 #: `convert-set`'s, because they describe different things: one image and a
@@ -424,7 +425,11 @@ def cmd_convert(args) -> int:
             print("cannot optimise: %s" % error, file=sys.stderr)
             return 2
 
-        def opt_hook(phrase_index, frames, _doc=opt_doc):
+        def opt_hook(phrase_index, frames, original, _doc=opt_doc):
+            # On this path there is no profile to pin the layout with, so the
+            # phrase digest is the whole binding: it is what establishes that
+            # these corrections were measured on the speech in front of us.
+            optimize.check_phrase_source(_doc, phrase_index, original)
             opt_applied.extend(optimize.optimise_frames(
                 frames, phrase_index, _doc, list(target.k_widths)))
 
@@ -588,17 +593,19 @@ def cmd_convert(args) -> int:
                    "base_address": args.base_address,
                    "truncate_last_byte": sorted(r.phrase.index for r in results
                                                 if r.last_byte_truncated)},
-        "audio_optimization": (
-            {"enabled": False} if not getattr(args, "optimize_audio", None) else
-            {"enabled": True, "profile_id": args.optimize_audio,
-             "frames_changed": len(opt_applied),
-             "k_indexes_changed": sum(len(f.changed) for f in opt_applied),
-             "frames": [{"phrase": f.phrase, "frame": f.frame,
-                         "changed": {n: {"from": a, "to": b}
-                                     for n, (a, b) in sorted(f.changed.items())},
-                         "mcd_db_before": f.mcd_db_before,
-                         "mcd_db_after": f.mcd_db_after}
-                        for f in opt_applied]}),
+        # Built by the same function the set path uses, so a manual manifest
+        # identifies its measurement set exactly as a set manifest does. These
+        # diverged once and the manual one silently lacked the data digest.
+        "audio_optimization": _optimization_manifest(
+            None if opt_doc is None else optimize.OptimizationReport(
+                profile_id=args.optimize_audio,
+                frames_considered=opt_doc.get("frames_considered") or 0,
+                frames_changed=len(opt_applied),
+                frames_baseline_retained=(
+                    opt_doc.get("frames_baseline_retained") or 0),
+                frames=list(opt_applied),
+                method=opt_doc.get("method") or {},
+                digest=optimize.digest(opt_doc))),
         "summary": stats,
         "changed_ranges": _changed_ranges(rom, out),
         # `alias_of` is not decoration: without it the per-phrase rows cannot be

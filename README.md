@@ -200,8 +200,8 @@ filter as a whole lands closest.
 
 `--optimize-audio` applies per-frame corrections that were measured for that
 game by rendering the alternatives and comparing them against the original chip.
-In that experiment, **39 of 40 representative Embryon frames improved** and one
-was already the best choice.
+In that experiment, **39 of 40 representative Embryon frames improved**; in the
+fortieth the search found nothing better than the nearest value.
 
 ```
 python understudy.py convert-set . --optimize-audio

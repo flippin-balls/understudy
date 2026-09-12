@@ -334,7 +334,8 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
             method=opt_doc.get("method") or {},
             digest=optimize.digest(opt_doc))
 
-        def hook(phrase_index, frames, _doc=opt_doc, _rep=opt_report):
+        def hook(phrase_index, frames, original, _doc=opt_doc, _rep=opt_report):
+            optimize.check_phrase_source(_doc, phrase_index, original)
             _rep.frames.extend(optimize.optimise_frames(
                 frames, phrase_index, _doc, list(dst_tables.k_widths)))
 

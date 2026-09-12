@@ -43,9 +43,17 @@ def override(frames, index=0, before=9.0, after=4.0, **deltas):
             "mcd_db_before": before, "mcd_db_after": after}
 
 
-def doc(phrases, **extra):
+def doc(phrases, source=b"", **extra):
+    """A data document. `phrases` maps phrase index -> {frame index -> override}.
+
+    Every phrase gets a source digest, because the applier requires one; the
+    tests that care about it supply the bytes.
+    """
+    import hashlib
+    wrapped = {p: {"source_sha256": hashlib.sha256(source).hexdigest(),
+                   "frames": f} for p, f in phrases.items()}
     out = {"schema": optimize.SCHEMA, "profile_id": "synthgame",
-           "phrases": phrases}
+           "phrases": wrapped}
     out.update(extra)
     return out
 
@@ -415,3 +423,66 @@ class TestTableAndProfileBinding(unittest.TestCase):
         with self.assertRaises(OptimizationError) as caught:
             optimize.check_profile(doc({}, profile_version=1), FakeProfile())
         self.assertIn("profile version", str(caught.exception))
+
+
+class TestPhraseSourceBinding(unittest.TestCase):
+    """Conversion is many-to-one, so the converted side cannot identify itself.
+
+    Two different TMS5200 originals can convert to byte-identical frames while
+    the TMS5200 audio each was scored against is different. Nothing derived from
+    the output can tell them apart -- only the original bytes can."""
+
+    def test_the_measured_source_is_required(self):
+        _out, frames, dst = converted_frames()
+        d = doc({"0": {"0": override(frames, K1=1)}}, source=b"measured")
+        d["phrases"]["0"].pop("source_sha256")
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.check_phrase_source(d, 0, b"measured")
+        self.assertIn("does not record which speech", str(caught.exception))
+
+    def test_a_different_original_is_refused(self):
+        _out, frames, _dst = converted_frames()
+        d = doc({"0": {"0": override(frames, K1=1)}}, source=b"measured")
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.check_phrase_source(d, 0, b"something else")
+        self.assertIn("not the speech these corrections were measured on",
+                      str(caught.exception))
+
+    def test_the_measured_original_passes(self):
+        _out, frames, _dst = converted_frames()
+        d = doc({"0": {"0": override(frames, K1=1)}}, source=b"measured")
+        optimize.check_phrase_source(d, 0, b"measured")
+
+    def test_a_phrase_with_no_overrides_needs_no_digest(self):
+        optimize.check_phrase_source(doc({}), 3, b"anything")
+
+
+class TestCanonicalCoordinates(unittest.TestCase):
+    """Two spellings of one coordinate let an override vanish silently.
+
+    `int("00") == int("0")`, so a second entry addresses a frame already
+    handled -- and the completeness check normalises identically, so it sees one
+    override, one application, and reports that everything was applied."""
+
+    def test_a_padded_frame_index_is_refused(self):
+        _out, frames, dst = converted_frames()
+        d = doc({"0": {"00": override(frames, K1=1)}})
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+        self.assertIn("canonical", str(caught.exception))
+
+    def test_a_signed_frame_index_is_refused(self):
+        _out, frames, dst = converted_frames()
+        d = doc({"0": {"+1": override(frames, K1=1)}})
+        with self.assertRaises(OptimizationError):
+            optimize.optimise_frames(frames, 0, d, list(dst.k_widths))
+
+    def test_completeness_refuses_a_padded_phrase_index(self):
+        d = doc({"03": {"0": {"guard": "x", "delta": {"K1": 1},
+                              "mcd_db_before": 9.0, "mcd_db_after": 4.0}}})
+        with self.assertRaises(OptimizationError):
+            optimize.check_all_applied(d, [])
+
+    def test_override_count_sees_every_entry(self):
+        d = doc({"0": {"1": {}, "2": {}}, "3": {"4": {}}})
+        self.assertEqual(optimize.override_count(d), 3)

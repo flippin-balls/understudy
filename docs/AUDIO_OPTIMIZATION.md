@@ -86,14 +86,27 @@ frame, which direction it stepped each coefficient.
 
 That data deliberately contains **no coefficient values**. Storing "this was 15,
 make it 14" would put real LPC data from a copyrighted ROM in this repository,
-which the project does not do. An override stores only the step (`+1` or `-1`)
-and an opaque hash of the frame's ten baseline indexes.
+which the project does not do. An override stores only the step — `+1` or `-1`
+per pass, so up to two places over the two passes — plus digests to check
+against.
 
-The hash is the safety check, and it is stricter than naming values would have
-been. Before anything moves, the frame's own baseline is hashed and compared: if
-the filter differs *anywhere* — a different dump, a revised profile, an edited
-coefficient table — the override is refused and the run stops. A stale
-measurement cannot be shifted onto a frame it was not taken on.
+Those digests are the safety check, and getting their *scope* right took two
+attempts. The score was measured on rendered audio, so it depended on more than
+the frame being corrected:
+
+- each phrase carries a **hash of its original, pre-conversion bytes**. This is
+  the one that matters, because conversion is many-to-one: two different TMS5200
+  originals can convert to byte-identical output, while the *reference* each was
+  scored against is different audio. Nothing computed from the converted side
+  can see that. It also covers the speech *before* the corrected frame, which
+  sets the filter state the chip enters it with;
+- each override additionally hashes **the frame and its successor**, every field
+  — the score spanned both, and pitch and energy shape that audio as much as the
+  filter does;
+- the **coefficient table files** and the **profile version** are pinned too.
+
+If any of them disagrees, the run stops. None degrades to applying the data
+anyway.
 
 ## What still gets checked
 
@@ -132,8 +145,8 @@ anyway.
 ## Coverage today
 
 Only Embryon has been measured. Its whole eligible corpus was run, not a sample:
-475 voiced frames above the silence gate, of which **456 improved and 19 were
-already optimal** — the same 96 % rate the 40-frame study found, over twelve
+475 voiced frames above the silence gate, of which **456 improved and 19 found
+nothing better** — the same 96 % rate the 40-frame study found, over twelve
 times the frames. Every one of the 456 was re-checked against Understudy's own
 conversion before shipping, and all 456 agreed.
 
@@ -157,15 +170,45 @@ scoring it whole against the TMS5200 reference:
 | mean, whole phrase | **12.65 dB → 12.07 dB** (−0.57 dB) |
 
 The net effect is an improvement and most phrases share it, but it is **not
-uniform**, and two phrases came out marginally worse as wholes than the ordinary
-conversion. Those two are not removed from the data: the corrections in them
-were each measured to help, and dropping them would mean tuning the shipped
-result against a second metric after the fact. They are reported here instead so
-you can listen for them.
+uniform**: two phrases came out marginally worse as wholes than the ordinary
+conversion.
+
+### Why those two are still shipped
+
+The obvious move is to drop them and let those phrases convert normally. They
+are kept, deliberately, and the reason is about what MCD can and cannot tell
+you.
+
+MCD is a **spectral distance**: it measures how close the output is to the
+TMS5200 reference. That is not the same question as how good it sounds. A small
+blinded listening test run on a related optimisation for this family of chips
+found exactly that divergence — on one item the listener called the *ordinary*
+conversion the "cleanest" while judging the optimised version and the original
+chip the most similar to each other. Fidelity and pleasantness came apart, and
+every objective number available measures only the first.
+
+That same test produced a second result pointing the other way from the metric:
+on the two items where the listener independently reached for the word
+"warbly", the warbly sample was the **ordinary, unoptimised** conversion — not
+the optimised one. Twice, unprompted.
+
+So a 0.67 dB and a 0.07 dB whole-phrase movement in a fidelity proxy is not a
+sound basis for discarding per-frame improvements that were each measured
+individually. Removing them would be tuning the shipped artefact against a
+metric that has already been observed to disagree with a human ear, which is the
+specific mistake that test exists to prevent.
+
+Two honest limits on that reasoning: the listening test used **one listener and
+eight items**, so it is engineering evidence and not a statistical result; and it
+was run on a *different* optimisation strategy for the same chips, so it speaks
+to how much weight the metric deserves, not to this data set specifically.
+
+**There is no listening evidence for this optimiser.** The two phrases are named
+above precisely so you can listen for them.
 
 This is also why the flag is opt-in. If a phrase sounds worse on your machine,
 convert without it and
-[say so](HARDWARE_VALIDATION.md) — that is more useful than any number here.
+[say so](HARDWARE_VALIDATION.md) — that is worth more than any number here.
 
 ## Auditing a run
 

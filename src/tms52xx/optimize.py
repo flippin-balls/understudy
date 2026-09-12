@@ -270,7 +270,8 @@ def digest(doc: dict) -> str:
 
 def override_count(doc: dict) -> int:
     """How many frame overrides the data file contains, in total."""
-    return sum(len(entry) for entry in (doc.get("phrases") or {}).values())
+    return sum(len(entry.get("frames") or {})
+               for entry in (doc.get("phrases") or {}).values())
 
 
 def check_all_applied(doc: dict, applied: Sequence[FrameOptimization]) -> None:
@@ -284,11 +285,15 @@ def check_all_applied(doc: dict, applied: Sequence[FrameOptimization]) -> None:
     have been applied where it was measured.
     """
     reached = {(f.phrase, f.frame) for f in applied}
-    missed = [(int(p), int(f))
-              for p, entry in sorted((doc.get("phrases") or {}).items(),
-                                     key=lambda kv: int(kv[0]))
-              for f in sorted(entry, key=int)
-              if (int(p), int(f)) not in reached]
+    missed = []
+    for p, entry in sorted((doc.get("phrases") or {}).items(),
+                           key=lambda kv: _canonical_index(kv[0], "phrase")):
+        phrase = _canonical_index(p, "phrase")
+        for f in sorted((entry.get("frames") or {}),
+                        key=lambda k: _canonical_index(k, "frame")):
+            frame = _canonical_index(f, "frame")
+            if (phrase, frame) not in reached:
+                missed.append((phrase, frame))
     if missed:
         raise OptimizationError(
             "%d optimisation override(s) were never applied, first phrase %d "
@@ -298,12 +303,80 @@ def check_all_applied(doc: dict, applied: Sequence[FrameOptimization]) -> None:
             "not happen." % (len(missed), missed[0][0], missed[0][1]))
 
 
-def _overrides_for(doc: dict, phrase_index: int) -> Dict[int, dict]:
+def _canonical_index(key, what: str) -> int:
+    """A coordinate key, rejected unless it is written the one canonical way.
+
+    `int("00")` and `int("0")` are both 0, so two entries written differently
+    address the same frame -- and every downstream count, including the
+    completeness check, normalises them the same way and sees one. The result is
+    an override that is quietly discarded while the run reports that every
+    override was applied. Non-negative, no sign, no padding, no whitespace.
+    """
+    if not isinstance(key, str) or not key.isdigit() or \
+            (len(key) > 1 and key[0] == "0"):
+        raise OptimizationError(
+            "%s %r is not a canonical index. Coordinates must be written as "
+            "plain non-negative decimals with no padding or sign, so that two "
+            "spellings cannot name one frame." % (what, key))
+    return int(key)
+
+
+def _phrase_entry(doc: dict, phrase_index: int) -> Optional[dict]:
     phrases = doc.get("phrases") or {}
-    entry = phrases.get(str(phrase_index))
+    return phrases.get(str(phrase_index))
+
+
+def _overrides_for(doc: dict, phrase_index: int) -> Dict[int, dict]:
+    entry = _phrase_entry(doc, phrase_index)
     if not entry:
         return {}
-    return {int(k): v for k, v in entry.items()}
+    out: Dict[int, dict] = {}
+    for key, value in (entry.get("frames") or {}).items():
+        index = _canonical_index(key, "frame")
+        if index in out:
+            raise OptimizationError(
+                "phrase %d names frame %d twice" % (phrase_index, index))
+        out[index] = value
+    return out
+
+
+def check_phrase_source(doc: dict, phrase_index: int, original: bytes) -> None:
+    """The phrase being corrected must be the phrase that was measured.
+
+    THE PER-FRAME GUARD IS NOT ENOUGH, for two reasons that both come back to it
+    being computed from CONVERTED frames.
+
+    Filter state. The score was taken on rendered audio, and what the chip
+    sounds like entering a frame depends on where its filter and excitation
+    already were -- which is a product of the speech BEFORE it. Change frame 0's
+    energy and frame 7's rendered audio changes too, while frame 7 and its
+    successor hash exactly as before.
+
+    Collapsed sources. Conversion is many-to-one: two different TMS5200 pitch
+    indexes can both map to the same TMS5220 index. Two genuinely different
+    original phrases can therefore convert to identical bytes -- identical
+    frames, identical guards -- while the TMS5200 REFERENCE they were each
+    measured against is different audio. Nothing derived from the converted side
+    can see that, by construction.
+
+    Hashing the original phrase closes both. It is also the only check here that
+    works on the manual path, where there is no profile to pin a layout with.
+    """
+    entry = _phrase_entry(doc, phrase_index)
+    if not entry:
+        return
+    want = entry.get("source_sha256")
+    if not want:
+        raise OptimizationError(
+            "phrase %d's optimisation data does not record which speech it was "
+            "measured on" % phrase_index)
+    got = hashlib.sha256(original).hexdigest()
+    if got != want:
+        raise OptimizationError(
+            "phrase %d is not the speech these corrections were measured on "
+            "(%s, expected %s). Two different originals can convert to the same "
+            "bytes, and the audio they were scored against is not the same; "
+            "refusing to apply them." % (phrase_index, got[:16], want[:16]))
 
 
 def optimise_frames(frames: Sequence, phrase_index: int, doc: dict,
