@@ -7,10 +7,10 @@ start with the [README](../README.md) or
 
 ## Current coverage
 
-Every conversion is re-parsed and checked frame by frame. All 16 bundled
-profiles have also been exercised with the Squawk & Talk firmware in board
-simulation, and every speech stream observed from that firmware has been checked
-against the phrases the profile converts.
+Every conversion is re-parsed and checked frame by frame. All 17 bundled
+profiles have been exercised with the Squawk & Talk firmware in board simulation,
+and every speech stream observed from that firmware has been checked against the
+phrases the profile converts.
 
 That is structural/control-flow evidence, not an acoustic result.
 
@@ -20,25 +20,23 @@ TMS5220 and compared by ear with the same board running its TMS5200 and original
 ROMs. The converted result was reported very close to the baseline, with no
 broken or missing phrase.
 
-The optional `--optimize-audio` Embryon result has **not** yet been tested on real
-hardware.
+No optimized conversion has yet been tested on real hardware.
 
 | check | coverage |
 |---|---|
 | output re-parsed and frame kinds compared | every conversion |
-| converted ROMs exercised with board firmware in simulation | 16 of 17 profiles |
-| firmware-played streams covered by converted phrases | 16 of 17 profiles |
+| converted ROMs exercised with board firmware in simulation | all 17 profiles |
+| firmware-played streams covered by converted phrases | all 17 profiles |
 | ordinary conversion listened to on real hardware | Embryon only |
 | optimized conversion listened to on real hardware | none |
 
 A profile may contain table entries that the firmware trace did not reach. Those
 are recorded separately in its evidence rather than treated as trace-verified.
 
-The profile not covered by the two simulation rows is **Midnight Marauders**,
-which is `layout-verified` rather than `board-simulated`. The harness that runs
-those checks finds games by their `BY61_SOUNDROM` macro, and this one declares
-its sound ROMs by hand inside a plain `SOUNDREGION`, so it is invisible to that
-discovery. That is a gap in the harness, not evidence about the game.
+**Midnight Marauders** is the first non-pinball profile. Its ROM layout differs
+from the pinball sets, but its converted ROMs were exercised through the same
+board-simulation and firmware-trace checks before the profile was marked
+`board-simulated`.
 
 ## Why a clean boot is not enough
 
@@ -103,5 +101,5 @@ The third was reported very close to the first. The 17 frames (2.0%) raised to
 the TMS5220 pitch floor were not noticed by the listener. The TMS5220 setup was
 reported slightly louder; the cause is not established.
 
-If you test another title, replacement chip, or the optimized Embryon ROMs, use
+If you test another title, replacement chip, or an optimized conversion, use
 [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) to record the result.
