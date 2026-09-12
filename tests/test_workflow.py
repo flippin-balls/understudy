@@ -169,6 +169,67 @@ class TestDestinationPreflight(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_every_file_read_is_protected_from_being_overwritten(self):
+        """Reading a file is what earns it protection, not being selected.
+
+        The guard list was built from the SELECTED sockets, so an input that was
+        read and then discarded had none. Handing convert-set a second archive
+        whose name matched an output destroyed it: found in review, with a zip
+        named like the manifest.
+        """
+        import zipfile
+        good = self.dir / "good.zip"
+        with zipfile.ZipFile(good, "w") as z:
+            z.writestr("u4.bin", self.dumps["U4"])
+            z.writestr("u5.bin", self.dumps["U5"])
+        decoy = self.dir / "synthgame.manifest.json"      # the manifest's own name
+        with zipfile.ZipFile(decoy, "w") as z:
+            z.writestr("unrelated.bin", b"\xaa" * 64)
+        before = decoy.read_bytes()
+        result = run("convert-set", str(good), str(decoy), "-o", str(self.dir),
+                     "--force", cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertEqual(decoy.read_bytes(), before, "a file this run READ was destroyed")
+
+    def test_an_oversized_member_is_refused_before_it_is_read(self):
+        """A crafted archive must not get to spend the memory first."""
+        import zipfile
+        bomb = self.dir / "bomb.zip"
+        with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("big.bin", b"\0" * (16 * 1024 * 1024))
+        self.assertLess(bomb.stat().st_size, 100 * 1024, "precondition: small on disk")
+        result = run("convert-set", str(bomb), "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("at most 8 KB", result.stderr)
+
+    def test_a_duplicate_member_name_is_refused_by_both_commands(self):
+        """A name that does not identify one file cannot be matched to a socket."""
+        import zipfile
+        dup = self.dir / "dup.zip"
+        with zipfile.ZipFile(dup, "w") as z:
+            z.writestr("U4.bin", b"\x01" * 2048)
+            z.writestr("U4.bin", b"\x02" * 2048)
+        for command in ("identify", "convert-set"):
+            result = run(command, str(dup), cwd=self.dir, extra_env=self.env)
+            self.assertEqual(result.returncode, 2, command)
+            self.assertIn("more than one input is called", result.stderr, command)
+
+    def test_a_symlink_in_a_scanned_folder_is_not_followed(self):
+        """Scanning is a convenience; reading files the user did not offer is not."""
+        outside = self.dir / "outside.bin"
+        outside.write_bytes(b"\x7f" * 2048)
+        roms = self.dir / "roms"
+        roms.mkdir()
+        (roms / "u4.bin").write_bytes(self.dumps["U4"])
+        (roms / "u5.bin").write_bytes(self.dumps["U5"])
+        try:
+            (roms / "sneaky.bin").symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable here")
+        result = run("identify", str(roms), cwd=self.dir, extra_env=self.env)
+        self.assertNotIn("sneaky.bin", result.stdout + result.stderr)
+
     def test_pointing_at_a_folder_converts_the_set(self):
         """The command a board repairer actually wants to type.
 

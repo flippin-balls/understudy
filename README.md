@@ -170,7 +170,7 @@ mid-run, check the hashes in the manifest against the files before burning.
 | Bally **Centaur** (1981) | `board-simulated` | 37 | 3 |
 | Bally **Eight Ball Deluxe** (1981) | `board-simulated` | 42 | 6 |
 | Bally **Elektra** (1981) | `board-simulated` | 16 | 2 |
-| Bally **Embryon** (1981) | `board-simulated` | 20 | 6 |
+| Bally **Embryon** (1981) | `silicon-verified` | 20 | 6 |
 | Bally **Fathom** (1981) | `board-simulated` | 26 | 3 |
 | Bally **Fireball II** (1981) | `board-simulated` | 16 | 2 |
 | Bally **Flash Gordon** (1981) | `board-simulated` | 24 | 2 |

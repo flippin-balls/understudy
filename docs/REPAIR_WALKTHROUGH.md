@@ -50,8 +50,12 @@ There is nothing to install. No `pip`, no setup, no dependencies.
 
 ## 3. Put your ROMs where you can reach them
 
-Copy your ROM files, or the zip they came in, **into that same folder**, next to
-`understudy.py`. That saves you typing paths.
+Copy your ROM files **into that same folder**, next to `understudy.py`. That
+saves you typing paths.
+
+If your ROMs are still inside a **zip**, copy the zip in as it is — do not
+unzip it. You will point at the zip by name. (Pointing at a *folder* does not
+look inside archives, so a zip sitting in the folder would be skipped.)
 
 ## 4. Open a terminal in that folder
 
@@ -70,12 +74,20 @@ A version number means everything is working.
 
 ## 5. See what you have
 
+If your ROMs are **loose files** in the folder:
+
 ```
 py understudy.py identify .
 ```
 
-The `.` means "everything in this folder". You can also name a zip
-(`py understudy.py identify mygame.zip`) or the files themselves.
+The `.` means "everything in this folder". If they are **in a zip**, name the
+zip instead:
+
+```
+py understudy.py identify mygame.zip
+```
+
+Either way, use the same thing in step 6.
 
 It will either name your game, or tell you it does not recognise the set. If it
 names it, it also prints the exact command to run next — you can copy that.
@@ -86,10 +98,17 @@ names it, it also prints the exact command to run next — you can copy that.
 py understudy.py convert-set .
 ```
 
+...or, if your ROMs are in a zip:
+
+```
+py understudy.py convert-set mygame.zip
+```
+
 That is the whole job. It works out which game it is, which file belongs in which
 socket, which chip to convert for, and where to put the results.
 
-**Read the block it prints before it writes anything.** The part that matters:
+It writes the files, then prints a report. **Read the report before you burn
+anything.** The part that matters:
 
 ```
 output devices
@@ -157,7 +176,7 @@ Python is not installed, or the **Add python.exe to PATH** box was not ticked
 during installation. Reinstall with that box ticked, then close and reopen the
 terminal. Try `python` or `python3` instead of `py` before reinstalling.
 
-### "could not identify this set"
+### "this does not match any game understudy knows"
 
 Three different causes, and the message cannot tell them apart:
 
@@ -172,10 +191,17 @@ Three different causes, and the message cannot tell them apart:
 
 ### "nothing that looks like a ROM dump was found"
 
-Folder scanning does not look inside sub-folders. Point at the folder that
-directly contains the files, or name them individually.
+Three causes:
 
-### "these files were given but fit no socket"
+- **Your ROMs are inside a zip.** Point at the zip by name, not at the folder
+  holding it — scanning a folder does not look inside archives.
+- **You pointed one level too high.** Sub-folders are not searched. Point at the
+  folder that directly contains the files.
+- **The files have names that look like documentation** (`.txt`, `.md`, a file
+  called `README`). Those are skipped while scanning. Name them directly if you
+  really mean them.
+
+### "these files are not part of the ... speech set"
 
 You named a file that is not part of the speech set — often a CPU ROM. Either
 remove it from the command, or point at the whole folder instead: when you point

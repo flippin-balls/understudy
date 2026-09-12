@@ -615,6 +615,16 @@ def _looks_like_a_dump(name: str) -> bool:
     return PurePosixPath(base).suffix.lower() not in _NOT_A_DUMP
 
 
+#: A speech ROM on this hardware is at most 8 KB. These bounds are three orders of
+#: magnitude above anything real, and exist only so that pointing at the wrong
+#: thing -- a backup folder, a zip of a whole drive, a crafted archive -- fails
+#: with a sentence instead of exhausting memory. A 16 KB archive expanded to
+#: 16 MB during review; nothing stopped it.
+_MAX_ONE_INPUT = 8 * 1024 * 1024
+_MAX_ALL_INPUTS = 64 * 1024 * 1024
+_MAX_INPUT_COUNT = 512
+
+
 def _expand_inputs(names):
     """Turn what the user typed into (label, data, guard, explicit) rows.
 
@@ -633,23 +643,57 @@ def _expand_inputs(names):
     that fails.
     """
     rows = []
+    total = 0
+
+    def take(label, data, guard, named):
+        nonlocal total
+        if len(data) > _MAX_ONE_INPUT:
+            raise ValueError(
+                "%s is %.1f MB. Speech ROMs on this hardware are at most 8 KB, so "
+                "this is not one -- check you pointed at the right thing."
+                % (label, len(data) / 1048576.0))
+        total += len(data)
+        if total > _MAX_ALL_INPUTS or len(rows) >= _MAX_INPUT_COUNT:
+            raise ValueError(
+                "too much data to be a Squawk & Talk ROM set (stopped at %d files, "
+                "%.1f MB). Point at the folder holding the ROMs, not one above it."
+                % (len(rows) + 1, total / 1048576.0))
+        rows.append((label, data, guard, named))
+
     for name in names:
         path = Path(name)
         if path.is_dir():
             for found in sorted(p for p in path.iterdir() if p.is_file()):
+                # Do not follow a symlink out of the folder we were pointed at.
+                # Scanning is a convenience; reading files the user did not mean
+                # to offer is not part of it.
+                if found.is_symlink():
+                    continue
                 if _looks_like_a_dump(found.name):
                     data = found.read_bytes()
                     if data:
-                        rows.append((str(found), data, found, False))
+                        take(str(found), data, found, False)
             continue
         if path.is_file() and zipfile.is_zipfile(path):
-            with zipfile.ZipFile(path) as archive:
-                for info in sorted(archive.infolist(), key=lambda i: i.filename):
-                    if info.is_dir() or not _looks_like_a_dump(info.filename):
-                        continue
-                    data = archive.read(info)
-                    if data:
-                        rows.append((info.filename, data, path, False))
+            try:
+                with zipfile.ZipFile(path) as archive:
+                    for info in sorted(archive.infolist(), key=lambda i: i.filename):
+                        if info.is_dir() or not _looks_like_a_dump(info.filename):
+                            continue
+                        # Refuse on the DECLARED size before reading, so a crafted
+                        # archive cannot spend the memory first and be refused after.
+                        if info.file_size > _MAX_ONE_INPUT:
+                            raise ValueError(
+                                "%s in %s claims to be %.1f MB; speech ROMs are at "
+                                "most 8 KB." % (info.filename, path,
+                                                info.file_size / 1048576.0))
+                        data = archive.read(info)
+                        if data:
+                            take(info.filename, data, path, False)
+            except zipfile.BadZipFile as exc:
+                raise ValueError(
+                    "%s looks like a zip but could not be read (%s). Try "
+                    "extracting it yourself and pointing at the folder." % (path, exc))
             continue
         rows.append((str(path), _read_dump(path), path, True))
     if not rows:
@@ -657,10 +701,33 @@ def _expand_inputs(names):
             "nothing that looks like a ROM dump was found in: %s\n"
             "  Folders are not searched recursively -- point at the folder that "
             "directly contains the files, not the one above it.\n"
+            "  If your ROMs are still inside a .zip, point at the ZIP itself "
+            "rather than the folder holding it -- scanning a folder does not "
+            "look inside archives.\n"
             "  Files named README, or ending .txt .md .json and similar, are "
             "skipped when scanning. Name a file directly if you mean it."
             % ", ".join(str(n) for n in names))
     return rows
+
+
+def _labelled_inputs(names):
+    """Expand, and refuse a name that appears twice.
+
+    Both commands need this. `identify` used to build its dict with a
+    comprehension, which silently kept the last of any duplicate pair -- so a
+    zip holding two members called U4.bin identified cleanly and then printed a
+    convert command that failed. A name that does not identify one file cannot
+    be matched to a socket, and guessing which one was meant is not available.
+    """
+    files, consumed = {}, set()
+    for label, data, guard, _named in _expand_inputs(names):
+        if label in files:
+            raise ValueError(
+                "more than one input is called %r. Rename or separate them: a "
+                "name that appears twice cannot be matched to a socket." % label)
+        files[label] = data
+        consumed.add(guard)
+    return files, consumed
 
 
 def _sockets_from_args(args, profile):
@@ -693,20 +760,27 @@ def _sockets_from_args(args, profile):
                 raise ValueError("socket %r given twice" % socket)
             dumps[socket] = _read_dump(Path(path))
             sources[socket] = path
-        return dumps, sources, {k: Path(v) for k, v in sources.items()}
+        # Every path READ, keyed by nothing -- the preflight needs the set of
+        # files on disk this run touched, and an earlier version keyed it by
+        # socket while the caller looked it up by source filename, so the
+        # guard list came out wrong whenever the two differed.
+        return dumps, sources, {Path(v) for v in sources.values()}
 
     if not args.dumps:
         raise ValueError("no dumps given")
 
     rows = _expand_inputs(args.dumps)
-    files, guards, explicit = {}, {}, set()
+    files, consumed, explicit = {}, set(), set()
     for label, data, guard, was_named in rows:
         if label in files:
-            raise ValueError("%s was given twice" % label)
-        if was_named and any(_same_file(guard, other) for other in guards.values()):
-            raise ValueError("%s was given twice" % label)
+            # Two members with the same name, or two archives sharing one. Either
+            # way the label no longer identifies a file, and silently keeping one
+            # would convert something the user cannot see.
+            raise ValueError(
+                "more than one input is called %r. Rename or separate them: a "
+                "name that appears twice cannot be matched to a socket." % label)
         files[label] = data
-        guards[label] = guard
+        consumed.add(guard)
         if was_named:
             explicit.add(label)
     digests = {name: _sha(data) for name, data in files.items()}
@@ -757,7 +831,7 @@ def _sockets_from_args(args, profile):
     # different case -- a Squawk & Talk zip holds the CPU ROMs too, and the whole
     # point of accepting a folder is that the user does not have to know which
     # files are the speech ones.
-    unused = [n for n in files if n not in taken and n in explicit]
+    unused = [n for n in files if n not in taken and n in explicit]  # noqa: E501
     if unused:
         # Suggesting --socket here used to invite assigning a CPU ROM to a speech
         # socket, which converts the wrong bytes. The likely truth is simpler:
@@ -772,7 +846,7 @@ def _sockets_from_args(args, profile):
             % (profile.id,
                ", ".join(PurePosixPath(n).name for n in unused),
                invocation()))
-    return dumps, sources, guards
+    return dumps, sources, consumed
 
 
 def cmd_chips(args) -> int:
@@ -821,7 +895,7 @@ def cmd_identify(args) -> int:
 
     # Same expansion as convert-set: a folder or a zip is a perfectly ordinary
     # thing to point at, and identify is usually the FIRST command anyone runs.
-    files = {label: data for label, data, _guard, _named in _expand_inputs(args.dumps)}
+    files, _consumed = _labelled_inputs(args.dumps)
 
     print("Supplied dumps")
     for name, data in files.items():
@@ -928,7 +1002,7 @@ def cmd_convert_set(args) -> int:
     if args.game:
         profile = profile_mod.get(args.game)
     else:
-        files = {label: data for label, data, _guard, _named in _expand_inputs(args.dumps)}
+        files, _consumed = _labelled_inputs(args.dumps)
         matches = [m for m in profile_mod.identify(files) if m.complete]
         if len(matches) != 1:
             # GIVE THEM A COMMAND THEY CAN RUN. The old message named `identify`
@@ -962,7 +1036,7 @@ def cmd_convert_set(args) -> int:
         print("error: %s is not a replacement part" % target.id, file=sys.stderr)
         return 2
 
-    dumps, sources, guards = _sockets_from_args(args, profile)
+    dumps, sources, consumed = _sockets_from_args(args, profile)
     try:
         result = convert_set(
             dumps, profile, target,
@@ -1021,10 +1095,14 @@ def cmd_convert_set(args) -> int:
     # coefficient table or a profile is just as much an input, and just as
     # irreplaceable to whoever wrote it; an earlier version of this check
     # defined "input" as the dumps alone and would replace the others.
-    # Guard the real files on disk. For a zip member that is the ARCHIVE: the
-    # member has no path of its own, and it is the zip that must not be
-    # overwritten by an output that happens to share its name.
-    inputs = [Path(guards.get(origin, origin)) for origin in sources.values()]
+    # EVERY FILE THIS RUN READ, not merely the ones whose contents were used.
+    #
+    # This was `[guards.get(origin) for origin in sources.values()]` -- the files
+    # backing the SELECTED sockets. Hand it two archives where only the first
+    # supplies the sockets and the second is read and discarded, and the second
+    # was unprotected: `convert-set good.zip notes.zip -o . --force` overwrote
+    # notes.zip with the manifest. Reading a file is what earns it protection.
+    inputs = list(consumed)
     for extra in (args.source_tables, args.target_tables):
         if extra:
             inputs.append(Path(extra))
