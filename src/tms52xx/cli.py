@@ -23,6 +23,7 @@ import shlex
 import sys
 import tempfile
 import zipfile
+from . import reads
 from pathlib import Path, PurePosixPath
 
 from . import __version__
@@ -54,7 +55,7 @@ def _load_table(path, default_chip: str):
     manifest that describes something other than what made the ROM.
     """
     where = _table_file(path, default_chip)
-    raw = where.read_bytes()
+    raw = reads.read_bytes(where)
     return ChipTables.from_bytes(raw, where), raw, where
 
 
@@ -63,7 +64,7 @@ def _table_origin(path, default_chip: str) -> str:
 
 
 def _table_hash(path, default_chip: str) -> str:
-    return _sha256(_table_file(path, default_chip).read_bytes())
+    return _sha256(reads.read_bytes(_table_file(path, default_chip)))
 
 
 def _tables_or_bundled(path, default_chip: str) -> ChipTables:
@@ -125,7 +126,7 @@ def _changed_ranges(before: bytes, after: bytes):
 
 
 def cmd_inspect(args) -> int:
-    rom = Path(args.rom).read_bytes()
+    rom = reads.read_bytes(args.rom)
     print("file      %s" % args.rom)
     print("size      %d bytes" % len(rom))
     print("sha256    %s" % _sha256(rom))
@@ -389,7 +390,7 @@ def cmd_convert(args) -> int:
                       file=sys.stderr)
                 return 2
 
-    rom = rom_path.read_bytes()
+    rom = reads.read_bytes(rom_path)
     source, source_raw, source_path = _load_table(args.source_tables, "tms5200")
     target, target_raw, target_path = _load_table(args.target_tables, "tms5220")
     table = _load_layout(args, rom)
@@ -587,7 +588,7 @@ def _add_layout_args(parser, required: bool) -> None:
 
 
 def _read_dump(path: Path) -> bytes:
-    data = Path(path).read_bytes()
+    data = reads.read_bytes(path)
     if not data:
         raise ValueError("%s is empty" % path)
     return data
@@ -645,6 +646,24 @@ def _expand_inputs(names):
     rows = []
     opened = set()
     total = 0
+    seen = 0
+
+    def consider():
+        """Count an entry BEFORE deciding whether to read it.
+
+        The count used to be checked inside take(), i.e. only for entries that
+        were accepted -- so a folder or archive of any size passed as long as most
+        of its entries were skipped, which is exactly the shape that costs the
+        most to enumerate. What has to be bounded is how much we look at, not how
+        much we keep.
+        """
+        nonlocal seen
+        seen += 1
+        if seen > _MAX_INPUT_COUNT:
+            raise ValueError(
+                "more than %d files to look at. This is not a Squawk & Talk ROM "
+                "set -- point at the folder holding the ROMs, not one above it."
+                % _MAX_INPUT_COUNT)
 
     def take(label, data, guard, named):
         nonlocal total
@@ -669,14 +688,19 @@ def _expand_inputs(names):
         # left unguarded. `convert-set good.zip that-zip -o . --force` then
         # overwrote it with the manifest and exited 0.
         opened.add(path)
+        reads.track(path)
         if path.is_dir():
-            for found in sorted(p for p in path.iterdir() if p.is_file()):
+            for found in path.iterdir():
+                consider()
+                if not found.is_file():
+                    continue
                 # Do not follow a symlink out of the folder we were pointed at.
                 # Scanning is a convenience; reading files the user did not mean
                 # to offer is not part of it.
                 if found.is_symlink():
                     continue
                 opened.add(found)
+                reads.track(found)
                 if _looks_like_a_dump(found.name):
                     # Check the size on the filesystem BEFORE reading it in.
                     if found.stat().st_size > _MAX_ONE_INPUT:
@@ -692,7 +716,8 @@ def _expand_inputs(names):
         if path.is_file() and zipfile.is_zipfile(path):
             try:
                 with zipfile.ZipFile(path) as archive:
-                    for info in sorted(archive.infolist(), key=lambda i: i.filename):
+                    for info in archive.infolist():
+                        consider()
                         if info.is_dir() or not _looks_like_a_dump(info.filename):
                             continue
                         # Refuse on the DECLARED size before reading, so a crafted
@@ -715,6 +740,7 @@ def _expand_inputs(names):
                 "%s is %.1f MB. Speech ROMs on this hardware are at most 8 KB."
                 % (path, path.stat().st_size / 1048576.0))
         take(str(path), _read_dump(path), path, True)
+    rows.sort(key=lambda r: r[0])      # deterministic order, after bounding
     if not rows:
         raise ValueError(
             "nothing that looks like a ROM dump was found in: %s\n"
@@ -1133,12 +1159,14 @@ def cmd_convert_set(args) -> int:
     # supplies the sockets and the second is read and discarded, and the second
     # was unprotected: `convert-set good.zip notes.zip -o . --force` overwrote
     # notes.zip with the manifest. Reading a file is what earns it protection.
-    inputs = list(consumed)
-    for extra in (args.source_tables, args.target_tables):
-        if extra:
-            inputs.append(Path(extra))
-    if getattr(profile, "source", None):
-        inputs.append(Path(profile.source))
+    # ASK ONE PLACE. This list used to be assembled here from the pieces this
+    # function happened to know about -- the dumps, the two --tables options, the
+    # selected profile -- and it was incomplete four separate times. Every read in
+    # the package now goes through tms52xx.reads, which records the path, so the
+    # question "what did this run read" has one answer and it is not this
+    # function's job to remember. The union with `consumed` keeps zip members,
+    # whose bytes come out of zipfile rather than through a read helper.
+    inputs = list(reads.consumed() | set(consumed))
     for destination in destinations:
         for supplied in inputs:
             if _same_file(supplied, destination):

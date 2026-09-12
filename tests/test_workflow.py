@@ -209,6 +209,47 @@ class TestDestinationPreflight(unittest.TestCase):
         self.assertTrue(suggested, result.stdout)
         self.assertNotIn("cpu.bin", suggested[-1])
 
+    def test_every_file_the_run_reads_is_protected_including_bundled_data(self):
+        """The guard is sourced from one registry, not assembled per code path.
+
+        Four separate omissions were found this way -- zip members, discarded
+        archives, zero-row archives, then the profile directory and the bundled
+        coefficient tables. All of those are read during an ordinary run, and any
+        of them could be written over by aiming -o at it with --force.
+        """
+        from tms52xx import reads, chips, profiles
+        reads.reset()
+        chips.resolve("tms5220").tables()
+        profiles.available()
+        recorded = {str(p) for p in reads.consumed()}
+        self.assertTrue(any(p.endswith("tms5220.json") for p in recorded),
+                        "the bundled target table was read but not recorded")
+        self.assertTrue(any("profiles" in p for p in recorded),
+                        "profile files were read but not recorded")
+
+    def test_enumeration_is_bounded_before_entries_are_examined(self):
+        """Bounding accepted rows bounds nothing: skipped entries are the cheap ones to make."""
+        crowd = self.dir / "crowd"
+        crowd.mkdir()
+        for i in range(600):
+            (crowd / ("note%d.txt" % i)).write_text("x")
+        result = run("identify", str(crowd), cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("files to look at", result.stderr)
+
+    def test_a_non_regular_file_is_refused_rather_than_read(self):
+        """A FIFO reports no meaningful size, so it cannot be bounded."""
+        import os
+        fifo = self.dir / "pipe.bin"
+        try:
+            os.mkfifo(fifo)
+        except (AttributeError, OSError):
+            self.skipTest("no FIFO support here")
+        result = run("convert-set", str(fifo), "-o", str(self.dir / "out"),
+                     cwd=self.dir, extra_env=self.env)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not a regular file", result.stderr)
+
     def test_an_archive_that_yields_nothing_is_still_protected(self):
         """Protection is earned by being OPENED, not by yielding a usable row.
 

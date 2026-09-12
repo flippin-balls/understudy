@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .tables import ChipTables
+from . import reads
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 #: Ships inside the package, because the tables' BSD-3-Clause licence requires
@@ -59,7 +60,7 @@ LICENSE_DIR = DATA_DIR / "licenses"
 def notices() -> str:
     """The third-party notice text, as installed. Used by `understudy chips`."""
     path = LICENSE_DIR / "THIRD_PARTY_NOTICES.md"
-    return path.read_text(encoding="utf-8") if path.exists() else ""
+    return reads.read_text(path) if path.exists() else ""
 
 
 class Chip:
@@ -143,7 +144,7 @@ def bundled_provenance(table: str) -> Optional[dict]:
     path = DATA_DIR / ("%s.json" % table)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8")).get("_provenance")
+    return json.loads(reads.read_text(path)).get("_provenance")
 
 
 def describe() -> str:

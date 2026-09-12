@@ -23,6 +23,7 @@ from .profiles import Profile, ProfileError, sha256
 from .bitstream import parse
 from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
 from .tables import ChipTables
+from . import reads
 
 #: Bumped when the manifest's shape changes. Readers should check it.
 #: Bumped to 3: `speech_coverage_percent` changed meaning -- it counted the
@@ -65,7 +66,7 @@ def _load_tables(chip: Chip, custom: Optional[Path]):
     produced the ROM.
     """
     path = Path(custom) if custom else chip.table_path
-    raw = path.read_bytes()
+    raw = reads.read_bytes(path)
     return ChipTables.from_bytes(raw, path), raw, path
 
 

@@ -24,6 +24,7 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
+from . import reads
 
 BUNDLED_PROFILE_DIR = Path(__file__).resolve().parent / "data" / "profiles"
 
@@ -405,7 +406,7 @@ class Profile:
         has been edited, which an id and a version number cannot do.
         """
         try:
-            return hashlib.sha256(Path(self.source).read_bytes()).hexdigest()
+            return hashlib.sha256(reads.read_bytes(self.source)).hexdigest()
         except (OSError, ValueError):
             return None
 
@@ -555,7 +556,7 @@ class DeviceResult:
 def load_file(path) -> Profile:
     path = Path(path)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(reads.read_text(path))
     except json.JSONDecodeError as error:
         raise ProfileError("%s is not valid JSON: %s" % (path, error))
     if not isinstance(raw, dict):
