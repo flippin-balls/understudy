@@ -2,12 +2,13 @@
 
 Understudy is a preservation tool that produces files people burn into EPROMs
 and put into machines they cannot replace. That shapes how it is built: it
-prefers refusing to guessing, and it tries never to claim more than it has
+would rather refuse than guess, and it tries never to claim more than it has
 checked.
 
 ## The short version
 
 - Tests: `PYTHONPATH=src python -m unittest discover -s tests`
+- Documentation check: `python tools/check_docs.py`
 - Standard library only. No dependencies, on purpose.
 - Python 3.9+, and CI runs on Linux, macOS and Windows.
 - No ROM images, ever, anywhere — not in tests, fixtures, issues or PRs.
@@ -40,6 +41,25 @@ checks in `workflow.py`. They cannot fire today, and property tests hold the
 invariants that keep them unreachable. If you change how patching works, those
 property tests are the ones to watch.
 
+## Documentation style
+
+Write for the person standing at a bench first. Put the command, decision, or
+warning they need before the explanation of why it works.
+
+Keep a caveat where it first matters, then link to the detailed evidence instead
+of restating it throughout the docs. Technical precision matters; exhaustive
+qualification in every paragraph does not make a claim safer.
+
+Prefer ordinary language. A useful test is whether you would say the sentence
+to another technician while looking at the board. Avoid sales language,
+rhetorical flourishes, and paragraphs that argue with objections nobody has
+raised yet.
+
+Run `python tools/check_docs.py` before sending documentation changes. It is a
+small local check for accidental prose problems, not a style authority. A
+warning is a prompt to reread the passage, not an instruction to rewrite a good
+technical sentence to satisfy a score.
+
 ## Things that will surprise you
 
 - Bits leave a byte **LSB-first** but assemble into fields **MSB-first**.
@@ -65,6 +85,5 @@ third-party data of any kind, it needs an entry there with its provenance.
 ## Review
 
 Changes that affect what gets written to a ROM get read carefully, and usually
-adversarially — the question asked is "how could this produce a plausible but
-wrong file?". That is not distrust; it is the same standard the existing code
-was held to, and it found real defects every round.
+adversarially: how could this produce a plausible but wrong file? That is the
+same standard the existing code was held to, and it has found real defects.
