@@ -209,6 +209,36 @@ class TestDestinationPreflight(unittest.TestCase):
         self.assertTrue(suggested, result.stdout)
         self.assertNotIn("cpu.bin", suggested[-1])
 
+    def test_manual_convert_cannot_overwrite_a_table_it_read(self):
+        """`convert`'s own preflight runs BEFORE anything is read.
+
+        So it could only know the paths the user named, and
+        `convert rom -o <a bundled coefficient table> --force` replaced a table
+        that same run had loaded. The registry check has to run after the reads.
+        """
+        from tms52xx import chips
+        table = Path(chips.__file__).parent / "data" / "tms5220.json"
+        before = table.read_bytes()
+        rom = self.dir / "speech.bin"
+        raw = self.raw
+        mem = raw["memory"]
+        image = bytearray([mem.get("fill", 0xFF)]) * mem["window_size"]
+        for d in raw["devices"]:
+            off = d["cpu_address"] - mem["window_base"]
+            image[off:off + d["size"]] = self.dumps[d["socket"]]
+        rom.write_bytes(bytes(image))
+        layout = raw["layout"]
+        result = run("convert", str(rom),
+                     "--table-offset", str(layout["table_offset"]),
+                     "--phrases", str(layout["phrases"]),
+                     "--base-address", str(mem["window_base"]),
+                     "--no-end-bound", "--command-ordered",
+                     "-o", str(table), "--force",
+                     cwd=self.dir, extra_env=self.env)
+        self.assertIn("file this run reads", result.stderr + result.stdout)
+        self.assertEqual(table.read_bytes(), before,
+                         "a bundled coefficient table was overwritten")
+
     def test_every_file_the_run_reads_is_protected_including_bundled_data(self):
         """The guard is sourced from one registry, not assembled per code path.
 

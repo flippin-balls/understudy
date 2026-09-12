@@ -492,6 +492,21 @@ def cmd_convert(args) -> int:
         print("\ndry run: nothing written")
         return 0
 
+    # SECOND CHECK, AFTER THE READS. The check at the top of this function runs
+    # before anything has been read, so it can only know about the paths the user
+    # named -- which is why `convert ... -o src/tms52xx/data/tms5220.json --force`
+    # could replace a bundled coefficient table that this very run had loaded. By
+    # here every read has been recorded, so ask the registry the same question
+    # convert-set asks. Two layers, because one guard on a path is never enough:
+    # the early one gives a good error before doing work, this one is the true one.
+    for label, candidate in (("output", out_path), ("manifest", manifest_path)):
+        for supplied in reads.consumed():
+            if _same_file(supplied, candidate):
+                print("refusing to convert: the %s path (%s) is a file this run "
+                      "reads (%s). Choose a different --output."
+                      % (label, candidate, supplied), file=sys.stderr)
+                return 2
+
     if out_path.exists() and not args.force:
         print("refusing to overwrite %s (pass --force)" % out_path,
               file=sys.stderr)
@@ -699,9 +714,12 @@ def _expand_inputs(names):
                 # to offer is not part of it.
                 if found.is_symlink():
                     continue
-                opened.add(found)
-                reads.track(found)
                 if _looks_like_a_dump(found.name):
+                    # Registered only once we mean to READ it. Tracking every
+                    # entry we merely looked at made an unread manifest sitting
+                    # in the folder block a forced rerun into that folder.
+                    opened.add(found)
+                    reads.track(found)
                     # Check the size on the filesystem BEFORE reading it in.
                     if found.stat().st_size > _MAX_ONE_INPUT:
                         raise ValueError(
@@ -714,6 +732,10 @@ def _expand_inputs(names):
                         take(str(found), data, found, False)
             continue
         if path.is_file() and zipfile.is_zipfile(path):
+            # Size the CONTAINER before opening it: ZipFile() reads and builds the
+            # whole central directory in its constructor, so a bound applied to
+            # members afterwards is applied after the cost.
+            reads.check_size(path, _MAX_ALL_INPUTS)
             try:
                 with zipfile.ZipFile(path) as archive:
                     for info in archive.infolist():
