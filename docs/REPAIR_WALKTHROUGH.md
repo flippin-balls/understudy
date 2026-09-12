@@ -1,116 +1,101 @@
 # From a dead speech chip to two burned EPROMs
 
-Start to finish, assuming you have never used a command line. If you have, the
-whole thing is one command and you can read [the README](../README.md) instead.
+Start here if you have never used Understudy or a command line. If you are
+comfortable in a terminal, the [README](../README.md) has the shorter path.
 
 You will need:
 
-- the sound ROMs out of your machine, as files (see [If you have not read your
-  ROMs yet](#if-you-have-not-read-your-roms-yet));
-- a blank EPROM of the right type for each device that holds speech — for many
-  games that is **two**, and they are often **different types**;
-- a TMS5220, TMS5220C or TSP5220C. All three give identical converted data;
-- an EPROM programmer, and whatever software came with it;
-- a computer with Python. Ten minutes if you already have it.
+- the sound ROMs from your machine, saved as files;
+- a blank EPROM of the right type for each speech device;
+- a TMS5220, TMS5220C or TSP5220C;
+- an EPROM programmer;
+- a computer with Python 3.9 or newer.
 
----
+## 1. Check Python
 
-## 1. Check whether you have Python
+On **Windows**, open PowerShell and run:
 
-Open a terminal. On **Windows**: press the Start button, type `powershell`, and
-press Enter. On **macOS**: Applications → Utilities → Terminal.
-
-Type this and press Enter:
-
-```
+```text
 py --version
 ```
 
-If you see something like `Python 3.12.1`, you are ready — skip to step 2.
+On **macOS/Linux**:
 
-If you see `Python was not found` or similar, install it:
+```text
+python3 --version
+```
 
-- **Windows**: get it from [python.org/downloads](https://www.python.org/downloads/).
-  On the first screen of the installer, tick **"Add python.exe to PATH"** before
-  clicking Install. That box is the single most common reason the commands below
-  do not work. Close and reopen PowerShell afterwards, then try `py --version`
-  again.
-- **macOS / Linux**: use `python3 --version`, and install Python 3.9 or newer
-  from your usual source if it is missing.
+If Windows says Python was not found, install it from
+[python.org/downloads](https://www.python.org/downloads/) and select **Add
+python.exe to PATH** in the installer. Reopen PowerShell afterward.
 
-Throughout this page, Windows users type `py` and everyone else types `python3`.
+The examples below use `py` on Windows and `python3` elsewhere.
 
 ## 2. Get Understudy
 
-On the repository page, click the green **Code** button, then **Download ZIP**.
-Unzip it somewhere you can find again — your Desktop is fine. You will get a
-folder called `understudy-main` containing `understudy.py`.
+On the repository page, click **Code → Download ZIP**, then unzip it somewhere
+easy to find. The folder should contain `understudy.py`.
 
-There is nothing to install. No `pip`, no setup, no dependencies.
+There is nothing else to install: no `pip`, setup step, or dependency download.
 
-## 3. Put your ROMs where you can reach them
+## 3. Put the ROM files nearby
 
-Copy your ROM files **into that same folder**, next to `understudy.py`. That
-saves you typing paths.
+For the simplest commands, copy your ROM dumps into the Understudy folder next
+to `understudy.py`.
 
-If your ROMs are still inside a **zip**, copy the zip in as it is — do not
-unzip it. You will point at the zip by name. (Pointing at a *folder* does not
-look inside archives, so a zip sitting in the folder would be skipped.)
+If they are already in a zip, leave the zip intact and copy it there. Understudy
+can read a zip directly.
 
-## 4. Open a terminal in that folder
+## 4. Open a terminal in the folder
 
-On **Windows**: open the folder, hold **Shift**, right-click an empty part of the
-window, and choose **Open PowerShell window here**.
+On Windows, open the folder, Shift+right-click an empty area, and choose the
+PowerShell/Terminal option. On macOS, use **Services → New Terminal at Folder**.
 
-On **macOS**: right-click the folder → Services → **New Terminal at Folder**.
+Check the tool:
 
-Check you are in the right place:
-
-```
+```text
 py understudy.py --version
 ```
 
-A version number means everything is working.
+Use `python3 understudy.py --version` on macOS/Linux.
 
-## 5. See what you have
+## 5. Identify the ROM set
 
-If your ROMs are **loose files** in the folder:
+For loose files in the current folder:
 
-```
+```text
 py understudy.py identify .
 ```
 
-The `.` means "everything in this folder". If they are **in a zip**, name the
-zip instead:
+For a zip:
 
-```
+```text
 py understudy.py identify mygame.zip
 ```
 
-Either way, use the same thing in step 6.
-
-It will either name your game, or tell you it does not recognise the set. If it
-names it, it also prints the exact command to run next — you can copy that.
+If Understudy recognizes the set, it names the game and prints the next command.
 
 ## 6. Convert
 
-```
+Loose files:
+
+```text
 py understudy.py convert-set .
 ```
 
-...or, if your ROMs are in a zip:
+Zip file:
 
-```
+```text
 py understudy.py convert-set mygame.zip
 ```
 
-That is the whole job. It works out which game it is, which file belongs in which
-socket, which chip to convert for, and where to put the results.
+Understudy identifies the game, assigns files to sockets, converts the speech,
+and writes the result to `understudy-out/`.
 
-It writes the files, then prints a report. **Read the report before you burn
-anything.** The part that matters:
+**Read the report before burning anything.** The lines that matter most look
+like this:
 
-```
+```text
 output devices
   U4   2716       2048 bytes  1560 changed  100% converted
        burn into 2716: understudy-out/841-01_4_U4_2716_tms5220.716
@@ -118,119 +103,110 @@ output devices
        burn into 2532: understudy-out/841-02_5_U5_2532_tms5220.532
 ```
 
-Each line tells you the **socket** (`U4`), the **chip type to burn**
-(`2716`), and the **file**. A new folder called `understudy-out` now holds them.
+Each line gives the **socket**, the **EPROM type**, and the **file to burn**.
 
-If it prints a warning about frames "below the pitch floor", that is normal and
-explained in [the README](../README.md#silicon-validation). It is not an error.
+A warning about frames below the pitch floor is not a conversion failure. The
+TMS5220 cannot reproduce the TMS5200's lowest pitch values; see
+[PITCH_CEILING.md](PITCH_CEILING.md).
 
-## 7. Burn them
+### Optional audio optimization
 
-For each output file, in your programmer's software:
+For a first conversion, the normal mode is the simplest baseline. Embryon also
+has measured optimization data that you can opt into with:
 
-- select the **device type printed on that line** — `2716` for the U4 file,
-  `2532` for the U5 file in the example above. **They are often not the same
-  type**, and selecting the wrong one is the most common way to waste a chip;
-- load the file as a **raw binary image**. Not Intel HEX, not S-record. If your
-  software asks for a format and "binary" is an option, that is the one;
-- program, then **verify**. Every programmer has a verify function. Use it;
-- label the chip with its socket while it is in your hand.
+```text
+py understudy.py convert-set . --optimize-audio
+```
 
-**Do not burn `embryon.manifest.json`.** That file is a record of what was
-converted, not something to program. Keep it — if you ever need help, nearly
-every question anyone will ask you is answerable from it, and it contains no
-ROM data.
+Only Embryon currently supports that flag, and optimized ROMs have not yet been
+tested on real hardware. See [AUDIO_OPTIMIZATION.md](AUDIO_OPTIMIZATION.md).
 
-**Keep your original chips.** Do not erase them. If anything is wrong you want
-to be able to put the machine back exactly as it was.
+## 7. Burn the EPROMs
 
-## 8. Fit them
+For each output file:
 
-Both the new EPROMs and the replacement speech chip go in together. Two things
-this tool cannot check for you:
+- select the **device type printed in the report**;
+- load the file as a **raw binary** image;
+- program it, then run your programmer's **verify** function;
+- label the chip with its socket before putting it down.
 
-- **The sockets may be jumpered for a particular device type.** Many boards can
-  take more than one EPROM type per socket, selected by jumpers, and the types
-  are *not* pin-compatible — a 2532 and a 2732 disagree, and so do a 2716 and a
-  2532. Check your board's jumpers against its schematic before fitting a type
-  that differs from what came out.
-- **Whether your replacement speech chip drops in electrically** is between you,
-  the datasheet and the schematic. See [CHIPS.md](CHIPS.md). One TMS5220 has
-  been fitted to one board for this project and worked, with no board change.
-  That is not a substitution guarantee.
+Do not burn the `.manifest.json` file. Keep it with the originals; it records the
+input/output hashes and conversion settings without containing ROM data.
+
+**Do not erase the original chips.**
+
+## 8. Fit the EPROMs and speech chip
+
+Check the board's EPROM jumpers before fitting a device type different from the
+one you removed. A 2532 and 2732 are both 4 KB devices but are not pin-compatible
+without the proper jumper configuration.
+
+The replacement speech chip is a separate electrical question from the ROM
+conversion. See [CHIPS.md](CHIPS.md) and check the board schematic and the
+datasheet for the exact part you are fitting.
 
 ## 9. Tell us how it went
 
-Whether it worked or not: [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
-Only one game has ever been tested on a real machine. A failure report is worth
-more than silence, and a partial one ("phrases 1–14 fine, 15 sounds wrong") is
-worth more than either.
-
----
+Real-board results are valuable whether they pass or fail. Use
+[HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md), especially if you test a game
+other than Embryon or use `--optimize-audio`.
 
 ## When something goes wrong
 
 ### "Python was not found" / "py is not recognised"
 
-Python is not installed, or the **Add python.exe to PATH** box was not ticked
-during installation. Reinstall with that box ticked, then close and reopen the
-terminal. Try `python` or `python3` instead of `py` before reinstalling.
+Install Python or reopen the terminal after installation. On Windows, make sure
+**Add python.exe to PATH** was selected. You can also try `python` or `python3`
+instead of `py`.
 
 ### "this does not match any game understudy knows"
 
-Three different causes, and the message cannot tell them apart:
+Usually one of these:
 
-- **Your game is not one of the sixteen covered.** Run
-  `py understudy.py profiles` to see the list. If yours is not there, the tool
-  cannot convert it automatically, and that is not a fault in your files.
-- **You are missing a device.** Some games hold speech in two chips. If you only
-  read one, no profile can match. `py understudy.py identify .` lists what it
-  found and what it expected.
-- **A ROM was read badly.** Re-read the chip, making sure your programmer is set
-  to the right device type. A single wrong bit changes the hash.
+- the game is not in `py understudy.py profiles`;
+- one of the required ROM devices is missing;
+- a ROM was read incorrectly.
+
+Re-read the chips using the exact device type marked on them. A single wrong bit
+changes the hash.
 
 ### "nothing that looks like a ROM dump was found"
 
-Three causes:
-
-- **Your ROMs are inside a zip.** Point at the zip by name, not at the folder
-  holding it — scanning a folder does not look inside archives.
-- **You pointed one level too high.** Sub-folders are not searched. Point at the
-  folder that directly contains the files.
-- **The files have names that look like documentation** (`.txt`, `.md`, a file
-  called `README`). Those are skipped while scanning. Name them directly if you
-  really mean them.
+- If the dumps are in a zip, point at the zip itself.
+- If you used a folder, point at the folder that directly contains the dumps.
+- Files that look like documentation (`.txt`, `.md`, `README`) are skipped during
+  folder scans; name one explicitly if it really is a ROM dump.
 
 ### "these files are not part of the ... speech set"
 
-You named a file that is not part of the speech set — often a CPU ROM. Either
-remove it from the command, or point at the whole folder instead: when you point
-at a folder, extra files are ignored rather than refused.
+You explicitly named a file that is not part of the speech set, often a CPU ROM.
+Remove it from the command, or point at the containing folder so unrelated files
+can be ignored.
 
 ### "refusing to write over a file this run reads"
 
-An output would land on one of your input files. Convert into a different
-folder: `py understudy.py convert-set . -o converted/`.
+Choose another output directory:
+
+```text
+py understudy.py convert-set . -o converted/
+```
 
 ### The output folder already exists
 
-Understudy will not silently overwrite. Either delete `understudy-out`, or send
-the results somewhere else with `-o`.
+Delete the old `understudy-out/` after checking it, or use `-o` to choose another
+folder. Understudy does not overwrite existing output unless explicitly told to.
 
 ### Anything else
 
-Open an issue with the command you ran and everything it printed. Attach the
-manifest if you got one. It contains no ROM data.
-
----
+Open an issue with the command you ran and its complete output. Attach the
+manifest if one was produced; it contains no ROM data.
 
 ## If you have not read your ROMs yet
 
-You need the contents of the ROM chips already in your machine, as files. That
-means pulling them from their sockets and reading them in an EPROM programmer —
-the same device you will use to burn the new ones. Select the correct device
-type when reading; the wrong one gives a file that looks plausible and is wrong.
+Pull the ROMs from the sound board and read them with your EPROM programmer.
+Select the device type printed on each chip; using the wrong type can produce a
+file of the expected size with incorrect contents.
 
-Read every ROM on the sound board, not just the ones you think hold speech.
-Understudy works out which are which, and having them all lets it identify your
-game by content.
+Read every ROM on the sound board, not only the ones you expect to contain
+speech. Understudy uses the complete set to identify the game and decide which
+files matter.
