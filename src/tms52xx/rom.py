@@ -332,9 +332,16 @@ def diagnose_last_byte(rom: bytes, table: PhraseTable,
 
 def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
               target: ChipTables, truncate_last_byte=False,
-              allow_unterminated: bool = False
+              allow_unterminated: bool = False, optimizer=None
               ) -> Tuple[bytes, List[PhraseResult]]:
     """Convert every phrase in place. Returns (new_rom, per-phrase results).
+
+    `optimizer`, if given, is called as `optimizer(phrase_index, frames)` after
+    each phrase is converted and before it is packed, and may adjust field
+    indexes in place. Every check below -- length, re-parse, frame-kind
+    preservation, stop-frame termination, and the caller's reconciliation of
+    which bytes moved -- then runs against the optimised bytes, not the
+    unoptimised ones, because it is the optimised bytes that get burned.
 
     `truncate_last_byte` selects the phrases whose final ROM byte is never
     transmitted, and so must be left untouched: `False` for none (the default),
@@ -396,7 +403,10 @@ def patch_rom(rom: bytes, table: PhraseTable, source: ChipTables,
                    ", less its untransmitted final byte"
                    if phrase.index in truncated else ""))
         original = bytes(rom[phrase.start:end])
-        converted, report, stopped = convert_stream(original, source, target)
+        converted, report, stopped = convert_stream(
+            original, source, target,
+            optimizer=(lambda frames, _i=phrase.index: optimizer(_i, frames))
+            if optimizer is not None else None)
         if len(converted) != len(original):
             raise AssertionError(
                 "phrase %d changed length; conversion must be in place"

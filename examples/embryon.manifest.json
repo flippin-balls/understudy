@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "tool": "understudy",
   "understudy_version": "0.3.0",
   "profile": {
@@ -126,6 +126,9 @@
     "before_sha256": "4d0f159c5d36c242450854f914cdb379751db61541eda6d404be960c02a0b1ce",
     "after_sha256": "ea73b6b9bfbaad619742485968fe4131324d36e6707e2cc12d1a1d25a155ab7b",
     "bytes": 16384
+  },
+  "audio_optimization": {
+    "enabled": false
   },
   "summary": {
     "phrases": 20,
