@@ -105,6 +105,17 @@ Beyond those, the optimiser may move **K indexes only**, by **one step**, on
 enforced when the data is applied rather than assumed of the file, and a
 violation stops the conversion instead of being skipped.
 
+## Coverage today
+
+Only Embryon has been measured. Its whole eligible corpus was run, not a sample:
+475 voiced frames above the silence gate, of which **456 improved and 19 were
+already optimal** — the same 96 % rate the 40-frame study found, over twelve
+times the frames. Every one of the 456 was re-checked against Understudy's own
+conversion before shipping, and all 456 agreed.
+
+The other fifteen profiles have no data, and `--optimize-audio` will say so
+rather than convert without it.
+
 ## Auditing a run
 
 The manifest records the mode on every conversion, including when it was off.
@@ -115,8 +126,8 @@ wrong" back to the exact indexes involved.
 ```
 audio optimization
   frames considered      475
-  frames improved        431
-  baseline retained       44
-  K indexes moved       1524
-  mean spectral gain    1.83 dB
+  frames improved        456
+  baseline retained       19
+  K indexes moved       1486
+  mean spectral gain     2.09 dB
 ```
