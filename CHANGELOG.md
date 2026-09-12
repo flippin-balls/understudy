@@ -9,6 +9,22 @@ features.
 
 ### Added
 
+- **Optimization data for fifteen of the sixteen profiles.** The measurement
+  behind `--optimize-audio` has been run across the library by the identical
+  process — same renderer, metric, eligibility gate, two-pass local K search and
+  strict-improvement rule, with no per-game tuning and no game-specific runtime
+  code. Embryon was regenerated first and reproduced its shipped result exactly
+  (475/456/19, all 456 overrides identical), which is what licensed running the
+  rest. Across the library: 10,151 eligible frames, 9,777 improved (96.3 %),
+  31,797 K indexes moved. `bigbat` has no data because no ROM set was available.
+- **Read the coverage table before using it on a new game.** Every game's mean
+  whole-phrase score improves, but 64 of 441 phrases came out worse, and unlike
+  Embryon's 0.67 dB the worst is Elektra at **+12.13 dB**. `fball_ii` is the only
+  title with no regression at all. The regressions are deterministic and track
+  phrase length rather than pitch clamping or correction density; the per-game
+  figures, the itemised regressions and the analysis are in
+  [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md) and
+  `docs/optimization_coverage.json`. Nothing here has been heard on hardware.
 - **`--optimize-audio`, an optional conversion mode.** The default conversion
   is unchanged and remains the deterministic nearest-table mapping; this flag
   additionally applies per-frame K-coefficient refinements that were measured,

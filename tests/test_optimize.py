@@ -25,6 +25,7 @@ import synthetic_game                                    # noqa: E402
 from synthetic import original, understudy               # noqa: E402
 from test_rom import stream                              # noqa: E402
 from tms52xx import optimize, parse                      # noqa: E402
+from tms52xx.bitstream import K_FIELDS                   # noqa: E402
 from tms52xx.chips import resolve                        # noqa: E402
 from tms52xx.convert import convert_stream               # noqa: E402
 from tms52xx.optimize import OptimizationError           # noqa: E402
@@ -486,3 +487,201 @@ class TestCanonicalCoordinates(unittest.TestCase):
     def test_override_count_sees_every_entry(self):
         d = doc({"0": {"1": {}, "2": {}}, "3": {"4": {}}})
         self.assertEqual(optimize.override_count(d), 3)
+
+
+class TestShippedOptimizationData(unittest.TestCase):
+    """Every artifact in the package must satisfy the rules at rest.
+
+    The runtime checks all fire during a conversion, which means they are only
+    exercised for whoever happens to own that game's ROMs. These run over the
+    shipped files themselves, so a bad artifact fails in CI rather than on a
+    technician's bench.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.files = sorted(_ORIGINAL_DATA_DIR().glob("*.json"))
+
+    def test_there_is_at_least_one(self):
+        self.assertTrue(self.files, "no optimisation data is shipped at all")
+
+    def test_each_file_is_named_for_the_profile_it_declares(self):
+        from tms52xx.profiles import get
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            self.assertEqual(doc.get("profile_id"), path.stem, path.name)
+            self.assertEqual(doc.get("schema"), optimize.SCHEMA, path.name)
+            profile = get(path.stem)
+            self.assertEqual(doc.get("profile_version"), profile.version,
+                             "%s: data is for a different profile version"
+                             % path.name)
+
+    def test_each_file_pins_the_bundled_tables(self):
+        want = _bundled_table_hashes()
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            optimize.check_tables(doc, want["source_sha256"],
+                                  want["target_sha256"])
+
+    def test_every_phrase_carries_a_source_digest(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for key, entry in (doc.get("phrases") or {}).items():
+                digest = entry.get("source_sha256")
+                self.assertIsInstance(digest, str, "%s phrase %s" % (path.name, key))
+                self.assertEqual(len(digest), 64, "%s phrase %s" % (path.name, key))
+
+    def test_every_coordinate_is_canonical(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for key, entry in (doc.get("phrases") or {}).items():
+                self.assertEqual(str(int(key)), key, "%s phrase %r" % (path.name, key))
+                for frame in entry.get("frames") or {}:
+                    self.assertEqual(str(int(frame)), frame,
+                                     "%s frame %r" % (path.name, frame))
+
+    def test_every_override_is_a_bounded_k_only_step(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for pkey, entry in (doc.get("phrases") or {}).items():
+                for fkey, override in (entry.get("frames") or {}).items():
+                    where = "%s %s/%s" % (path.name, pkey, fkey)
+                    delta = override.get("delta") or {}
+                    self.assertTrue(delta, where)
+                    for name, step in delta.items():
+                        self.assertIn(name, K_FIELDS, where)
+                        self.assertIsInstance(step, int, where)
+                        self.assertNotEqual(step, 0, where)
+                        self.assertLessEqual(abs(step), optimize.MAX_STEP, where)
+
+    def test_every_override_records_a_strict_improvement(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for pkey, entry in (doc.get("phrases") or {}).items():
+                for fkey, override in (entry.get("frames") or {}).items():
+                    where = "%s %s/%s" % (path.name, pkey, fkey)
+                    before = override.get("mcd_db_before")
+                    after = override.get("mcd_db_after")
+                    for value in (before, after):
+                        self.assertIsInstance(value, (int, float), where)
+                        self.assertEqual(value, value, where)      # not NaN
+                    self.assertLess(after, before, where)
+
+    def test_every_override_carries_a_guard(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for entry in (doc.get("phrases") or {}).values():
+                for override in (entry.get("frames") or {}).values():
+                    guard = override.get("guard")
+                    self.assertIsInstance(guard, str, path.name)
+                    self.assertEqual(len(guard), optimize.GUARD_CHARS, path.name)
+
+    def test_the_counts_agree_with_the_overrides(self):
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            self.assertEqual(optimize.override_count(doc),
+                             doc.get("frames_improved"), path.name)
+            self.assertEqual(
+                doc.get("frames_considered"),
+                doc.get("frames_improved") + doc.get("frames_baseline_retained"),
+                path.name)
+
+    def test_no_absolute_coefficient_values_are_shipped(self):
+        """The file must carry steps and digests, never an index.
+
+        A `delta` of +/-1 or +/-2 says which way to move; an absolute index
+        would be real LPC data out of a copyrighted ROM.
+        """
+        for path in self.files:
+            doc = json.loads(path.read_text())
+            for entry in (doc.get("phrases") or {}).values():
+                for override in (entry.get("frames") or {}).values():
+                    self.assertNotIn("expect", override, path.name)
+                    self.assertNotIn("apply", override, path.name)
+
+    def test_a_profile_without_data_refuses_the_flag(self):
+        from tms52xx.profiles import available
+        shipped = {p.stem for p in self.files}
+        missing = [p.id for p in available() if p.id not in shipped]
+        if not missing:
+            self.skipTest("every profile ships data")
+        with self.assertRaises(OptimizationError) as caught:
+            optimize.load(missing[0])
+        self.assertIn("no audio optimisation data", str(caught.exception))
+
+
+class TestCoverageDocumentation(unittest.TestCase):
+    """The coverage table has to describe what is actually in the package."""
+
+    def test_the_table_matches_the_shipped_files(self):
+        doc = (ROOT / "docs" / "AUDIO_OPTIMIZATION.md").read_text()
+        shipped = {p.stem for p in _ORIGINAL_DATA_DIR().glob("*.json")}
+        from tms52xx.profiles import available
+        for profile in available():
+            claimed = ("| `%s` | measured" % profile.id) in doc
+            self.assertEqual(
+                claimed, profile.id in shipped,
+                "%s: coverage table says measured=%s, package says %s"
+                % (profile.id, claimed, profile.id in shipped))
+
+
+class TestCoverageReport(unittest.TestCase):
+    """The published coverage figures must describe the shipped artifacts.
+
+    A report is the only part of this a reader can check without ROMs, so it
+    being right is the difference between evidence and assertion.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.report = json.loads(
+            (ROOT / "docs" / "optimization_coverage.json").read_text())
+        cls.rows = {r["profile"]: r for r in cls.report["profiles"]}
+
+    def test_it_covers_every_profile(self):
+        from tms52xx.profiles import available
+        self.assertEqual(sorted(self.rows), sorted(p.id for p in available()))
+
+    def test_measured_rows_match_the_shipped_data(self):
+        for path in sorted(_ORIGINAL_DATA_DIR().glob("*.json")):
+            row = self.rows[path.stem]
+            doc = json.loads(path.read_text())
+            self.assertEqual(row["frames_improved"], doc["frames_improved"],
+                             path.stem)
+            self.assertEqual(row["eligible_frames"], doc["frames_considered"],
+                             path.stem)
+            self.assertEqual(row["frames_baseline_retained"],
+                             doc["frames_baseline_retained"], path.stem)
+            self.assertEqual(row["frames_improved"], optimize.override_count(doc),
+                             path.stem)
+
+    def test_a_profile_without_data_is_reported_as_skipped(self):
+        shipped = {p.stem for p in _ORIGINAL_DATA_DIR().glob("*.json")}
+        for name, row in self.rows.items():
+            if name in shipped:
+                self.assertNotEqual(row["status"], "skipped", name)
+            else:
+                self.assertEqual(row["status"], "skipped", name)
+                self.assertIn("reason", row)
+
+    def test_every_regression_is_listed_not_just_counted(self):
+        """Regressions are the part worth hiding, so they are itemised."""
+        for name, row in self.rows.items():
+            worse = (row.get("phrases") or {}).get("worse")
+            if not worse:
+                continue
+            self.assertEqual(len(row.get("regressed_phrases") or []), worse, name)
+            for entry in row["regressed_phrases"]:
+                self.assertGreater(entry["optimized_mcd_db"],
+                                   entry["baseline_mcd_db"], name)
+
+    def test_the_totals_add_up(self):
+        totals = self.report["totals"]
+        measured = [r for r in self.rows.values() if r["status"] != "skipped"]
+        self.assertEqual(totals["eligible_frames"],
+                         sum(r["eligible_frames"] for r in measured))
+        self.assertEqual(totals["frames_improved"],
+                         sum(r["frames_improved"] for r in measured))
+        self.assertEqual(totals["phrases_worse"],
+                         sum((r.get("phrases") or {}).get("worse", 0)
+                             for r in measured))
