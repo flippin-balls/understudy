@@ -444,3 +444,40 @@ class TestSourceChipResolution(GameFixture):
         self.assertEqual(code, 0)
         self.assertIn("tms5220", out)
         self.assertIn("default target", out)
+
+
+class TestTableAddress(GameFixture):
+    """Where the table sits is a window position, not a pointer-decoding rule.
+
+    `base_address` is subtracted from each pointer; `window_base` is where the
+    assembled image starts. They are equal in every bundled profile, so using
+    the wrong one printed the right answer everywhere until a profile stored
+    window-relative pointers.
+    """
+
+    def test_the_table_address_is_right_when_the_bases_differ(self):
+        profile = Profile(copy.deepcopy(self.raw), "<t>")
+        image = bytearray(profile.assemble(self.dumps))
+        # Re-store every pointer window-relative, and say so with base_address 0.
+        at = profile.table_offset
+        for _ in range(profile.phrases):
+            value = int.from_bytes(image[at:at + 2], "big")
+            image[at:at + 2] = (value - profile.window_base).to_bytes(2, "big")
+            at += 2
+        for device in profile.devices:
+            lo = device.cpu_address - profile.window_base
+            data = bytes(image[lo:lo + device.size])
+            (self.roms / ("%s.bin" % device.socket)).write_bytes(data)
+            self.dumps[device.socket] = data
+        self.raw["layout"]["base_address"] = 0
+        for entry in self.raw["devices"]:
+            entry["sha256"] = sha256(self.dumps[entry["socket"]])
+        synthetic_game.write_profile(Path(self.env), self.raw)
+
+        code, out, err = self.inspect()
+        self.assertEqual(code, 0, err)
+        want = self.raw["memory"]["window_base"] + self.raw["layout"]["table_offset"]
+        self.assertIn("table     $%04X" % want, out)
+        # And the bug it replaced would have printed the raw offset.
+        self.assertNotIn("table     $%04X" % self.raw["layout"]["table_offset"],
+                         out)

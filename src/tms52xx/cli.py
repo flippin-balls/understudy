@@ -238,8 +238,13 @@ def _inspect_profile(args) -> int:
                  % ("address-ordered" if profile.address_ordered
                     else "command-ordered",
                     "with" if profile.has_end_bound else "no"))
+    # window_base, NOT base_address. base_address is what gets subtracted from
+    # each POINTER, which is a decoding rule; where the table itself sits is a
+    # position in the assembled window. They are equal in every bundled profile
+    # and differ the moment one stores window-relative pointers, which prints a
+    # confident wrong address under a heading promising CPU addresses.
     print("table     $%04X in the assembled $%04X window -- %d phrases, %s"
-          % (profile.base_address + profile.table_offset, profile.window_base,
+          % (profile.window_base + profile.table_offset, profile.window_base,
              profile.phrases, form))
 
     print("\n  %-4s %-7s %-7s %-6s %-6s %-17s %-8s %-8s %s"
