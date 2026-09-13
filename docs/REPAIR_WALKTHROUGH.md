@@ -75,6 +75,16 @@ py understudy.py identify mygame.zip
 
 If Understudy recognizes the set, it names the game and prints the next command.
 
+If you want to see what is actually in the ROMs before changing anything, use
+the name it printed:
+
+```text
+py understudy.py inspect --game NAME .
+```
+
+That lists every phrase — where it lives, how long it is, how many frames — and
+writes nothing. It is optional; skip it if you only want the repair.
+
 ## 6. Convert
 
 Loose files:

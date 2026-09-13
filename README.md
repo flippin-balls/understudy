@@ -249,11 +249,27 @@ See [CHIPS.md](docs/CHIPS.md) for the chip variants,
 [PROVENANCE.md](docs/PROVENANCE.md) for the bundled tables, and
 [VALIDATION.md](docs/VALIDATION.md) for the profile checks.
 
+## Looking at a phrase table without converting
+
+If your game is supported and you just want to see what is in it:
+
+```text
+python understudy.py inspect --game embryon my-roms/
+```
+
+That takes the same dumps `convert-set` takes — files, a folder or a zip — reads
+the layout from the profile, and prints every phrase: CPU start and end, length,
+frame count and kinds, how many frames clamp at the pitch floor, the final-byte
+verdict, and which phrases are aliases of another or silent. **It writes
+nothing.** The figures are the ones `convert-set` would report, because it runs
+the same conversion in memory and throws the bytes away.
+
 ## Research and unsupported games
 
 The normal repair path is `convert-set`. The lower-level `inspect` and `convert`
-commands are for research and new profiles. They require you to supply the ROM
-layout yourself.
+commands are also for research and new profiles, where you supply the ROM layout
+yourself. Add `--start-end-pairs` if the table stores a 4-byte (start, end)
+record per phrase rather than a list of starts.
 
 ```text
 python understudy.py inspect speech.bin --table-offset 0xNNNN --phrases N \

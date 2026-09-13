@@ -399,6 +399,42 @@ wrong and neither is unusual:
   "the end of the ROM" would swallow the pointer table. `from_pointers` stops it
   at the table instead.
 
+## Reading a layout you already have
+
+For a supported game the layout is in its profile, and you can read the whole
+phrase table without supplying anything or writing anything:
+
+```text
+understudy inspect --game eballdlx my-roms/
+```
+
+It takes the same dumps `convert-set` takes, authenticates them against the
+profile the same way, and refuses the same sets — inspecting the wrong bytes is
+worse than not inspecting. Addresses are printed as CPU addresses, because the
+`table_offset` in a profile is an offset into the ASSEMBLED multi-device window
+and matches nothing in any single file you hold.
+
+`inspect` is deliberately more permissive than `convert-set`: it reports a
+broken layout instead of refusing it, because the table is the thing you are
+trying to diagnose. So it names the conditions conversion treats as fatal --
+a phrase with no stop frame, a phrase starting outside the speech devices, a
+`silent_phrases` entry that is not actually silence -- and finishes by saying
+whether `convert-set` would accept the set. That verdict comes from running the
+conversion in memory, not from a separate list of rules, so it cannot drift out
+of step with the thing it predicts -- but it describes the DEFAULT target, the
+TMS5220. A TMS5220C or TSP5220C can be refused for a set the TMS5220 accepts,
+and `--allow-unterminated` can turn a refusal into an acceptance. A report that looked the same
+whether the layout was right or wrong would be worse than a refusal.
+
+Two table forms exist, and both are covered:
+
+- **a list of starts**, each phrase ending where the next begins. Add
+  `--command-ordered` if the pointers are in command order rather than address
+  order, and `--no-end-bound` if there is no trailing end pointer.
+- **(start, end) records**, four bytes per phrase. Pass `--start-end-pairs` on
+  the manual path. Read as a list of starts, every other pointer is a real
+  phrase start, so the result looks plausible and describes half the ROM.
+
 ## Working out the layout for your ROM
 
 There are five things to find: where the pointer table is, how many entries it

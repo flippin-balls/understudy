@@ -29,7 +29,9 @@ from pathlib import Path, PurePosixPath
 from . import __version__
 from . import optimize
 from .optimize import OptimizationError
-from .rom import PhraseTable, diagnose_last_byte, patch_rom, summarise
+from .bitstream import parse
+from .rom import (PhraseTable, _truncation_set, diagnose_last_byte, patch_rom,
+                  summarise)
 from .workflow import _optimization_manifest
 
 #: The manual `convert` command's manifest. Versioned separately from
@@ -109,6 +111,17 @@ def _truncation_choice(value):
 
 
 def _load_layout(args, rom: bytes) -> PhraseTable:
+    if getattr(args, "start_end_pairs", False):
+        for flag, name in ((args.command_ordered, "--command-ordered"),
+                           (args.no_end_bound, "--no-end-bound")):
+            if flag:
+                raise ValueError(
+                    "%s has no meaning with --start-end-pairs: a (start, end) "
+                    "record carries its own bounds, so there is no ordering to "
+                    "derive and no end bound to supply. Drop it." % name)
+        return PhraseTable.from_pointer_pairs(
+            rom, args.table_offset, args.phrases,
+            base_address=args.base_address)
     return PhraseTable.from_pointers(
         rom, args.table_offset, args.phrases,
         address_ordered=not args.command_ordered,
@@ -130,9 +143,225 @@ def _changed_ranges(before: bytes, after: bytes):
     return ranges
 
 
+def _inspect_profile(args) -> int:
+    """Read a supported set's phrase table, using the profile's own layout.
+
+    WHY THIS EXISTS. The layout is already known for every bundled game, and
+    `convert-set` reports the whole phrase table -- but only in the manifest,
+    which only exists once ROMs have been written. Someone who wants to look at
+    a table they are not ready to convert had to dig `table_offset` out of the
+    profile JSON, and then discover it is an offset into an ASSEMBLED
+    multi-device window rather than into any file they hold.
+
+    So this assembles the window and runs the conversion IN MEMORY, writing
+    nothing, and reports what it found. Running the real conversion rather than
+    a lookalike is the point: the numbers below are then the numbers
+    `convert-set` would produce, not a second implementation's opinion of them.
+    """
+    from .chips import resolve as resolve_chip
+    from .profiles import ProfileError, get as get_profile
+    from .workflow import (ConversionRefused, authenticate_dumps, convert_set,
+                           phrase_table_for, require_identifiable)
+
+    try:
+        profile = get_profile(args.game)
+    except ProfileError as error:
+        print("error: %s" % error, file=sys.stderr)
+        return 2
+    try:
+        # The same gate convert-set applies, and for the same reason: naming a
+        # profile whose devices carry no hashes would apply its layout to
+        # arbitrary correct-sized bytes and report the result with confidence.
+        require_identifiable(profile)
+    except ConversionRefused as error:
+        print("refusing to inspect: %s" % error, file=sys.stderr)
+        return 2
+    # `_sockets_from_args` reads the positional list as `dumps`, which is what
+    # convert-set calls it. Aliasing rather than renaming keeps that one resolver
+    # shared: the file-to-socket matching is the part that must not be a second
+    # implementation.
+    args.dumps = args.rom
+    try:
+        dumps, _sources, _consumed = _sockets_from_args(args, profile)
+        authenticate_dumps(dumps, profile)
+    except (ConversionRefused, ValueError) as error:
+        print("refusing to inspect: %s" % error, file=sys.stderr)
+        return 2
+
+    image = profile.assemble(dumps)
+    # Resolve the profile's source chip rather than indexing the table by its
+    # raw name. A profile may name it by an alias or in a different case --
+    # "CD2501E" and "TMS5200" both mean tms5200 -- and conversion resolves it,
+    # so indexing directly made inspect crash on sets convert-set accepts.
+    try:
+        source_chip = resolve_chip(profile.source_chip)
+    except ValueError as error:
+        print("error: %s" % error, file=sys.stderr)
+        return 2
+    source = _tables_or_bundled(args.source_tables, source_chip.id)
+    target = _tables_or_bundled(None, "tms5220")
+    target_chip = resolve_chip("tms5220")
+    try:
+        table = phrase_table_for(profile, image)
+        # The same call `convert-set` makes, on an in-memory image. Nothing is
+        # written; the converted bytes are discarded and only the report kept.
+        _converted, results = patch_rom(
+            image, table, source, target,
+            truncate_last_byte=profile.truncate_last_byte or False,
+            allow_unterminated=True)
+    except ValueError as error:
+        print("error: %s" % error, file=sys.stderr)
+        return 2
+    verdicts = diagnose_last_byte(image, table, source)
+    declared_silent = set(profile.silent_phrases or ())
+
+    # WHICH PHRASES WOULD CONVERT-SET REFUSE?
+    #
+    # inspect deliberately reports a bad layout instead of refusing it -- being
+    # unable to look at a table is not much help when the table is what you are
+    # trying to diagnose. But a report that looks identical whether the layout
+    # is right or wrong is worse than refusing, so the conditions conversion
+    # treats as fatal are computed here and named on the row that carries them.
+    covered = set()
+    for device in profile.speech_devices:
+        at = device.cpu_address - profile.window_base
+        covered.update(range(at, at + device.size * (2 if device.mirrored else 1)))
+
+    print("profile   %s  (%s v%s, status %s)"
+          % (profile.label, profile.id, profile.version, profile.status))
+    print("devices   " + ", ".join(
+        "%s @$%04X %d bytes%s" % (d.socket, d.cpu_address, d.size,
+                                  "" if d.holds_speech else " (no speech)")
+        for d in profile.devices))
+    form = ("(start, end) records" if profile.entry_form == "start_end_pairs"
+            else "%s pointers, %s end bound"
+                 % ("address-ordered" if profile.address_ordered
+                    else "command-ordered",
+                    "with" if profile.has_end_bound else "no"))
+    # window_base, NOT base_address. base_address is what gets subtracted from
+    # each POINTER, which is a decoding rule; where the table itself sits is a
+    # position in the assembled window. They are equal in every bundled profile
+    # and differ the moment one stores window-relative pointers, which prints a
+    # confident wrong address under a heading promising CPU addresses.
+    print("table     $%04X in the assembled $%04X window -- %d phrases, %s"
+          % (profile.window_base + profile.table_offset, profile.window_base,
+             profile.phrases, form))
+
+    print("\n  %-4s %-7s %-7s %-6s %-6s %-17s %-8s %-8s %s"
+          % ("#", "start", "end", "bytes", "frames", "kinds", "clamped",
+             "final", "note"))
+    base = profile.window_base
+    truncated_set = _truncation_set(profile.truncate_last_byte or False, table)
+    for result in results:
+        phrase = result.phrase
+        # Kinds come from re-reading the phrase the way patch_rom read it, so
+        # the breakdown describes the same frames the counts above describe.
+        end = phrase.end - 1 if phrase.index in truncated_set else phrase.end
+        frames, _stopped = parse(bytes(image[phrase.start:end]),
+                                 source.pitch_bits, list(source.k_widths))
+        counts = {}
+        for frame in frames:
+            counts[frame.kind] = counts.get(frame.kind, 0) + 1
+        # Explicit letters: "silence" and "stop" both begin with s, and taking
+        # the first character silently printed them as the same kind.
+        kinds = " ".join("%d%s" % (counts[k], letter) for k, letter in
+                         (("voiced", "v"), ("unvoiced", "u"), ("silence", "s"),
+                          ("repeat", "r"), ("stop", "S")) if counts.get(k))
+        notes = []
+        if result.alias_of is not None:
+            notes.append("same bytes as #%d" % result.alias_of)
+        if phrase.index in declared_silent:
+            # The profile ASSERTS this; conversion additionally requires the
+            # phrase to contain silence and nothing else, and refuses if not.
+            # Printing a bare "silent" would present the claim as a finding.
+            # Judged on the FULL declared extent, which is what convert_set
+            # parses for this check. The kinds column above follows patch_rom
+            # and drops a truncated final byte; judging the profile's assertion
+            # on those bytes answers a different question from the one
+            # conversion asks, and the two disagree on a phrase whose silence
+            # runs into that byte.
+            whole, _ = parse(bytes(image[phrase.start:phrase.end]),
+                             source.pitch_bits, list(source.k_widths))
+            whole_kinds = {}
+            for frame in whole:
+                whole_kinds[frame.kind] = whole_kinds.get(frame.kind, 0) + 1
+            really = bool(whole_kinds.get("silence")) and not (
+                set(whole_kinds) - {"silence", "stop"})
+            notes.append("declared silent" if really
+                         else "DECLARED SILENT BUT IS NOT")
+        if not result.stopped_cleanly:
+            notes.append("NO STOP FRAME")
+        if phrase.start not in covered:
+            notes.append("OUTSIDE SPEECH DEVICES")
+        if result.truncated:
+            notes.append("%d truncated frame(s)" % result.truncated)
+        print("  %-4d $%04X   $%04X   %-6d %-6d %-17s %-8d %-8s %s"
+              % (phrase.index, base + phrase.start, base + phrase.end,
+                 phrase.length, result.frames, kinds, result.clamped,
+                 verdicts.get(phrase.index, "-"), ", ".join(notes)))
+
+    stats = summarise(results)
+    print("\n  phrases %d, frames %d, %d clamped at the %s pitch floor (%.1f%%)"
+          % (stats["phrases"], stats["frames"], stats["frames_clamped"],
+             target.name, stats["clamped_percent"]))
+    print("  addresses are CPU addresses; `bytes` is the declared extent, which "
+          "a phrase\n  may not fill -- see the `final` column.")
+    print("\n  required  the final ROM byte carries part of the stop frame and "
+          "must be kept")
+    print("  spare     the phrase already terminates before its final byte")
+    print("  no stop   no stop frame either way -- check the layout")
+    # ASK CONVERT-SET, DO NOT PREDICT IT.
+    #
+    # This started as a hand-rolled prediction -- no stop frame, outside the
+    # speech devices, a false silent claim -- and a review showed it wrong in
+    # both directions: it approved sets conversion refuses for leading-silence
+    # padding and hollow phrases, and it ignored `unterminated_phrases`, so a
+    # profile that legitimately declares one (m_mpac does) was predicted to be
+    # refused while a bogus declaration was predicted to pass.
+    #
+    # The prediction was a second copy of rules that already exist, and it could
+    # only ever be an incomplete one. convert_set writes nothing until its
+    # caller writes something, so the honest answer is to run it and report what
+    # it says, verbatim.
+    try:
+        convert_set(dumps, profile, target_chip,
+                    source_tables=Path(args.source_tables)
+                    if args.source_tables else None)
+        print("\n  convert-set would accept this set, converting for "
+              "the %s (the default target)." % target_chip.id)
+    except (ConversionRefused, ValueError) as refusal:
+        first = str(refusal).strip().splitlines()[0]
+        print("\n  convert-set would REFUSE this set:\n    %s" % first)
+        print("  inspect reports a broken layout rather than refusing it, "
+              "because the table\n  is the thing you are trying to diagnose.")
+
+    # Reproduce the run faithfully. Rebuilding it from the positional list alone
+    # dropped --game and --source-tables, and printed a bare "." when the inputs
+    # had been named with --socket -- which points convert-set at whatever
+    # happens to be in the working directory.
+    suggest = ["convert-set", "--game", profile.id]
+    if args.socket:
+        for item in args.socket:
+            suggest += ["--socket", item]
+    else:
+        suggest += [str(d) for d in args.rom]
+    if args.source_tables:
+        suggest += ["--source-tables", str(args.source_tables)]
+    print("\nNothing was written. Convert with:\n  %s %s"
+          % (invocation(), " ".join(shell_quote(x) for x in suggest)))
+    return 0
+
+
 def cmd_inspect(args) -> int:
-    rom = reads.read_bytes(args.rom)
-    print("file      %s" % args.rom)
+    if getattr(args, "game", None):
+        return _inspect_profile(args)
+    if len(args.rom) != 1:
+        print("error: inspect reads one ROM at a time. To read a whole set by "
+              "its profile, pass --game.", file=sys.stderr)
+        return 2
+    rom_path = args.rom[0]
+    rom = reads.read_bytes(rom_path)
+    print("file      %s" % rom_path)
     print("size      %d bytes" % len(rom))
     print("sha256    %s" % _sha256(rom))
     if args.phrases is None and args.table_offset is None:
@@ -661,6 +890,14 @@ def _add_layout_args(parser, required: bool) -> None:
     parser.add_argument("--no-end-bound", action="store_true",
                         help="table has one entry per phrase, with no final "
                              "end-bound pointer")
+    parser.add_argument("--start-end-pairs", action="store_true",
+                        help="the table stores a 4-byte (start, end) record per "
+                             "phrase instead of a list of starts. Some sets are "
+                             "built this way; read as plain starts, every other "
+                             "pointer is a real phrase start and the result "
+                             "silently describes half the ROM. Implies neither "
+                             "--command-ordered nor --no-end-bound, which have "
+                             "no meaning for this form.")
 
 
 def _read_dump(path: Path) -> bytes:
@@ -1427,7 +1664,16 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     inspect = sub.add_parser("inspect", help="report on a ROM; writes nothing")
-    inspect.add_argument("rom")
+    inspect.add_argument("rom", nargs="*",
+                         help="one ROM for the manual path, or the whole set "
+                              "(files, a folder or a zip) with --game")
+    inspect.add_argument("--game", default=None,
+                         help="read the layout from this profile instead of "
+                              "supplying one. Takes the same dumps convert-set "
+                              "takes and reports the phrase table without "
+                              "writing anything.")
+    inspect.add_argument("--socket", action="append", metavar="SOCKET=PATH",
+                         help="name a file's socket explicitly; repeatable")
     inspect.add_argument("--source-tables", default=None,
                          help="tables used to parse frames for the final-byte "
                               "report; defaults to the bundled TMS5200 set")
