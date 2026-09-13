@@ -321,7 +321,11 @@ class TestCodexFindings(GameFixture):
                               str(spaced)])
         self.assertEqual(code, 0, err)
         line = [l for l in out.splitlines() if "convert-set" in l][-1]
-        self.assertIn("'%s'" % spaced, line)
+        # Asserted through the same helper the CLI uses: quoting style is
+        # platform-specific -- POSIX single quotes, Windows double quotes -- and
+        # hard-coding either makes this a test of the platform, not the code.
+        self.assertIn(cli.shell_quote(str(spaced)), line)
+        self.assertNotIn(" %s " % spaced, line)
 
 
 class TestVerdictIsAskedNotPredicted(GameFixture):
