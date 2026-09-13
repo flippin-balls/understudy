@@ -3,6 +3,12 @@
 Understudy produces the same converted bytes for the **TMS5220, TMS5220C and
 TSP5220C** because they use the same LPC coefficient tables.
 
+The converted ROMs are for the replacement chip named in the conversion report.
+The normal `convert-set` target is the TMS5220 family. **Do not use those
+converted ROMs with the original TMS5200.** A TMS5200 should use the original
+ROM data; feeding it data re-indexed for TMS5220 tables makes it select the wrong
+values in the opposite direction.
+
 That only answers the data question. Check the pinout, supply, clock and output
 requirements of the part you intend to fit against the board schematic. One
 TMS5220 has been fitted to an Embryon Squawk & Talk for this project and worked
@@ -38,10 +44,10 @@ the `0x00`/`0x20` opcode group is a NOP. On a TMS5220C it controls variable fram
 rate. A board that sends those commands can therefore behave differently with a
 5220C even though the speech tables are the same.
 
-Understudy records observed chip commands in each game profile. Embryon's board
-firmware was driven through all 64 commands its MPU can send; it issued `0x60`
-(SPEAK EXTERNAL) and no SET RATE command. Profiles without that evidence are not
-automatically cleared for the rate-controlled parts.
+Bundled profiles record the chip commands observed from their board firmware.
+Understudy uses that evidence when deciding whether a C-family target is safe;
+a profile without the required evidence is not automatically cleared for the
+rate-controlled parts.
 
 ## Pitch range
 
