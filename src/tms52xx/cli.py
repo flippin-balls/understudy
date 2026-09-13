@@ -158,8 +158,8 @@ def _inspect_profile(args) -> int:
     a lookalike is the point: the numbers below are then the numbers
     `convert-set` would produce, not a second implementation's opinion of them.
     """
-    from .profiles import ProfileError, get as get_profile
     from .chips import resolve as resolve_chip
+    from .profiles import ProfileError, get as get_profile
     from .workflow import (ConversionRefused, authenticate_dumps, convert_set,
                            phrase_table_for, require_identifiable)
 
@@ -189,7 +189,16 @@ def _inspect_profile(args) -> int:
         return 2
 
     image = profile.assemble(dumps)
-    source = _tables_or_bundled(args.source_tables, profile.source_chip)
+    # Resolve the profile's source chip rather than indexing the table by its
+    # raw name. A profile may name it by an alias or in a different case --
+    # "CD2501E" and "TMS5200" both mean tms5200 -- and conversion resolves it,
+    # so indexing directly made inspect crash on sets convert-set accepts.
+    try:
+        source_chip = resolve_chip(profile.source_chip)
+    except ValueError as error:
+        print("error: %s" % error, file=sys.stderr)
+        return 2
+    source = _tables_or_bundled(args.source_tables, source_chip.id)
     target = _tables_or_bundled(None, "tms5220")
     target_chip = resolve_chip("tms5220")
     try:
@@ -313,7 +322,8 @@ def _inspect_profile(args) -> int:
         convert_set(dumps, profile, target_chip,
                     source_tables=Path(args.source_tables)
                     if args.source_tables else None)
-        print("\n  convert-set would accept this set.")
+        print("\n  convert-set would accept this set, converting for "
+              "the %s (the default target)." % target_chip.id)
     except (ConversionRefused, ValueError) as refusal:
         first = str(refusal).strip().splitlines()[0]
         print("\n  convert-set would REFUSE this set:\n    %s" % first)

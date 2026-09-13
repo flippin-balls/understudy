@@ -407,3 +407,40 @@ class TestVerdictIsAskedNotPredicted(GameFixture):
         self.assertEqual(code, 0)
         self.assertIn("convert-set would REFUSE", out)
         self.assertIn("unterminated_phrases", out)
+
+
+class TestSourceChipResolution(GameFixture):
+    """A profile may name its source chip by alias or in a different case.
+
+    Conversion resolves it; inspect indexed the table dict directly, so a
+    profile convert-set accepts crashed inspect with a KeyError.
+    """
+
+    def _with_source_chip(self, name):
+        self.raw["source_chip"] = name
+        synthetic_game.write_profile(Path(self.env), self.raw)
+
+    def test_an_alias_is_accepted(self):
+        self._with_source_chip("CD2501E")
+        code, out, err = self.inspect()
+        self.assertEqual(code, 0, err)
+        self.assertIn("profile", out)
+
+    def test_a_differently_cased_name_is_accepted(self):
+        self._with_source_chip("TMS5200")
+        code, _out, err = self.inspect()
+        self.assertEqual(code, 0, err)
+
+    def test_an_unknown_chip_is_a_readable_error_not_a_traceback(self):
+        self._with_source_chip("definitely-not-a-chip")
+        code, _out, err = self.inspect()
+        self.assertEqual(code, 2)
+        self.assertIn("unknown chip", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_the_verdict_names_the_target_it_describes(self):
+        """It reports the DEFAULT conversion; a C-family target can differ."""
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("tms5220", out)
+        self.assertIn("default target", out)

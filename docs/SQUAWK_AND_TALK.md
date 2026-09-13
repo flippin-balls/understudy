@@ -419,7 +419,11 @@ broken layout instead of refusing it, because the table is the thing you are
 trying to diagnose. So it names the conditions conversion treats as fatal --
 a phrase with no stop frame, a phrase starting outside the speech devices, a
 `silent_phrases` entry that is not actually silence -- and finishes by saying
-whether `convert-set` would accept the set. A report that looked the same
+whether `convert-set` would accept the set. That verdict comes from running the
+conversion in memory, not from a separate list of rules, so it cannot drift out
+of step with the thing it predicts -- but it describes the DEFAULT target, the
+TMS5220. A TMS5220C or TSP5220C can be refused for a set the TMS5220 accepts,
+and `--allow-unterminated` can turn a refusal into an acceptance. A report that looked the same
 whether the layout was right or wrong would be worse than a refusal.
 
 Two table forms exist, and both are covered:
