@@ -103,6 +103,25 @@ def _table_identity(chip: Chip, custom: Optional[Path],
     return identity
 
 
+def require_identifiable(profile: Profile) -> None:
+    """Refuse a profile that cannot authenticate what it is handed.
+
+    Kept separate from `authenticate_dumps` so each caller can place it where
+    it belongs: `convert_set` asks before it has loaded anything, and shares it
+    with `inspect --game` -- which needs the same gate for the same reason.
+    Without it, naming a profile applies its layout to arbitrary correct-sized
+    bytes, and a stop frame is not authentication: 0xF occurs in ordinary data.
+    """
+    if profile.identifiable:
+        return
+    missing = [d.socket for d in profile.devices if not d.sha256]
+    raise ConversionRefused(
+        "profile %r cannot verify what it is given: socket(s) %s carry no "
+        "sha256, so nothing distinguishes the right ROM from a wrong one "
+        "of the same size. Add hashes to the profile, or use the manual "
+        "`convert` path." % (profile.id, ", ".join(missing)))
+
+
 def authenticate_dumps(dumps: Dict[str, bytes], profile: Profile) -> Dict[str, dict]:
     """Check a set of dumps against a profile. Returns the per-socket record.
 
@@ -255,13 +274,7 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
     # is still copied out as a burn image, and an unhashed one is accepted on
     # size alone -- so a technician could be handed a file named for a socket,
     # sized for its device, containing whatever they happened to pass in.
-    if not profile.identifiable:
-        missing = [d.socket for d in profile.devices if not d.sha256]
-        raise ConversionRefused(
-            "profile %r cannot verify what it is given: socket(s) %s carry no "
-            "sha256, so nothing distinguishes the right ROM from a wrong one "
-            "of the same size. Add hashes to the profile, or use the manual "
-            "`convert` path." % (profile.id, ", ".join(missing)))
+    require_identifiable(profile)
 
     result = SetResult()
     result.profile = profile

@@ -160,12 +160,20 @@ def _inspect_profile(args) -> int:
     """
     from .profiles import ProfileError, get as get_profile
     from .workflow import (ConversionRefused, authenticate_dumps,
-                           phrase_table_for)
+                           phrase_table_for, require_identifiable)
 
     try:
         profile = get_profile(args.game)
     except ProfileError as error:
         print("error: %s" % error, file=sys.stderr)
+        return 2
+    try:
+        # The same gate convert-set applies, and for the same reason: naming a
+        # profile whose devices carry no hashes would apply its layout to
+        # arbitrary correct-sized bytes and report the result with confidence.
+        require_identifiable(profile)
+    except ConversionRefused as error:
+        print("refusing to inspect: %s" % error, file=sys.stderr)
         return 2
     # `_sockets_from_args` reads the positional list as `dumps`, which is what
     # convert-set calls it. Aliasing rather than renaming keeps that one resolver
@@ -194,7 +202,19 @@ def _inspect_profile(args) -> int:
         print("error: %s" % error, file=sys.stderr)
         return 2
     verdicts = diagnose_last_byte(image, table, source)
-    silent = set(profile.silent_phrases or ())
+    declared_silent = set(profile.silent_phrases or ())
+
+    # WHICH PHRASES WOULD CONVERT-SET REFUSE?
+    #
+    # inspect deliberately reports a bad layout instead of refusing it -- being
+    # unable to look at a table is not much help when the table is what you are
+    # trying to diagnose. But a report that looks identical whether the layout
+    # is right or wrong is worse than refusing, so the conditions conversion
+    # treats as fatal are computed here and named on the row that carries them.
+    covered = set()
+    for device in profile.speech_devices:
+        at = device.cpu_address - profile.window_base
+        covered.update(range(at, at + device.size * (2 if device.mirrored else 1)))
 
     print("profile   %s  (%s v%s, status %s)"
           % (profile.label, profile.id, profile.version, profile.status))
@@ -215,6 +235,7 @@ def _inspect_profile(args) -> int:
           % ("#", "start", "end", "bytes", "frames", "kinds", "clamped",
              "final", "note"))
     base = profile.window_base
+    mis_declared = set()
     truncated_set = _truncation_set(profile.truncate_last_byte or False, table)
     for result in results:
         phrase = result.phrase
@@ -234,10 +255,20 @@ def _inspect_profile(args) -> int:
         notes = []
         if result.alias_of is not None:
             notes.append("same bytes as #%d" % result.alias_of)
-        if phrase.index in silent:
-            notes.append("silent")
+        if phrase.index in declared_silent:
+            # The profile ASSERTS this; conversion additionally requires the
+            # phrase to contain silence and nothing else, and refuses if not.
+            # Printing a bare "silent" would present the claim as a finding.
+            really = bool(counts.get("silence")) and not (
+                set(counts) - {"silence", "stop"})
+            if not really:
+                mis_declared.add(phrase.index)
+            notes.append("declared silent" if really
+                         else "DECLARED SILENT BUT IS NOT")
         if not result.stopped_cleanly:
             notes.append("NO STOP FRAME")
+        if phrase.start not in covered:
+            notes.append("OUTSIDE SPEECH DEVICES")
         if result.truncated:
             notes.append("%d truncated frame(s)" % result.truncated)
         print("  %-4d $%04X   $%04X   %-6d %-6d %-17s %-8d %-8s %s"
@@ -255,8 +286,41 @@ def _inspect_profile(args) -> int:
           "must be kept")
     print("  spare     the phrase already terminates before its final byte")
     print("  no stop   no stop frame either way -- check the layout")
-    print("\nNothing was written. Convert with:\n  %s convert-set %s"
-          % (invocation(), " ".join(str(d) for d in args.rom) or "."))
+    # Say outright whether convert-set would accept this, rather than leaving
+    # the reader to infer it from the notes column.
+    blocked = []
+    for result in results:
+        index = result.phrase.index
+        if not result.stopped_cleanly:
+            blocked.append("%d has no stop frame" % index)
+        elif result.phrase.start not in covered:
+            blocked.append("%d starts outside the speech devices" % index)
+        elif index in declared_silent and index in mis_declared:
+            blocked.append("%d is declared silent but is not" % index)
+    if blocked:
+        print("\n  convert-set would REFUSE this set: phrase %s%s."
+              % (blocked[0],
+                 " (and %d more)" % (len(blocked) - 1) if len(blocked) > 1
+                 else ""))
+        print("  inspect reports a broken layout rather than refusing it, "
+              "because the table\n  is the thing you are trying to diagnose.")
+    else:
+        print("\n  convert-set would accept this set.")
+
+    # Reproduce the run faithfully. Rebuilding it from the positional list alone
+    # dropped --game and --source-tables, and printed a bare "." when the inputs
+    # had been named with --socket -- which points convert-set at whatever
+    # happens to be in the working directory.
+    suggest = ["convert-set", "--game", profile.id]
+    if args.socket:
+        for item in args.socket:
+            suggest += ["--socket", item]
+    else:
+        suggest += [str(d) for d in args.rom]
+    if args.source_tables:
+        suggest += ["--source-tables", str(args.source_tables)]
+    print("\nNothing was written. Convert with:\n  %s %s"
+          % (invocation(), " ".join(shell_quote(x) for x in suggest)))
     return 0
 
 

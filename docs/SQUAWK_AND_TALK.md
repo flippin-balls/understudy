@@ -414,6 +414,14 @@ worse than not inspecting. Addresses are printed as CPU addresses, because the
 `table_offset` in a profile is an offset into the ASSEMBLED multi-device window
 and matches nothing in any single file you hold.
 
+`inspect` is deliberately more permissive than `convert-set`: it reports a
+broken layout instead of refusing it, because the table is the thing you are
+trying to diagnose. So it names the conditions conversion treats as fatal --
+a phrase with no stop frame, a phrase starting outside the speech devices, a
+`silent_phrases` entry that is not actually silence -- and finishes by saying
+whether `convert-set` would accept the set. A report that looked the same
+whether the layout was right or wrong would be worse than a refusal.
+
 Two table forms exist, and both are covered:
 
 - **a list of starts**, each phrase ending where the next begins. Add

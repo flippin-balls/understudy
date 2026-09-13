@@ -231,3 +231,94 @@ class TestManualPathUnchanged(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCodexFindings(GameFixture):
+    """Cases a review found reported confidently when they should not be.
+
+    All three share a shape: inspect is deliberately more permissive than
+    convert-set, because a broken layout is exactly what someone runs it to
+    diagnose. That is only defensible while the report SAYS the layout is
+    broken; otherwise a wrong table and a right one print the same thing.
+    """
+
+    def _rewrite(self, mutate):
+        """Apply `mutate(image)` and push the result back into the devices."""
+        profile = Profile(copy.deepcopy(self.raw), "<t>")
+        image = bytearray(profile.assemble(self.dumps))
+        mutate(image, profile)
+        for device in profile.devices:
+            lo = device.cpu_address - profile.window_base
+            data = bytes(image[lo:lo + device.size])
+            (self.roms / ("%s.bin" % device.socket)).write_bytes(data)
+            self.dumps[device.socket] = data
+        for entry in self.raw["devices"]:
+            entry["sha256"] = sha256(self.dumps[entry["socket"]])
+        synthetic_game.write_profile(Path(self.env), self.raw)
+
+    def test_a_profile_that_cannot_authenticate_is_refused(self):
+        """Without hashes a profile applies its layout to any correct-sized
+        bytes, and inspect would report the result with full confidence."""
+        for entry in self.raw["devices"]:
+            entry.pop("sha256", None)
+        synthetic_game.write_profile(Path(self.env), self.raw)
+        code, _out, err = self.inspect()
+        self.assertEqual(code, 2)
+        self.assertIn("cannot verify what it is given", err)
+
+    def test_a_phrase_outside_the_speech_devices_is_named(self):
+        """Unpopulated space reads as 0xFF, which parses as a stop frame -- so
+        such a phrase looks perfectly valid and converts to nothing."""
+        def mutate(image, profile):
+            image[profile.table_offset:profile.table_offset + 2] = \
+                (profile.window_base).to_bytes(2, "big")
+        self._rewrite(mutate)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("OUTSIDE SPEECH DEVICES", out)
+        self.assertIn("convert-set would REFUSE", out)
+
+    def test_a_silent_claim_that_is_false_is_not_repeated_as_fact(self):
+        """`silent_phrases` is the profile's assertion. Conversion holds it to
+        that and refuses otherwise, so inspect must not print it as a finding."""
+        self.raw["layout"]["silent_phrases"] = [0]
+        synthetic_game.write_profile(Path(self.env), self.raw)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("DECLARED SILENT BUT IS NOT", out)
+        self.assertIn("convert-set would REFUSE", out)
+
+    def test_a_good_set_says_conversion_would_be_accepted(self):
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("convert-set would accept", out)
+
+    def test_the_suggested_command_reproduces_the_run(self):
+        """Rebuilt from the positional list alone it dropped --game and printed
+        a bare "." for a --socket run, aiming convert-set at the cwd."""
+        sockets = []
+        for entry in self.raw["devices"]:
+            sockets += ["--socket", "%s=%s"
+                        % (entry["socket"],
+                           self.roms / ("%s.bin" % entry["socket"]))]
+        code, out, err = run(["inspect", "--game", self.raw["profile_id"],
+                              *sockets])
+        self.assertEqual(code, 0, err)
+        line = [l for l in out.splitlines() if "convert-set" in l][-1]
+        self.assertIn("--game %s" % self.raw["profile_id"], line)
+        for entry in self.raw["devices"]:
+            self.assertIn("--socket", line)
+            self.assertIn(entry["socket"], line)
+        self.assertNotRegex(line, r"convert-set\s+\.\s*$")
+
+    def test_a_path_with_spaces_is_quoted(self):
+        spaced = Path(self.tmp.name) / "with space"
+        spaced.mkdir()
+        for entry in self.raw["devices"]:
+            name = "%s.bin" % entry["socket"]
+            (spaced / name).write_bytes((self.roms / name).read_bytes())
+        code, out, err = run(["inspect", "--game", self.raw["profile_id"],
+                              str(spaced)])
+        self.assertEqual(code, 0, err)
+        line = [l for l in out.splitlines() if "convert-set" in l][-1]
+        self.assertIn("'%s'" % spaced, line)
