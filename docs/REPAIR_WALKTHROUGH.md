@@ -75,15 +75,30 @@ py understudy.py identify mygame.zip
 
 If Understudy recognizes the set, it names the game and prints the next command.
 
-If you want to see what is actually in the ROMs before changing anything, use
-the name it printed:
+### Optional: inspect the phrase table
+
+You do **not** need to find or enter a pointer-table address for a supported
+game. The profile already contains it.
+
+Use the profile name printed by `identify`:
 
 ```text
 py understudy.py inspect --game NAME .
 ```
 
-That lists every phrase — where it lives, how long it is, how many frames — and
-writes nothing. It is optional; skip it if you only want the repair.
+For example:
+
+```text
+py understudy.py inspect --game eballdlx .
+py understudy.py inspect --game flashgdn .
+```
+
+A **phrase** here means one encoded speech stream referenced by the game's phrase
+table. `inspect` does not turn it into English text or a phoneme transcript. It
+shows where each phrase lives and how it is encoded: addresses, length, frame
+count and frame kinds. It writes nothing.
+
+This step is optional; skip it if you only want to make replacement ROMs.
 
 ## 6. Convert
 
@@ -101,6 +116,11 @@ py understudy.py convert-set mygame.zip
 
 Understudy identifies the game, assigns files to sockets, converts the speech,
 and writes the result to `understudy-out/`.
+
+By default the output is converted for a **TMS5220**. The same converted speech
+data is used by the TMS5220C and TSP5220C. Do not put the converted ROMs back in
+a board that still has its original TMS5200; keep using the original ROMs with
+the TMS5200.
 
 **Read the report before burning anything.** The lines that matter most look
 like this:
@@ -121,15 +141,18 @@ TMS5220 cannot reproduce the TMS5200's lowest pitch values; see
 
 ### Optional audio optimization
 
-For a first conversion, the normal mode is the simplest baseline. Embryon also
-has measured optimization data that you can opt into with:
+For a first hardware test, use the normal conversion above. Sixteen of the
+seventeen profiles also have measured optimization data that you can opt into:
 
 ```text
 py understudy.py convert-set . --optimize-audio
 ```
 
-Only Embryon currently supports that flag, and optimized ROMs have not yet been
-tested on real hardware. See [AUDIO_OPTIMIZATION.md](AUDIO_OPTIMIZATION.md).
+The optimizer is still experimental at the whole-phrase level: some phrases
+score worse after optimization even when their individual frames score better.
+Use the normal conversion as the baseline and check your game's results in
+[AUDIO_OPTIMIZATION.md](AUDIO_OPTIMIZATION.md) before testing optimized ROMs.
+No optimized ROM has yet been tested on real hardware.
 
 ## 7. Burn the EPROMs
 
