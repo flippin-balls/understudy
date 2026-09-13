@@ -70,6 +70,10 @@ Understudy identifies the set by hash, assigns each dump to its socket, defaults
 to a TMS5220 target, and writes the result to `understudy-out/`. Extra files in
 a folder or zip are ignored.
 
+The generated ROMs are for the target chip shown in the report. With the default
+TMS5220 target, **do not use the converted ROMs with the original TMS5200**; keep
+using the original ROMs with the TMS5200.
+
 To identify a set without converting it:
 
 ```text
@@ -217,8 +221,8 @@ Current limits:
 - the manifest records whether optimization was used and which measured data was
   applied.
 
-The original 40-frame study improved 39 of 40 frames on the same scoring metric.
-The full method, guards, and phrase-level results are in
+For a first hardware test, use the normal conversion as the baseline. The full
+method, guards, and phrase-level results are in
 [AUDIO_OPTIMIZATION.md](docs/AUDIO_OPTIMIZATION.md).
 
 ## Pitch limitation
@@ -251,18 +255,22 @@ See [CHIPS.md](docs/CHIPS.md) for the chip variants,
 
 ## Looking at a phrase table without converting
 
-If your game is supported and you just want to see what is in it:
+For a supported game, you do not need to find the pointer table yourself. The
+profile already contains the layout. `inspect --game` reads it and writes
+nothing:
 
 ```text
-python understudy.py inspect --game embryon my-roms/
+python understudy.py inspect --game eballdlx ebd-roms/
+python understudy.py inspect --game flashgdn flash-gordon-roms/
 ```
 
-That takes the same dumps `convert-set` takes — files, a folder or a zip — reads
-the layout from the profile, and prints every phrase: CPU start and end, length,
-frame count and kinds, how many frames clamp at the pitch floor, the final-byte
-verdict, and which phrases are aliases of another or silent. **It writes
-nothing.** The figures are the ones `convert-set` would report, because it runs
-the same conversion in memory and throws the bytes away.
+A **phrase** is one encoded speech stream referenced by the game's table. It is
+not a decoded sentence or phoneme transcription. `inspect` reports the CPU
+addresses, length, frame count and frame kinds for each phrase, plus conversion
+warnings such as pitch-floor clamps.
+
+Use `identify` first if you do not know the profile id. Eight Ball Deluxe is
+`eballdlx`; standard Flash Gordon is `flashgdn` and the French set is `flashgdf`.
 
 ## Research and unsupported games
 
