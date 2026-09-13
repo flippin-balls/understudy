@@ -159,7 +159,8 @@ def _inspect_profile(args) -> int:
     `convert-set` would produce, not a second implementation's opinion of them.
     """
     from .profiles import ProfileError, get as get_profile
-    from .workflow import (ConversionRefused, authenticate_dumps,
+    from .chips import resolve as resolve_chip
+    from .workflow import (ConversionRefused, authenticate_dumps, convert_set,
                            phrase_table_for, require_identifiable)
 
     try:
@@ -190,6 +191,7 @@ def _inspect_profile(args) -> int:
     image = profile.assemble(dumps)
     source = _tables_or_bundled(args.source_tables, profile.source_chip)
     target = _tables_or_bundled(None, "tms5220")
+    target_chip = resolve_chip("tms5220")
     try:
         table = phrase_table_for(profile, image)
         # The same call `convert-set` makes, on an in-memory image. Nothing is
@@ -235,7 +237,6 @@ def _inspect_profile(args) -> int:
           % ("#", "start", "end", "bytes", "frames", "kinds", "clamped",
              "final", "note"))
     base = profile.window_base
-    mis_declared = set()
     truncated_set = _truncation_set(profile.truncate_last_byte or False, table)
     for result in results:
         phrase = result.phrase
@@ -259,10 +260,19 @@ def _inspect_profile(args) -> int:
             # The profile ASSERTS this; conversion additionally requires the
             # phrase to contain silence and nothing else, and refuses if not.
             # Printing a bare "silent" would present the claim as a finding.
-            really = bool(counts.get("silence")) and not (
-                set(counts) - {"silence", "stop"})
-            if not really:
-                mis_declared.add(phrase.index)
+            # Judged on the FULL declared extent, which is what convert_set
+            # parses for this check. The kinds column above follows patch_rom
+            # and drops a truncated final byte; judging the profile's assertion
+            # on those bytes answers a different question from the one
+            # conversion asks, and the two disagree on a phrase whose silence
+            # runs into that byte.
+            whole, _ = parse(bytes(image[phrase.start:phrase.end]),
+                             source.pitch_bits, list(source.k_widths))
+            whole_kinds = {}
+            for frame in whole:
+                whole_kinds[frame.kind] = whole_kinds.get(frame.kind, 0) + 1
+            really = bool(whole_kinds.get("silence")) and not (
+                set(whole_kinds) - {"silence", "stop"})
             notes.append("declared silent" if really
                          else "DECLARED SILENT BUT IS NOT")
         if not result.stopped_cleanly:
@@ -286,26 +296,29 @@ def _inspect_profile(args) -> int:
           "must be kept")
     print("  spare     the phrase already terminates before its final byte")
     print("  no stop   no stop frame either way -- check the layout")
-    # Say outright whether convert-set would accept this, rather than leaving
-    # the reader to infer it from the notes column.
-    blocked = []
-    for result in results:
-        index = result.phrase.index
-        if not result.stopped_cleanly:
-            blocked.append("%d has no stop frame" % index)
-        elif result.phrase.start not in covered:
-            blocked.append("%d starts outside the speech devices" % index)
-        elif index in declared_silent and index in mis_declared:
-            blocked.append("%d is declared silent but is not" % index)
-    if blocked:
-        print("\n  convert-set would REFUSE this set: phrase %s%s."
-              % (blocked[0],
-                 " (and %d more)" % (len(blocked) - 1) if len(blocked) > 1
-                 else ""))
+    # ASK CONVERT-SET, DO NOT PREDICT IT.
+    #
+    # This started as a hand-rolled prediction -- no stop frame, outside the
+    # speech devices, a false silent claim -- and a review showed it wrong in
+    # both directions: it approved sets conversion refuses for leading-silence
+    # padding and hollow phrases, and it ignored `unterminated_phrases`, so a
+    # profile that legitimately declares one (m_mpac does) was predicted to be
+    # refused while a bogus declaration was predicted to pass.
+    #
+    # The prediction was a second copy of rules that already exist, and it could
+    # only ever be an incomplete one. convert_set writes nothing until its
+    # caller writes something, so the honest answer is to run it and report what
+    # it says, verbatim.
+    try:
+        convert_set(dumps, profile, target_chip,
+                    source_tables=Path(args.source_tables)
+                    if args.source_tables else None)
+        print("\n  convert-set would accept this set.")
+    except (ConversionRefused, ValueError) as refusal:
+        first = str(refusal).strip().splitlines()[0]
+        print("\n  convert-set would REFUSE this set:\n    %s" % first)
         print("  inspect reports a broken layout rather than refusing it, "
               "because the table\n  is the thing you are trying to diagnose.")
-    else:
-        print("\n  convert-set would accept this set.")
 
     # Reproduce the run faithfully. Rebuilding it from the positional list alone
     # dropped --game and --source-tables, and printed a bare "." when the inputs

@@ -322,3 +322,88 @@ class TestCodexFindings(GameFixture):
         self.assertEqual(code, 0, err)
         line = [l for l in out.splitlines() if "convert-set" in l][-1]
         self.assertIn("'%s'" % spaced, line)
+
+
+class TestVerdictIsAskedNotPredicted(GameFixture):
+    """The accept/refuse line must come from conversion, not from a guess.
+
+    It began as a hand-rolled prediction of three refusal conditions, and a
+    review showed it wrong in both directions -- approving sets conversion
+    refuses, and refusing a profile that legitimately declares an unterminated
+    phrase. These pin the cases that exposed it.
+    """
+
+    def _refresh(self, dumps):
+        for socket, data in dumps.items():
+            (self.roms / ("%s.bin" % socket)).write_bytes(data)
+            self.dumps[socket] = data
+        for entry in self.raw["devices"]:
+            entry["sha256"] = sha256(self.dumps[entry["socket"]])
+        synthetic_game.write_profile(Path(self.env), self.raw)
+
+    def test_a_pointer_into_padding_is_reported_as_refused(self):
+        """Leading-silence padding: the old prediction called this acceptable."""
+        dumps = dict(self.dumps)
+        u5 = bytearray(dumps["U5"])
+        pad_at = 0x0900
+        for i in range(pad_at, pad_at + 32):
+            u5[i] = 0x00
+        table_at = 0xFC00 - 0xF000
+        u5[table_at:table_at + 2] = (0xF000 + pad_at).to_bytes(2, "big")
+        dumps["U5"] = bytes(u5)
+        self._refresh(dumps)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("convert-set would REFUSE", out)
+
+    def test_a_declared_unterminated_phrase_is_reported_as_accepted(self):
+        """A profile may legitimately declare one; m_mpac does. The prediction
+        called that a refusal, because it only looked for a stop frame."""
+        dumps, raw = synthetic_game.build(terminate=False)
+        raw = copy.deepcopy(raw)
+        raw["profile_id"] = self.raw["profile_id"]
+        # Only the phrases that genuinely lack a stop frame. Declaring all four
+        # is refused in the other direction, which the next test covers.
+        raw["layout"]["unterminated_phrases"] = [0, 1]
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        self.raw = raw
+        self._refresh(dumps)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("NO STOP FRAME", out)
+        self.assertIn("convert-set would accept", out)
+
+    def test_the_refusal_quotes_conversion_rather_than_paraphrasing(self):
+        """Whatever conversion objects to, the reader sees its own words."""
+        def mutate(image, profile):
+            image[profile.table_offset:profile.table_offset + 2] = \
+                (profile.window_base).to_bytes(2, "big")
+        profile = Profile(copy.deepcopy(self.raw), "<t>")
+        image = bytearray(profile.assemble(self.dumps))
+        mutate(image, profile)
+        dumps = {}
+        for device in profile.devices:
+            lo = device.cpu_address - profile.window_base
+            dumps[device.socket] = bytes(image[lo:lo + device.size])
+        self._refresh(dumps)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("convert-set would REFUSE", out)
+        self.assertIn("speech", out.lower())
+
+    def test_declaring_a_terminated_phrase_unterminated_is_reported_as_refused(self):
+        """The check runs both ways, and the prediction only ran one."""
+        dumps, raw = synthetic_game.build(terminate=False)
+        raw = copy.deepcopy(raw)
+        raw["profile_id"] = self.raw["profile_id"]
+        raw["layout"]["unterminated_phrases"] = list(
+            range(raw["layout"]["phrases"]))
+        for entry in raw["devices"]:
+            entry["sha256"] = sha256(dumps[entry["socket"]])
+        self.raw = raw
+        self._refresh(dumps)
+        code, out, _err = self.inspect()
+        self.assertEqual(code, 0)
+        self.assertIn("convert-set would REFUSE", out)
+        self.assertIn("unterminated_phrases", out)
