@@ -103,6 +103,70 @@ def _table_identity(chip: Chip, custom: Optional[Path],
     return identity
 
 
+def authenticate_dumps(dumps: Dict[str, bytes], profile: Profile) -> Dict[str, dict]:
+    """Check a set of dumps against a profile. Returns the per-socket record.
+
+    Shared with `inspect --game` on purpose. Reading a ROM under a profile's
+    layout and converting it under that layout are the same claim about which
+    bytes are speech, so they must accept and refuse exactly the same sets -- a
+    second copy of these checks would drift, and the direction it would drift is
+    towards inspect being more permissive than the thing it is meant to preview.
+    """
+    # Every socket the profile knows must be supplied. A missing device is not
+    # a warning: its bytes would be filled with 0xFF and a pointer into it would
+    # convert padding as though it were speech.
+    for device in profile.devices:
+        if device.socket not in dumps:
+            raise ConversionRefused(
+                "socket %s (%s, %d bytes) is in the %s profile but no dump was "
+                "given for it" % (device.socket, device.device_type,
+                                  device.size, profile.id))
+    for socket in dumps:
+        if profile.device_for(socket) is None:
+            raise ConversionRefused(
+                "socket %s is not part of the %s profile" % (socket, profile.id))
+
+    inputs: Dict[str, dict] = {}
+    for device in profile.devices:
+        data = dumps[device.socket]
+        digest = sha256(data)
+        inputs[device.socket] = {
+            "socket": device.socket, "bytes": len(data), "sha256": digest,
+            "device_type": device.device_type,
+            "expected_sha256": device.sha256,
+            "matches_profile": device.sha256 == digest if device.sha256 else None}
+        if device.sha256 and device.sha256 != digest:
+            raise ConversionRefused(
+                "socket %s does not match the %s profile: expected sha256 %s, "
+                "got %s.\n"
+                "  Most likely the chip was read with the wrong device type "
+                "selected -- re-read it and try again.\n"
+                "  If it re-reads the same, this is a revision the profile does "
+                "not cover. Run `identify` to see whether another profile fits."
+                % (device.socket, profile.id, device.sha256[:16], digest[:16]))
+    return inputs
+
+
+def phrase_table_for(profile: Profile, image: bytes) -> PhraseTable:
+    """Build a profile's phrase table from its assembled image.
+
+    The entry form is a property of the table, not a preference: a list of
+    starts and a list of (start, end) records are different shapes, and reading
+    one as the other yields extents that are individually plausible and
+    collectively wrong. Shared so `inspect --game` cannot pick differently from
+    the conversion it is previewing.
+    """
+    if profile.entry_form == "start_end_pairs":
+        return PhraseTable.from_pointer_pairs(
+            image, profile.table_offset, profile.phrases,
+            base_address=profile.base_address)
+    return PhraseTable.from_pointers(
+        image, profile.table_offset, profile.phrases,
+        address_ordered=profile.address_ordered,
+        has_end_bound=profile.has_end_bound,
+        base_address=profile.base_address)
+
+
 def _optimization_manifest(report) -> dict:
     """The optimisation section of the manifest.
 
@@ -208,52 +272,12 @@ def convert_set(dumps: Dict[str, bytes], profile: Profile,
                                                  source_tables)
     dst_tables, dst_raw, dst_path = _load_tables(target, target_tables)
 
-    # Every socket the profile knows must be supplied. A missing device is not
-    # a warning: its bytes would be filled with 0xFF and a pointer into it would
-    # convert padding as though it were speech.
-    for device in profile.devices:
-        if device.socket not in dumps:
-            raise ConversionRefused(
-                "socket %s (%s, %d bytes) is in the %s profile but no dump was "
-                "given for it" % (device.socket, device.device_type,
-                                  device.size, profile.id))
-    for socket in dumps:
-        if profile.device_for(socket) is None:
-            raise ConversionRefused(
-                "socket %s is not part of the %s profile" % (socket, profile.id))
-
-    for device in profile.devices:
-        data = dumps[device.socket]
-        digest = sha256(data)
-        entry = {"socket": device.socket, "bytes": len(data), "sha256": digest,
-                 "device_type": device.device_type,
-                 "expected_sha256": device.sha256,
-                 "matches_profile": device.sha256 == digest if device.sha256
-                                    else None}
-        result.inputs[device.socket] = entry
-        if device.sha256 and device.sha256 != digest:
-            raise ConversionRefused(
-                "socket %s does not match the %s profile: expected sha256 %s, "
-                "got %s.\n"
-                "  Most likely the chip was read with the wrong device type "
-                "selected -- re-read it and try again.\n"
-                "  If it re-reads the same, this is a revision the profile does "
-                "not cover. Run `identify` to see whether another profile fits."
-                % (device.socket, profile.id, device.sha256[:16], digest[:16]))
+    result.inputs = authenticate_dumps(dumps, profile)
 
     image = profile.assemble(dumps)
     result.before = image
 
-    if profile.entry_form == "start_end_pairs":
-        table = PhraseTable.from_pointer_pairs(
-            image, profile.table_offset, profile.phrases,
-            base_address=profile.base_address)
-    else:
-        table = PhraseTable.from_pointers(
-            image, profile.table_offset, profile.phrases,
-            address_ordered=profile.address_ordered,
-            has_end_bound=profile.has_end_bound,
-            base_address=profile.base_address)
+    table = phrase_table_for(profile, image)
 
     # EVERY PHRASE MUST START INSIDE A SPEECH-BEARING DEVICE.
     #

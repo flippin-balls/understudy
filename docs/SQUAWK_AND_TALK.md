@@ -399,6 +399,30 @@ wrong and neither is unusual:
   "the end of the ROM" would swallow the pointer table. `from_pointers` stops it
   at the table instead.
 
+## Reading a layout you already have
+
+For a supported game the layout is in its profile, and you can read the whole
+phrase table without supplying anything or writing anything:
+
+```text
+understudy inspect --game eballdlx my-roms/
+```
+
+It takes the same dumps `convert-set` takes, authenticates them against the
+profile the same way, and refuses the same sets — inspecting the wrong bytes is
+worse than not inspecting. Addresses are printed as CPU addresses, because the
+`table_offset` in a profile is an offset into the ASSEMBLED multi-device window
+and matches nothing in any single file you hold.
+
+Two table forms exist, and both are covered:
+
+- **a list of starts**, each phrase ending where the next begins. Add
+  `--command-ordered` if the pointers are in command order rather than address
+  order, and `--no-end-bound` if there is no trailing end pointer.
+- **(start, end) records**, four bytes per phrase. Pass `--start-end-pairs` on
+  the manual path. Read as a list of starts, every other pointer is a real
+  phrase start, so the result looks plausible and describes half the ROM.
+
 ## Working out the layout for your ROM
 
 There are five things to find: where the pointer table is, how many entries it
